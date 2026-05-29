@@ -1,0 +1,10 @@
+de\spacerat76\ebon\domain\Receipt.class
+de\spacerat76\ebon\domain\Category.class
+de\spacerat76\ebon\domain\ReceiptItem.class
+de\spacerat76\ebon\repository\ReceiptRepository.class
+de\spacerat76\ebon\EbonApplication.class
+de\spacerat76\ebon\repository\ReceiptItemRepository.class
+de\spacerat76\ebon\security\SecurityConfig.class
+de\spacerat76\ebon\security\ApiTokenFilter.class
+de\spacerat76\ebon\repository\CategoryRepository.class
+de\spacerat76\ebon\config\AppProperties.class
