@@ -6,3 +6,28 @@ build/
 .DS_Store
 Thumbs.db
 .idea/
+
+# Java / Maven / Spring Boot
+**/target/
+!.mvn/wrapper/maven-wrapper.jar
+dependency-reduced-pom.xml
+release.properties
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+buildNumber.properties
+.mvn/tarball/
+
+# IDE artifacts
+*.iml
+.project
+.classpath
+.settings/
+out/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*~
