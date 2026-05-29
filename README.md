@@ -45,4 +45,8 @@ The project includes a scaffolded AI client used as a parsing/categorization fal
 
 The current OpenRouter client is a minimal scaffold and will need a proper prompt and response parsing to be production-ready. AI requests/responses are logged into `ai_categorization_log` for auditing.
 
+## Rule adaptation (basic)
+
+When users manually correct item categories, the system can create a simple `categorization_rule` automatically (currently the item description is stored as the rule pattern). This is a naive starter implementation intended to be improved with better pattern extraction and rule scoring.
+
 
