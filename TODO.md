@@ -10,10 +10,10 @@ Generated from the spec cross-check (2026-05-29). This file lists open work item
   - Persist and apply parse_rule entries so parsing can adapt and be reused. (DB table + repository added)
 
  - Implement AI fallback for parsing & categorization
-  - Add OpenRouter/OpenAI client with batching, rate-limiting and retries (exponential backoff).
-  - Log AI calls/results to ai_categorization_log and surface errors for rule adaptation.
+ - [x] Implement AI fallback for parsing & categorization (scaffolded)
+  - Add OpenRouter/OpenAI client with batching, rate-limiting and retries (exponential backoff). (scaffold)
+  - Log AI calls/results to ai_categorization_log and surface errors for rule adaptation. (entity + repo added)
 
-- [x] Add Flyway DB migrations (completed)
   - Create migration scripts for current domain tables and new tables: parse_rule, categorization_rule, ai_categorization_log, sync_log, sync_log_entry, app_settings.
   - Ensure migrations run in CI and local dev.
 

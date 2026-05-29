@@ -39,3 +39,10 @@ The backend supports rule-based parsing of receipt text via `parse_rule` entries
 
 Create `parse_rule` rows directly (SQL or admin UI) for now; a future management API will expose CRUD for rules.
 
+## AI fallback (scaffold)
+
+The project includes a scaffolded AI client used as a parsing/categorization fallback when rule-based parsing fails. By default the `AiClient` bean is a no-op. To enable a real AI provider, set the `OPENROUTER_API_KEY` (or configure `ebon.openrouter-api-key`) and ensure the `openrouter-base-url`/model are set in `application.yml`.
+
+The current OpenRouter client is a minimal scaffold and will need a proper prompt and response parsing to be production-ready. AI requests/responses are logged into `ai_categorization_log` for auditing.
+
+
