@@ -21,6 +21,8 @@ public class ParserServiceImpl implements ParserService {
 
     @Autowired(required = false)
     private ParseRuleRepository parseRuleRepository;
+    @Autowired(required = false)
+    private de.spacerat76.ebon.ai.AiClient aiClient;
 
     // Setter used by tests that instantiate the service manually
     public void setParseRuleRepository(ParseRuleRepository parseRuleRepository) {
@@ -69,7 +71,26 @@ public class ParserServiceImpl implements ParserService {
             }
         }
 
-        // If no rule applied, create a minimal placeholder item (preserve previous behaviour)
+        // If no rule applied, try AI fallback (if available), otherwise create a minimal placeholder item
+        if (!appliedRule && aiClient != null) {
+            try {
+                java.util.Optional<de.spacerat76.ebon.ai.AiParseResult> res = aiClient.parseReceipt(receipt.getRawText());
+                if (res.isPresent()) {
+                    de.spacerat76.ebon.ai.AiParseResult ar = res.get();
+                    if (ar.getStoreName() != null) receipt.setStoreName(ar.getStoreName());
+                    if (ar.getTotalAmount() != null) receipt.setTotalAmount(ar.getTotalAmount());
+                    if (ar.getReceiptDate() != null) receipt.setReceiptDate(ar.getReceiptDate());
+                    ReceiptItem item = new ReceiptItem();
+                    item.setPositionIndex(1);
+                    item.setDescription("Parsed by AI");
+                    item.setTotalPrice(receipt.getTotalAmount() == null ? BigDecimal.ZERO : receipt.getTotalAmount());
+                    receipt.addItem(item);
+                    return receipt;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
         ReceiptItem item = new ReceiptItem();
         item.setPositionIndex(1);
         item.setDescription(appliedRule ? "Parsed by rule" : "Parsed item");
