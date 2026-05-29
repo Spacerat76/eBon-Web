@@ -31,6 +31,9 @@ public class ReceiptItemControllerTest {
     @Mock
     CategoryRepository categoryRepository;
 
+    @Mock
+    de.spacerat76.ebon.service.RuleAdaptationService ruleAdaptationService;
+
     @InjectMocks
     ReceiptItemController controller;
 
@@ -68,6 +71,7 @@ public class ReceiptItemControllerTest {
         assertThat(body.getCategory()).isEqualTo("Drinks");
 
         verify(itemRepository).save(any());
+        verify(ruleAdaptationService).adaptRuleForManualCategorization(any());
     }
 
     @Test

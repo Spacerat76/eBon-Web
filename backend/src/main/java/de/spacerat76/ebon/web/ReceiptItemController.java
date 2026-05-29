@@ -4,6 +4,7 @@ import de.spacerat76.ebon.domain.Category;
 import de.spacerat76.ebon.domain.ReceiptItem;
 import de.spacerat76.ebon.repository.CategoryRepository;
 import de.spacerat76.ebon.repository.ReceiptItemRepository;
+import de.spacerat76.ebon.service.RuleAdaptationService;
 import de.spacerat76.ebon.web.dto.ReceiptItemDto;
 import de.spacerat76.ebon.web.dto.ReceiptItemUpdateDto;
 import org.springframework.http.ResponseEntity;
@@ -18,10 +19,12 @@ public class ReceiptItemController {
 
     private final ReceiptItemRepository itemRepository;
     private final CategoryRepository categoryRepository;
+    private final RuleAdaptationService ruleAdaptationService;
 
-    public ReceiptItemController(ReceiptItemRepository itemRepository, CategoryRepository categoryRepository) {
+    public ReceiptItemController(ReceiptItemRepository itemRepository, CategoryRepository categoryRepository, RuleAdaptationService ruleAdaptationService) {
         this.itemRepository = itemRepository;
         this.categoryRepository = categoryRepository;
+        this.ruleAdaptationService = ruleAdaptationService;
     }
 
     @PutMapping("/{itemId}")
@@ -44,6 +47,11 @@ public class ReceiptItemController {
             }
             item.setCategory(copt.get());
             item.setCategorySource("MANUAL");
+            // Adapt rules based on manual categorization
+            try {
+                ruleAdaptationService.adaptRuleForManualCategorization(item);
+            } catch (Exception ignored) {
+            }
         }
 
         item.setIsManuallyEdited(true);
