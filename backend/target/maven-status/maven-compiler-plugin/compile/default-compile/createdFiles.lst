@@ -13,9 +13,11 @@ de\spacerat76\ebon\service\ParserService.class
 de\spacerat76\ebon\web\dto\ReceiptDto.class
 de\spacerat76\ebon\EbonApplication.class
 de\spacerat76\ebon\repository\ReceiptItemRepository.class
+de\spacerat76\ebon\web\dto\CategoryDto.class
 de\spacerat76\ebon\service\PaperlessSyncServiceImpl.class
 de\spacerat76\ebon\web\dto\ReceiptItemDto.class
 de\spacerat76\ebon\service\CategorizationService.class
 de\spacerat76\ebon\service\PaperlessClient.class
 de\spacerat76\ebon\service\ParserServiceImpl.class
+de\spacerat76\ebon\web\CategoryController.class
 de\spacerat76\ebon\config\AppProperties.class

@@ -7,6 +7,7 @@ D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\domain\Category.java
 D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\service\PaperlessSyncService.java
 D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\service\PaperlessSyncServiceImpl.java
 D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\repository\CategoryRepository.java
+D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\web\dto\CategoryDto.java
 D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\service\ParserService.java
 D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\service\ParserServiceImpl.java
 D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\web\dto\ReceiptItemDto.java
@@ -19,3 +20,4 @@ D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\repository\ReceiptItemRepos
 D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\security\ApiTokenFilter.java
 D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\config\AppProperties.java
 D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\domain\Receipt.java
+D:\eBon-Web\backend\src\main\java\de\spacerat76\ebon\web\CategoryController.java
