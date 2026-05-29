@@ -4,10 +4,10 @@ Generated from the spec cross-check (2026-05-29). This file lists open work item
 
 ## High Priority
 
-- Implement rule-based parser and parse_rule persistence
-  - Replace the placeholder ParserServiceImpl with a rule/strategy engine.
-  - Extract receipt_date, store_name, total_amount, currency, receipt_items, and bonus fields.
-  - Persist and apply parse_rule entries so parsing can adapt and be reused.
+ - [x] Implement rule-based parser and parse_rule persistence (basic rule engine added)
+  - Replace the placeholder ParserServiceImpl with a rule/strategy engine. (done)
+  - Extract receipt_date, store_name, total_amount, currency, receipt_items, and bonus fields. (partial)
+  - Persist and apply parse_rule entries so parsing can adapt and be reused. (DB table + repository added)
 
  - Implement AI fallback for parsing & categorization
   - Add OpenRouter/OpenAI client with batching, rate-limiting and retries (exponential backoff).

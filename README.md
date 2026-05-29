@@ -33,3 +33,9 @@ java -jar backend/target/ebon-backend-0.1.0-SNAPSHOT.jar --spring.datasource.url
 
 When deploying to production, ensure Postgres is available and that the Flyway migrations are applied on startup.
 
+## Parse rules (runtime)
+
+The backend supports rule-based parsing of receipt text via `parse_rule` entries stored in the database. A `parse_rule` can contain a regular expression (with named capture groups such as `store`, `date`, `total`) and a priority. Rules are evaluated in descending priority order and, when matched, the parser will extract fields from the named groups.
+
+Create `parse_rule` rows directly (SQL or admin UI) for now; a future management API will expose CRUD for rules.
+
