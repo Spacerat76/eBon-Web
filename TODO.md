@@ -3,8 +3,6 @@
 This file lists remaining open work items after cross-checking the eBon specification against the current backend implementation. Items are grouped by priority (High → Medium → Low). Completed work (migrations, basic rule parser, AI scaffold, naive rule adaptation) has been removed from this list.
 
 ## High Priority
-
-- Implement scheduled background sync job (`@Scheduled`) configurable via `ebon.sync-interval-minutes`.
 - Paperless client: follow pagination (`next` links), support server-side tag filtering (`tags__name` / `page_size`) and iterate pages until `next == null`.
 - Paperless sync: deduplicate receipts on import (skip or update by `paperless_document_id`).
 - Paperless sync: detect and handle `TAG_REMOVED` events (remove or mark receipts) and record the action.

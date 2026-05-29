@@ -20,6 +20,16 @@ curl -X POST http://localhost:8080/api/sync/document/123
 curl http://localhost:8080/api/sync/status
 ```
 
+## Scheduled background sync
+
+The backend can run an automatic background sync job that polls Paperless-NGX for new documents and imports them automatically. Configure the interval (in minutes) with `ebon.sync-interval-minutes` (default: `60`). To disable automatic sync set the value to `0`.
+
+Example override when running locally:
+
+```bash
+java -jar backend/target/ebon-backend-0.1.0-SNAPSHOT.jar --ebon.sync-interval-minutes=120
+```
+
 ## Database migrations
 
 This project uses Flyway for schema migrations. Migration scripts are located in `backend/db/migrations` and will be executed automatically by the backend when Flyway is enabled (see `application.yml`).
