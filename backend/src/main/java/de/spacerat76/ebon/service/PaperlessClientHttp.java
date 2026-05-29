@@ -7,6 +7,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.retry.Retry;
 import io.github.resilience4j.retry.RetryConfig;
+import io.github.resilience4j.core.IntervalFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
@@ -49,11 +50,13 @@ public class PaperlessClientHttp implements PaperlessClient {
                 .build();
         this.circuitBreaker = CircuitBreaker.of("paperless", cbConfig);
 
+        // configure retry using application properties (attempts + exponential backoff)
+        IntervalFunction intervalFunction = IntervalFunction.ofExponentialBackoff(props.getPaperlessRetryInitialWaitMs(), props.getPaperlessRetryBackoffMultiplier());
         RetryConfig retryConfig = RetryConfig.custom()
-                .maxAttempts(3)
-                .waitDuration(Duration.ofMillis(500))
-                .retryExceptions(RestClientException.class)
-                .build();
+            .maxAttempts(props.getPaperlessRetryMaxAttempts())
+            .intervalFunction(intervalFunction)
+            .retryExceptions(RestClientException.class)
+            .build();
         this.retry = Retry.of("paperless", retryConfig);
     }
 
@@ -86,10 +89,29 @@ public class PaperlessClientHttp implements PaperlessClient {
                 Supplier<ResponseEntity<String>> decorated = io.github.resilience4j.circuitbreaker.CircuitBreaker.decorateSupplier(circuitBreaker, supplier);
                 decorated = io.github.resilience4j.retry.Retry.decorateSupplier(retry, decorated);
 
-                ResponseEntity<String> resp = decorated.get();
+                ResponseEntity<String> resp = null;
+                // manual attempts to honor Retry-After (HTTP 429) semantics
+                int attempts = 0;
+                while (attempts < props.getPaperlessRetryMaxAttempts()) {
+                    attempts++;
+                    try {
+                        resp = decorated.get();
+                        if (resp != null && resp.getStatusCode().value() == 429) {
+                            String ra = resp.getHeaders().getFirst("Retry-After");
+                            long waitMs = parseRetryAfterToMs(ra, props.getPaperlessRetryInitialWaitMs());
+                            log.info("Paperless returned 429, attempt {} of {}, waiting {} ms before retry", attempts, props.getPaperlessRetryMaxAttempts(), waitMs);
+                            Thread.sleep(waitMs);
+                            continue; // retry
+                        }
+                        break;
+                    } catch (Exception ex) {
+                        if (attempts >= props.getPaperlessRetryMaxAttempts()) throw ex;
+                        // otherwise retry loop will continue
+                    }
+                }
 
-                if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
-                    log.warn("Paperless returned non-2xx or empty body when fetching documents: {}", resp.getStatusCode().value());
+                if (resp == null || !resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+                    log.warn("Paperless returned non-2xx or empty body when fetching documents: {}", resp == null ? "null" : resp.getStatusCode().value());
                     break;
                 }
 
@@ -151,15 +173,47 @@ public class PaperlessClientHttp implements PaperlessClient {
             Supplier<ResponseEntity<String>> decorated = io.github.resilience4j.circuitbreaker.CircuitBreaker.decorateSupplier(circuitBreaker, supplier);
             decorated = io.github.resilience4j.retry.Retry.decorateSupplier(retry, decorated);
 
-            ResponseEntity<String> resp = decorated.get();
-            if (!resp.getStatusCode().is2xxSuccessful()) {
-                log.warn("Paperless returned non-2xx when fetching document text: {}", resp.getStatusCode().value());
+            ResponseEntity<String> resp = null;
+            int attempts = 0;
+            while (attempts < props.getPaperlessRetryMaxAttempts()) {
+                attempts++;
+                try {
+                    resp = decorated.get();
+                    if (resp != null && resp.getStatusCode().value() == 429) {
+                        String ra = resp.getHeaders().getFirst("Retry-After");
+                        long waitMs = parseRetryAfterToMs(ra, props.getPaperlessRetryInitialWaitMs());
+                        log.info("Paperless returned 429 when fetching text for {}. attempt {}/{}. Waiting {} ms before retrying", documentId, attempts, props.getPaperlessRetryMaxAttempts(), waitMs);
+                        Thread.sleep(waitMs);
+                        continue;
+                    }
+                    break;
+                } catch (Exception ex) {
+                    if (attempts >= props.getPaperlessRetryMaxAttempts()) {
+                        log.warn("Error fetching document text from Paperless after {} attempts", attempts, ex);
+                        return null;
+                    }
+                }
+            }
+            if (resp == null || !resp.getStatusCode().is2xxSuccessful()) {
+                log.warn("Paperless returned non-2xx when fetching document text: {}", resp == null ? "null" : resp.getStatusCode().value());
                 return null;
             }
             return resp.getBody();
         } catch (Exception ex) {
             log.warn("Error fetching document text from Paperless", ex);
             return null;
+        }
+    }
+
+    private long parseRetryAfterToMs(String headerValue, long defaultMs) {
+        if (headerValue == null) return defaultMs;
+        try {
+            // common case: number of seconds
+            long secs = Long.parseLong(headerValue.trim());
+            return Math.max(0, secs * 1000L);
+        } catch (NumberFormatException nfe) {
+            // ignore complex HTTP-date formats and fall back to default
+            return defaultMs;
         }
     }
 }

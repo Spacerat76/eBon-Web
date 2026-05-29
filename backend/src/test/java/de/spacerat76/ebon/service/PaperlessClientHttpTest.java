@@ -85,4 +85,36 @@ public class PaperlessClientHttpTest {
         assertThat(text).isEqualTo("This is the document text");
         server.verify();
     }
+
+        @Test
+        void fetchDocumentText_retriesOn429AndSucceeds() throws Exception {
+        RestTemplate rt = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.createServer(rt);
+
+        AppProperties props = new AppProperties();
+        props.setPaperlessBaseUrl("http://example.com/");
+        props.setPaperlessApiToken("tok");
+        // reduce retry wait for test speed
+        props.setPaperlessRetryMaxAttempts(3);
+        props.setPaperlessRetryInitialWaitMs(200);
+
+        ObjectMapper mapper = new ObjectMapper();
+        PaperlessClientHttp client = new PaperlessClientHttp(rt, props, mapper);
+
+        server.expect(MockRestRequestMatchers.requestTo("http://example.com/api/documents/123/text/"))
+            .andExpect(MockRestRequestMatchers.method(HttpMethod.GET))
+            .andRespond(MockRestResponseCreators.withStatus(org.springframework.http.HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", "1")
+                .contentType(MediaType.TEXT_PLAIN)
+                .body(""));
+
+        server.expect(MockRestRequestMatchers.requestTo("http://example.com/api/documents/123/text/"))
+            .andExpect(MockRestRequestMatchers.method(HttpMethod.GET))
+            .andRespond(MockRestResponseCreators.withSuccess("Delayed document text", MediaType.TEXT_PLAIN));
+
+        String text = client.fetchDocumentText(123);
+
+        assertThat(text).isEqualTo("Delayed document text");
+        server.verify();
+        }
 }

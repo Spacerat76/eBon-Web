@@ -30,6 +30,16 @@ Example override when running locally:
 java -jar backend/target/ebon-backend-0.1.0-SNAPSHOT.jar --ebon.sync-interval-minutes=120
 ```
 
+## Paperless client: retry & rate-limit handling
+
+The Paperless HTTP client implements a configurable retry policy with exponential backoff and basic `Retry-After` handling. Configure retries with the following properties (application properties / environment variables):
+
+- `ebon.paperless-retry-max-attempts` (default: `3`)
+- `ebon.paperless-retry-initial-wait-ms` (default: `500`)
+- `ebon.paperless-retry-backoff-multiplier` (default: `2.0`)
+
+When Paperless responds with HTTP `429 Too Many Requests` and provides a `Retry-After` header the client will wait the indicated duration before retrying (up to the configured attempt limit). The client also uses a circuit breaker to avoid hammering a failing Paperless instance.
+
 ## Database migrations
 
 This project uses Flyway for schema migrations. Migration scripts are packaged under `backend/src/main/resources/db/migration` (classpath) and a filesystem copy can be placed at `backend/db/migrations` for deployment scenarios. The backend will execute Flyway migrations on startup when Flyway is enabled (see `application.yml`).

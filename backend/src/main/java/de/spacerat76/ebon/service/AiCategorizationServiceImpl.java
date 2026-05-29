@@ -54,8 +54,9 @@ public class AiCategorizationServiceImpl implements AiCategorizationService {
             }
 
             String responsePayload;
+            Optional<AiParseResult> res = Optional.empty();
             try {
-                Optional<AiParseResult> res = aiClient.parseReceipt(r.getRawText());
+                res = aiClient.parseReceipt(r.getRawText());
                 if (res.isPresent()) {
                     responsePayload = objectMapper.writeValueAsString(res.get());
                 } else {
@@ -70,6 +71,10 @@ public class AiCategorizationServiceImpl implements AiCategorizationService {
             log.setRequestPayload(requestPayload);
             log.setResponsePayload(responsePayload);
             log.setModel(props.getOpenrouterModel());
+            // If AI returned a cost estimate, persist it
+            if (res.isPresent() && res.get().getCost() != null) {
+                log.setCost(res.get().getCost());
+            }
             log.setCreatedAt(java.time.OffsetDateTime.now());
 
             aiCategorizationLogRepository.save(log);

@@ -22,6 +22,7 @@ This file lists open backend tasks discovered by scanning the current codebase a
   Migration SQL moved to `src/main/resources/db/migration/V1__init_schema.sql` and the test harness now picks up classpath migrations. A test-time fallback applies the SQL directly early during test startup to guarantee schema availability when Flyway auto-migration isn't detected in the test environment.
 - Remove `NoSchedulerConfig` test hack: tests currently include a local `NoSchedulerConfig` test configuration. Prefer disabling scheduling via a test profile or properties only, and remove the bean-post-processor hack.
 - Paperless client retry tuning and backoff: add robust retry policy, configurable attempts and backoff, rate-limit handling and unit tests. (See: `service/PaperlessClient`)
+ - [x] Paperless client retry tuning and backoff: add robust retry policy, configurable attempts and backoff, rate-limit handling and unit tests. (See: `service/PaperlessClient`)
 - Bulk categorization workflows + UI hooks: implement backend endpoints to support bulk apply/confirm rules and export suggestions for UI integration.
 - [x] Add explicit Re-Import API (UC-09) with audit and tests: re-parsing/re-importing a single document on demand now creates a `sync_log` and a `sync_log_entry` with action `INSERTED`/`UPDATED`/`ERROR`. Unit tests added.
 - Add DB index migrations: ensure indexes listed in spec are created by migrations and included in `V1__init_schema.sql` or subsequent migration scripts.

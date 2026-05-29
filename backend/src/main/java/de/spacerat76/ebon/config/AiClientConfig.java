@@ -11,10 +11,10 @@ import org.springframework.web.client.RestTemplate;
 public class AiClientConfig {
 
     @Bean
-    public AiClient aiClient(AppProperties props) {
+    public AiClient aiClient(AppProperties props, org.springframework.web.client.RestTemplate restTemplate, com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
         if (props.getOpenrouterApiKey() == null || props.getOpenrouterApiKey().isBlank()) {
             return new NoOpAiClient();
         }
-        return new OpenRouterAiClient(new RestTemplate(), props);
+        return new OpenRouterAiClient(restTemplate, props, objectMapper);
     }
 }

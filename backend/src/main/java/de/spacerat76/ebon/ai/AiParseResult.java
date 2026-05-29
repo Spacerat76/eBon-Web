@@ -14,6 +14,7 @@ public class AiParseResult {
     private String currency;
     private BigDecimal bonusBalance;
     private BigDecimal bonusPoints;
+    private java.math.BigDecimal cost;
 
     // Optional suggestion to persist as a ParseRule
     private String suggestedParseRegex;
@@ -74,6 +75,14 @@ public class AiParseResult {
 
     public void setBonusPoints(BigDecimal bonusPoints) {
         this.bonusPoints = bonusPoints;
+    }
+
+    public java.math.BigDecimal getCost() {
+        return cost;
+    }
+
+    public void setCost(java.math.BigDecimal cost) {
+        this.cost = cost;
     }
 
     public String getSuggestedParseRegex() {
