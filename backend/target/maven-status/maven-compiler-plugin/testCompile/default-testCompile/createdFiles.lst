@@ -9,3 +9,4 @@ de\spacerat76\ebon\service\PaperlessSyncServiceImplTest.class
 de\spacerat76\ebon\service\CategorizationServiceTest.class
 de\spacerat76\ebon\security\ApiTokenFilterUnitTest.class
 de\spacerat76\ebon\web\CategoryControllerTest.class
+de\spacerat76\ebon\service\PaperlessClientHttpTest.class

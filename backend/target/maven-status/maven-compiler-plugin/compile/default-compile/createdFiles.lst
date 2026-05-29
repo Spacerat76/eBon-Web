@@ -1,4 +1,5 @@
 de\spacerat76\ebon\domain\ReceiptItem.class
+de\spacerat76\ebon\config\RestTemplateConfig.class
 de\spacerat76\ebon\security\ApiTokenFilter.class
 de\spacerat76\ebon\service\PaperlessClientHttp.class
 de\spacerat76\ebon\repository\CategoryRepository.class
