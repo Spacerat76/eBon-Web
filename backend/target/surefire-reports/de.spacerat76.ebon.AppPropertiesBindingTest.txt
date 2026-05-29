@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: de.spacerat76.ebon.AppPropertiesBindingTest
 -------------------------------------------------------------------------------
-Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.536 s -- in de.spacerat76.ebon.AppPropertiesBindingTest
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 6.538 s -- in de.spacerat76.ebon.AppPropertiesBindingTest

@@ -70,4 +70,18 @@ public class CategoryControllerTest {
         assertThat(resp.getStatusCode().value()).isEqualTo(204);
         verify(categoryRepository).deleteById(1L);
     }
+
+    @Test
+    void search_returnsMatchingCategories() {
+        Category c = new Category();
+        c.setId(3L);
+        c.setName("Groceries");
+
+        when(categoryRepository.findByNameContainingIgnoreCase("groc")).thenReturn(List.of(c));
+
+        var res = categoryController.search("groc");
+
+        assertThat(res).hasSize(1);
+        assertThat(res.get(0).getName()).isEqualTo("Groceries");
+    }
 }

@@ -25,6 +25,11 @@ public class CategoryController {
         return categoryRepository.findAll().stream().map(this::toDto).collect(Collectors.toList());
     }
 
+    @GetMapping("/search")
+    public List<CategoryDto> search(@RequestParam("q") String q) {
+        return categoryRepository.findByNameContainingIgnoreCase(q).stream().map(this::toDto).collect(Collectors.toList());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<CategoryDto> get(@PathVariable Long id) {
         Optional<Category> opt = categoryRepository.findById(id);

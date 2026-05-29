@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="de.spacerat76.ebon.EbonApplicationTests" time="0.684" tests="1" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="de.spacerat76.ebon.web.ReceiptItemControllerTest" time="0.094" tests="3" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="21"/>
     <property name="sun.cpu.isalist" value="amd64"/>
@@ -49,7 +49,7 @@
     <property name="localRepository" value="C:\Users\pbaas\.m2\repository"/>
     <property name="java.vendor.url.bug" value="https://github.com/microsoft/openjdk/issues"/>
     <property name="java.io.tmpdir" value="C:\Users\pbaas\AppData\Local\Temp\"/>
-    <property name="com.zaxxer.hikari.pool_number" value="2"/>
+    <property name="com.zaxxer.hikari.pool_number" value="3"/>
     <property name="java.version" value="21.0.11"/>
     <property name="user.dir" value="D:\eBon-Web\backend"/>
     <property name="os.arch" value="amd64"/>
@@ -66,53 +66,7 @@
     <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
     <property name="java.class.version" value="65.0"/>
   </properties>
-  <testcase name="contextLoads" classname="de.spacerat76.ebon.EbonApplicationTests" time="0.001">
-    <system-out><![CDATA[2026-05-29T07:42:39.435+02:00  INFO 24604 --- [           main] t.c.s.AnnotationConfigContextLoaderUtils : Could not detect default configuration classes for test class [de.spacerat76.ebon.EbonApplicationTests]: EbonApplicationTests does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
-2026-05-29T07:42:39.435+02:00  INFO 24604 --- [           main] .b.t.c.SpringBootTestContextBootstrapper : Found @SpringBootConfiguration de.spacerat76.ebon.EbonApplication for test class de.spacerat76.ebon.EbonApplicationTests
-
-  .   ____          _            __ _ _
- /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
-( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
- \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
-  '  |____| .__|_| |_|_| |_\__, | / / / /
- =========|_|==============|___/=/_/_/_/
-
- :: Spring Boot ::                (v4.0.0)
-
-2026-05-29T07:42:39.469+02:00  INFO 24604 --- [           main] d.spacerat76.ebon.EbonApplicationTests   : Starting EbonApplicationTests using Java 21.0.11 with PID 24604 (started by pbaas in D:\eBon-Web\backend)
-2026-05-29T07:42:39.469+02:00  INFO 24604 --- [           main] d.spacerat76.ebon.EbonApplicationTests   : No active profile set, falling back to 1 default profile: "default"
-2026-05-29T07:42:39.652+02:00  INFO 24604 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
-2026-05-29T07:42:39.669+02:00  INFO 24604 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 12 ms. Found 3 JPA repository interfaces.
-2026-05-29T07:42:39.753+02:00  INFO 24604 --- [           main] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: default]
-2026-05-29T07:42:39.785+02:00  INFO 24604 --- [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
-2026-05-29T07:42:39.785+02:00  INFO 24604 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-2 - Starting...
-2026-05-29T07:42:39.785+02:00  INFO 24604 --- [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-2 - Added connection conn10: url=jdbc:h2:mem:ebon user=SA
-2026-05-29T07:42:39.785+02:00  INFO 24604 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-2 - Start completed.
-2026-05-29T07:42:39.785+02:00  WARN 24604 --- [           main] org.hibernate.orm.deprecation            : HHH90000025: H2Dialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
-2026-05-29T07:42:39.785+02:00  INFO 24604 --- [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
-	Database JDBC URL [jdbc:h2:mem:ebon]
-	Database driver: H2 JDBC Driver
-	Database dialect: H2Dialect
-	Database version: 2.4.240
-	Default catalog/schema: EBON/PUBLIC
-	Autocommit mode: undefined/unknown
-	Isolation level: READ_COMMITTED [default READ_COMMITTED]
-	JDBC fetch size: 100
-	Pool: DatasourceConnectionProviderImpl
-	Minimum pool size: undefined/unknown
-	Maximum pool size: undefined/unknown
-2026-05-29T07:42:39.836+02:00  INFO 24604 --- [           main] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
-2026-05-29T07:42:39.836+02:00  INFO 24604 --- [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
-2026-05-29T07:42:39.902+02:00  WARN 24604 --- [           main] JpaBaseConfiguration$JpaWebConfiguration : spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
-2026-05-29T07:42:39.936+02:00  WARN 24604 --- [           main] .s.a.UserDetailsServiceAutoConfiguration : 
-
-Using generated security password: 2fb31297-f5df-444b-b7f9-9481daf7e538
-
-This generated password is for development use only. Your security configuration must be updated before running your application in production.
-
-2026-05-29T07:42:39.936+02:00  INFO 24604 --- [           main] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
-2026-05-29T07:42:40.106+02:00  INFO 24604 --- [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 2 endpoints beneath base path '/actuator'
-2026-05-29T07:42:40.116+02:00  INFO 24604 --- [           main] d.spacerat76.ebon.EbonApplicationTests   : Started EbonApplicationTests in 0.681 seconds (process running for 8.1)
-]]></system-out>
-  </testcase>
+  <testcase name="update_changesFieldsAndMarksManual" classname="de.spacerat76.ebon.web.ReceiptItemControllerTest" time="0.088"/>
+  <testcase name="update_returnsNotFound_whenReceiptMismatch" classname="de.spacerat76.ebon.web.ReceiptItemControllerTest" time="0.005"/>
+  <testcase name="update_returnsBadRequest_whenCategoryMissing" classname="de.spacerat76.ebon.web.ReceiptItemControllerTest" time="0.0"/>
 </testsuite>
