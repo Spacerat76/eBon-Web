@@ -14,7 +14,7 @@ This file lists open backend tasks discovered by scanning the current codebase a
 
 - [x] Implement AI batch categorization + logging: the `AiCategorizationService` calls the configured `AiClient` per-receipt, persists `ai_categorization_log` entries and exposes a `/api/ai/batch-categorize` endpoint. Unit tests added. Next: add retry/backoff and cost tracking in `OpenRouterAiClient`.
 - Harden `OpenRouterAiClient`: currently a minimal scaffold. Implement proper request payloads, response parsing, retries with exponential backoff, and configuration for model/timeout. Add unit tests that mock remote responses.
-- Decide/implement TAG_REMOVED semantics: the sync currently marks receipts with `parse_status = TAG_REMOVED` instead of removing rows; the spec asks for removal and logging. Decide on deletion vs marking strategy and implement consistent behavior + tests + migration notes.
+- [x] Decide/implement TAG_REMOVED semantics: the sync now deletes receipts that lost the Paperless tag and records a `TAG_REMOVED` `sync_log_entry`. Tests and README updated.
 
 ## Lower priority / housekeeping
 

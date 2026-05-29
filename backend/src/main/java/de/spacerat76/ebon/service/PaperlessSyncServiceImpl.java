@@ -106,15 +106,18 @@ public class PaperlessSyncServiceImpl implements PaperlessSyncService {
             for (Receipt r : receiptRepository.findAll()) {
                 Integer pid = r.getPaperlessDocumentId();
                 if (pid != null && !seenIds.contains(pid)) {
-                    r.setParseStatus("TAG_REMOVED");
-                    r.setUpdatedAt(now);
-                    receiptRepository.save(r);
+                    // delete receipts that are no longer tagged in Paperless (avoid keeping stale data)
+                    try {
+                        receiptRepository.delete(r);
+                    } catch (Exception ex) {
+                        log.warn("Failed to delete orphan receipt {}: {}", pid, ex.getMessage());
+                    }
                     try {
                         de.spacerat76.ebon.domain.SyncLogEntry entry = new de.spacerat76.ebon.domain.SyncLogEntry();
                         entry.setSyncLog(syncLog);
                         entry.setPaperlessDocumentId(pid);
                         entry.setAction("TAG_REMOVED");
-                        entry.setMessage("Tag no longer present on Paperless");
+                        entry.setMessage("Tag removed in Paperless; deleted receipt");
                         syncLogEntryRepository.save(entry);
                     } catch (Exception ex) {
                         log.warn("Failed to write TAG_REMOVED sync log entry for {}: {}", pid, ex.getMessage());

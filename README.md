@@ -56,7 +56,7 @@ When deploying to production, ensure Postgres is available and that the Flyway m
 The sync process now persists an audit record for each full sync run in the `sync_log` table and per-document actions in `sync_log_entry`.
 
 - `sync_log`: one row per sync run with `startedAt`, `finishedAt`, `status`, `total_documents`, `succeeded`, `failed`.
-- `sync_log_entry`: one row per document processed containing `sync_log_id`, `paperless_document_id`, `action` (`INSERTED`, `UPDATED`, `TAG_REMOVED`, `ERROR`) and an optional `message`.
+- `sync_log_entry`: one row per document processed containing `sync_log_id`, `paperless_document_id`, `action` (`INSERTED`, `UPDATED`, `TAG_REMOVED`, `ERROR`) and an optional `message`. `TAG_REMOVED` indicates the Paperless tag is no longer present — the backend deletes the corresponding receipt and records this action for audit.
 
 These tables are created by the Flyway V1 migration. The backend writes entries automatically during sync runs; a future API will expose read endpoints to query past sync runs.
 

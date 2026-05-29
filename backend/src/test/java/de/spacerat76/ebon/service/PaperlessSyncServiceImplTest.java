@@ -112,9 +112,8 @@ public class PaperlessSyncServiceImplTest {
 
         syncService.syncNewDocuments();
 
-        // orphan should be marked and saved
-        verify(receiptRepository).save(orphan);
-        assertThat(orphan.getParseStatus()).isEqualTo("TAG_REMOVED");
+        // orphan should be deleted and a TAG_REMOVED entry recorded
+        verify(receiptRepository).delete(orphan);
         verify(syncLogRepository, org.mockito.Mockito.times(2)).save(org.mockito.ArgumentMatchers.any());
         verify(syncLogEntryRepository, org.mockito.Mockito.times(2)).save(org.mockito.ArgumentMatchers.any());
     }
