@@ -22,8 +22,11 @@ public class ApiTokenFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
         String path = request.getRequestURI();
-        // Allow actuator health and info unauthenticated
-        return path.startsWith("/actuator/") || path.equals("/actuator");
+        // Allow actuator, OpenAPI and Swagger unauthenticated for local verification
+        return path.startsWith("/actuator/") || path.equals("/actuator")
+                || path.startsWith("/v3/api-docs")
+                || path.startsWith("/swagger-ui")
+                || path.equals("/swagger-ui.html");
     }
 
     @Override
