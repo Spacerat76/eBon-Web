@@ -3,6 +3,10 @@ package de.spacerat76.ebon.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.spacerat76.ebon.config.AppProperties;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
@@ -10,18 +14,19 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Component;
+// PaperlessClientHttp is instantiated conditionally via PaperlessClientConfig
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Supplier;
 
-@Component
 public class PaperlessClientHttp implements PaperlessClient {
 
     private static final Logger log = LoggerFactory.getLogger(PaperlessClientHttp.class);
@@ -29,11 +34,27 @@ public class PaperlessClientHttp implements PaperlessClient {
     private final RestTemplate restTemplate;
     private final AppProperties props;
     private final ObjectMapper objectMapper;
+    private final CircuitBreaker circuitBreaker;
+    private final Retry retry;
 
     public PaperlessClientHttp(RestTemplate restTemplate, AppProperties props, ObjectMapper objectMapper) {
         this.restTemplate = restTemplate;
         this.props = props;
         this.objectMapper = objectMapper;
+
+        CircuitBreakerConfig cbConfig = CircuitBreakerConfig.custom()
+                .failureRateThreshold(50)
+                .waitDurationInOpenState(Duration.ofSeconds(30))
+                .slidingWindowSize(10)
+                .build();
+        this.circuitBreaker = CircuitBreaker.of("paperless", cbConfig);
+
+        RetryConfig retryConfig = RetryConfig.custom()
+                .maxAttempts(3)
+                .waitDuration(Duration.ofMillis(500))
+                .retryExceptions(RestClientException.class)
+                .build();
+        this.retry = Retry.of("paperless", retryConfig);
     }
 
     @Override
@@ -56,7 +77,13 @@ public class PaperlessClientHttp implements PaperlessClient {
             }
 
             HttpEntity<Void> req = new HttpEntity<>(headers);
-            ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.GET, req, String.class);
+
+            Supplier<ResponseEntity<String>> supplier = () -> restTemplate.exchange(url, HttpMethod.GET, req, String.class);
+            Supplier<ResponseEntity<String>> decorated = io.github.resilience4j.circuitbreaker.CircuitBreaker.decorateSupplier(circuitBreaker, supplier);
+            decorated = io.github.resilience4j.retry.Retry.decorateSupplier(retry, decorated);
+
+            ResponseEntity<String> resp = decorated.get();
+
             if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
                 log.warn("Paperless returned non-2xx or empty body when fetching documents: {}", resp.getStatusCode().value());
                 return Collections.emptyList();
@@ -105,7 +132,11 @@ public class PaperlessClientHttp implements PaperlessClient {
                 headers.setBearerAuth(props.getPaperlessApiToken());
             }
             HttpEntity<Void> req = new HttpEntity<>(headers);
-            ResponseEntity<String> resp = restTemplate.exchange(url, HttpMethod.GET, req, String.class);
+            Supplier<ResponseEntity<String>> supplier = () -> restTemplate.exchange(url, HttpMethod.GET, req, String.class);
+            Supplier<ResponseEntity<String>> decorated = io.github.resilience4j.circuitbreaker.CircuitBreaker.decorateSupplier(circuitBreaker, supplier);
+            decorated = io.github.resilience4j.retry.Retry.decorateSupplier(retry, decorated);
+
+            ResponseEntity<String> resp = decorated.get();
             if (!resp.getStatusCode().is2xxSuccessful()) {
                 log.warn("Paperless returned non-2xx when fetching document text: {}", resp.getStatusCode().value());
                 return null;

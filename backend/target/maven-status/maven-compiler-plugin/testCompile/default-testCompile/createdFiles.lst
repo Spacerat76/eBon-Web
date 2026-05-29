@@ -1,12 +1,13 @@
 de\spacerat76\ebon\AppPropertiesBindingTest.class
 de\spacerat76\ebon\EbonApplicationTests.class
 de\spacerat76\ebon\FlywayIntegrationTest.class
+de\spacerat76\ebon\web\ReceiptItemControllerTest.class
+de\spacerat76\ebon\service\PaperlessClientWireMockIntegrationTest.class
+de\spacerat76\ebon\service\CategorizationServiceTest.class
+de\spacerat76\ebon\security\ApiTokenFilterUnitTest.class
 de\spacerat76\ebon\repository\ReceiptRepositoryTest.class
 de\spacerat76\ebon\service\ParserServiceTest.class
 de\spacerat76\ebon\web\ReceiptControllerTest.class
-de\spacerat76\ebon\web\ReceiptItemControllerTest.class
 de\spacerat76\ebon\service\PaperlessSyncServiceImplTest.class
-de\spacerat76\ebon\service\CategorizationServiceTest.class
-de\spacerat76\ebon\security\ApiTokenFilterUnitTest.class
 de\spacerat76\ebon\web\CategoryControllerTest.class
 de\spacerat76\ebon\service\PaperlessClientHttpTest.class

@@ -2,11 +2,12 @@ D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\web\CategoryControllerTest.
 D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\service\CategorizationServiceTest.java
 D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\web\ReceiptItemControllerTest.java
 D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\security\ApiTokenFilterUnitTest.java
+D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\service\ParserServiceTest.java
+D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\repository\ReceiptRepositoryTest.java
 D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\EbonApplicationTests.java
 D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\web\ReceiptControllerTest.java
-D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\service\ParserServiceTest.java
+D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\service\PaperlessClientWireMockIntegrationTest.java
 D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\FlywayIntegrationTest.java
 D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\service\PaperlessSyncServiceImplTest.java
 D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\AppPropertiesBindingTest.java
-D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\repository\ReceiptRepositoryTest.java
 D:\eBon-Web\backend\src\test\java\de\spacerat76\ebon\service\PaperlessClientHttpTest.java

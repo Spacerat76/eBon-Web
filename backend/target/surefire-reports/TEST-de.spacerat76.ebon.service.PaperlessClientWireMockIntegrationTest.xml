@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="de.spacerat76.ebon.web.ReceiptItemControllerTest" time="0.096" tests="3" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="de.spacerat76.ebon.service.PaperlessClientWireMockIntegrationTest" time="1.399" tests="1" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="21"/>
     <property name="sun.cpu.isalist" value="amd64"/>
@@ -70,7 +70,5 @@
     <property name="javax.xml.transform.TransformerFactory" value="com.sun.org.apache.xalan.internal.xsltc.trax.TransformerFactoryImpl"/>
     <property name="java.class.version" value="65.0"/>
   </properties>
-  <testcase name="update_changesFieldsAndMarksManual" classname="de.spacerat76.ebon.web.ReceiptItemControllerTest" time="0.075"/>
-  <testcase name="update_returnsNotFound_whenReceiptMismatch" classname="de.spacerat76.ebon.web.ReceiptItemControllerTest" time="0.019"/>
-  <testcase name="update_returnsBadRequest_whenCategoryMissing" classname="de.spacerat76.ebon.web.ReceiptItemControllerTest" time="0.002"/>
+  <testcase name="client_againstWireMock_returnsIdsAndText" classname="de.spacerat76.ebon.service.PaperlessClientWireMockIntegrationTest" time="1.397"/>
 </testsuite>
