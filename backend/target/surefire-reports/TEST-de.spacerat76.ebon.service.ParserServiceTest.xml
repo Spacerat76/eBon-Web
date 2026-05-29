@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="de.spacerat76.ebon.AppPropertiesBindingTest" time="6.657" tests="1" errors="0" skipped="0" failures="0">
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://maven.apache.org/surefire/maven-surefire-plugin/xsd/surefire-test-report.xsd" version="3.0.2" name="de.spacerat76.ebon.service.ParserServiceTest" time="0.016" tests="1" errors="0" skipped="0" failures="0">
   <properties>
     <property name="java.specification.version" value="21"/>
     <property name="sun.cpu.isalist" value="amd64"/>
@@ -49,7 +49,7 @@
     <property name="localRepository" value="C:\Users\pbaas\.m2\repository"/>
     <property name="java.vendor.url.bug" value="https://github.com/microsoft/openjdk/issues"/>
     <property name="java.io.tmpdir" value="C:\Users\pbaas\AppData\Local\Temp\"/>
-    <property name="com.zaxxer.hikari.pool_number" value="1"/>
+    <property name="com.zaxxer.hikari.pool_number" value="3"/>
     <property name="java.version" value="21.0.11"/>
     <property name="user.dir" value="D:\eBon-Web\backend"/>
     <property name="os.arch" value="amd64"/>
@@ -66,61 +66,5 @@
     <property name="sun.io.unicode.encoding" value="UnicodeLittle"/>
     <property name="java.class.version" value="65.0"/>
   </properties>
-  <testcase name="propertiesAreBound" classname="de.spacerat76.ebon.AppPropertiesBindingTest" time="0.293">
-    <system-out><![CDATA[07:12:53.364 [main] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [de.spacerat76.ebon.AppPropertiesBindingTest]: AppPropertiesBindingTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
-07:12:53.464 [main] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration de.spacerat76.ebon.EbonApplication for test class de.spacerat76.ebon.AppPropertiesBindingTest
-
-  .   ____          _            __ _ _
- /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
-( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
- \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
-  '  |____| .__|_| |_|_| |_\__, | / / / /
- =========|_|==============|___/=/_/_/_/
-
- :: Spring Boot ::                (v4.0.0)
-
-2026-05-29T07:12:53.881+02:00  INFO 38592 --- [           main] d.s.ebon.AppPropertiesBindingTest        : Starting AppPropertiesBindingTest using Java 21.0.11 with PID 38592 (started by pbaas in D:\eBon-Web\backend)
-2026-05-29T07:12:53.881+02:00  INFO 38592 --- [           main] d.s.ebon.AppPropertiesBindingTest        : No active profile set, falling back to 1 default profile: "default"
-2026-05-29T07:12:54.982+02:00  INFO 38592 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
-2026-05-29T07:12:55.118+02:00  INFO 38592 --- [           main] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 113 ms. Found 3 JPA repository interfaces.
-2026-05-29T07:12:55.899+02:00  INFO 38592 --- [           main] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: default]
-2026-05-29T07:12:56.049+02:00  INFO 38592 --- [           main] org.hibernate.Version                    : HHH000412: Hibernate ORM core version 7.1.8.Final
-2026-05-29T07:12:56.517+02:00  INFO 38592 --- [           main] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
-2026-05-29T07:12:56.543+02:00  INFO 38592 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
-2026-05-29T07:12:56.717+02:00  INFO 38592 --- [           main] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection conn0: url=jdbc:h2:mem:ebon user=SA
-2026-05-29T07:12:56.717+02:00  INFO 38592 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
-2026-05-29T07:12:56.741+02:00  WARN 38592 --- [           main] org.hibernate.orm.deprecation            : HHH90000025: H2Dialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
-2026-05-29T07:12:56.750+02:00  INFO 38592 --- [           main] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
-	Database JDBC URL [jdbc:h2:mem:ebon]
-	Database driver: H2 JDBC Driver
-	Database dialect: H2Dialect
-	Database version: 2.4.240
-	Default catalog/schema: EBON/PUBLIC
-	Autocommit mode: undefined/unknown
-	Isolation level: READ_COMMITTED [default READ_COMMITTED]
-	JDBC fetch size: 100
-	Pool: DatasourceConnectionProviderImpl
-	Minimum pool size: undefined/unknown
-	Maximum pool size: undefined/unknown
-2026-05-29T07:12:57.551+02:00  INFO 38592 --- [           main] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
-2026-05-29T07:12:57.551+02:00  INFO 38592 --- [           main] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
-2026-05-29T07:12:57.671+02:00  INFO 38592 --- [           main] o.s.d.j.r.query.QueryEnhancerFactories   : Hibernate is in classpath; If applicable, HQL parser will be used.
-2026-05-29T07:12:58.151+02:00  WARN 38592 --- [           main] JpaBaseConfiguration$JpaWebConfiguration : spring.jpa.open-in-view is enabled by default. Therefore, database queries may be performed during view rendering. Explicitly configure spring.jpa.open-in-view to disable this warning
-2026-05-29T07:12:58.418+02:00  WARN 38592 --- [           main] .s.a.UserDetailsServiceAutoConfiguration : 
-
-Using generated security password: afe31e92-144e-4721-9662-d09f46e21bbc
-
-This generated password is for development use only. Your security configuration must be updated before running your application in production.
-
-2026-05-29T07:12:58.434+02:00  INFO 38592 --- [           main] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with UserDetailsService bean with name inMemoryUserDetailsManager
-2026-05-29T07:12:59.302+02:00  INFO 38592 --- [           main] o.s.b.a.e.web.EndpointLinksResolver      : Exposing 2 endpoints beneath base path '/actuator'
-2026-05-29T07:12:59.390+02:00  INFO 38592 --- [           main] d.s.ebon.AppPropertiesBindingTest        : Started AppPropertiesBindingTest in 5.792 seconds (process running for 6.994)
-]]></system-out>
-    <system-err><![CDATA[Mockito is currently self-attaching to enable the inline-mock-maker. This will no longer work in future releases of the JDK. Please add Mockito as an agent to your build as described in Mockito's documentation: https://javadoc.io/doc/org.mockito/mockito-core/latest/org.mockito/org/mockito/Mockito.html#0.3
-WARNING: A Java agent has been loaded dynamically (C:\Users\pbaas\.m2\repository\net\bytebuddy\byte-buddy-agent\1.17.8\byte-buddy-agent-1.17.8.jar)
-WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
-WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
-WARNING: Dynamic loading of agents will be disallowed by default in a future release
-]]></system-err>
-  </testcase>
+  <testcase name="parse_createsReceiptWithParsedStatusAndItem" classname="de.spacerat76.ebon.service.ParserServiceTest" time="0.015"/>
 </testsuite>
