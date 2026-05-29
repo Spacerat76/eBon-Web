@@ -105,6 +105,15 @@ The current OpenRouter client is a minimal scaffold and will need a proper promp
 
 AI fallback now supports structured JSON responses: when the AI returns structured `items`, the parser will create corresponding `receipt_item` rows with quantity, unit, unit price and total where available. Additionally, the AI may return a suggested parsing `regex` and metadata; when provided the backend will persist this suggestion as a `parse_rule` (with a default priority) so admins can review and adopt the rule later. This behavior is enabled when an `AiClient` implementation returns a populated `AiParseResult`.
 
+## AI Batch Categorization
+
+The backend includes a lightweight AI batch categorization job and endpoint that calls the configured `AiClient` for receipts and persists request/response payloads in `ai_categorization_log` for auditing and review.
+
+- `POST /api/ai/batch-categorize` — triggers AI categorization. If a JSON array of receipt IDs is provided in the body, only those receipts are processed; otherwise all receipts are processed.
+- Each AI request/response is stored in the `ai_categorization_log` table (request/response payload, model, cost if available, and timestamp).
+
+This is intentionally conservative: the current implementation logs AI outputs for inspection and auditing; automatic category assignment from AI outputs can be added in a follow-up step once prompts and parsing are hardened and reviewed.
+
 ## Rule adaptation (basic)
 
 When users manually correct item categories, the system can create a simple `categorization_rule` automatically (currently the item description is stored as the rule pattern). This is a naive starter implementation intended to be improved with better pattern extraction and rule scoring.
