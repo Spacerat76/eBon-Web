@@ -23,6 +23,8 @@ public class CategorizationServiceTest {
 
     @Mock
     CategoryRepository categoryRepository;
+    @Mock
+    de.spacerat76.ebon.repository.CategorizationRuleRepository categorizationRuleRepository;
 
     @InjectMocks
     CategorizationServiceImpl categorizationService;
@@ -48,5 +50,38 @@ public class CategorizationServiceTest {
         assertThat(receipt.getItems().get(0).getCategorySource()).isEqualTo("AUTOMATIC");
 
         verify(categoryRepository).save(any());
+    }
+
+    @Test
+    void categorize_appliesRuleAndAssignsCategory() {
+        Receipt receipt = new Receipt();
+        receipt.setRawText("Store X");
+        ReceiptItem item = new ReceiptItem();
+        item.setPositionIndex(1);
+        item.setDescription("Chocolate Bar");
+        item.setTotalPrice(new BigDecimal("1.20"));
+        receipt.addItem(item);
+
+        de.spacerat76.ebon.domain.CategorizationRule rule = new de.spacerat76.ebon.domain.CategorizationRule();
+        rule.setId(1L);
+        rule.setName("Chocolate rule");
+        rule.setPattern("chocolate|choco");
+        rule.setCategoryId(99L);
+        rule.setPriority(100);
+
+        when(categorizationRuleRepository.findAll()).thenReturn(java.util.List.of(rule));
+
+        de.spacerat76.ebon.domain.Category cat = new de.spacerat76.ebon.domain.Category();
+        cat.setId(99L);
+        cat.setName("Snacks");
+        cat.setIsActive(true);
+
+        when(categoryRepository.findById(99L)).thenReturn(Optional.of(cat));
+
+        categorizationService.categorize(receipt);
+
+        assertThat(receipt.getItems().get(0).getCategory()).isNotNull();
+        assertThat(receipt.getItems().get(0).getCategory().getName()).isEqualTo("Snacks");
+        assertThat(receipt.getItems().get(0).getCategorySource()).isEqualTo("RULE");
     }
 }

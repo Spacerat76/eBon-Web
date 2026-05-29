@@ -29,7 +29,7 @@ public class PaperlessClientHttpTest {
         ObjectMapper mapper = new ObjectMapper();
         PaperlessClientHttp client = new PaperlessClientHttp(rt, props, mapper);
 
-        server.expect(MockRestRequestMatchers.requestTo("http://example.com/api/documents/?tag=eBON"))
+        server.expect(MockRestRequestMatchers.requestTo("http://example.com/api/documents/?tags__name=eBON&page_size=100&ordering=-created"))
                 .andExpect(MockRestRequestMatchers.method(HttpMethod.GET))
                 .andRespond(MockRestResponseCreators.withSuccess("[{\"id\":100},{\"id\":101}]", MediaType.APPLICATION_JSON));
 
@@ -54,7 +54,7 @@ public class PaperlessClientHttpTest {
 
         String body = "{\"count\":2,\"results\":[{\"id\":5},{\"id\":6}]}";
 
-        server.expect(MockRestRequestMatchers.requestTo("http://example.com/api/documents/?tag=eBON"))
+        server.expect(MockRestRequestMatchers.requestTo("http://example.com/api/documents/?tags__name=eBON&page_size=100&ordering=-created"))
                 .andExpect(MockRestRequestMatchers.method(HttpMethod.GET))
                 .andRespond(MockRestResponseCreators.withSuccess(body, MediaType.APPLICATION_JSON));
 

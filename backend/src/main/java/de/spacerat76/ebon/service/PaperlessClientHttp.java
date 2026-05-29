@@ -64,11 +64,11 @@ public class PaperlessClientHttp implements PaperlessClient {
             log.debug("Paperless base URL not configured");
             return Collections.emptyList();
         }
-
         String tag = props.getPaperlessEbonTag();
         try {
             String q = URLEncoder.encode(tag == null ? "" : tag, StandardCharsets.UTF_8);
-            String url = base + (base.endsWith("/") ? "" : "/") + "api/documents/?tag=" + q;
+            // Request first page with reasonable page size and ordering
+            String url = base + (base.endsWith("/") ? "" : "/") + "api/documents/?tags__name=" + q + "&page_size=100&ordering=-created";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setAccept(List.of(MediaType.APPLICATION_JSON));
@@ -76,33 +76,48 @@ public class PaperlessClientHttp implements PaperlessClient {
                 headers.setBearerAuth(props.getPaperlessApiToken());
             }
 
-            HttpEntity<Void> req = new HttpEntity<>(headers);
-
-            Supplier<ResponseEntity<String>> supplier = () -> restTemplate.exchange(url, HttpMethod.GET, req, String.class);
-            Supplier<ResponseEntity<String>> decorated = io.github.resilience4j.circuitbreaker.CircuitBreaker.decorateSupplier(circuitBreaker, supplier);
-            decorated = io.github.resilience4j.retry.Retry.decorateSupplier(retry, decorated);
-
-            ResponseEntity<String> resp = decorated.get();
-
-            if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
-                log.warn("Paperless returned non-2xx or empty body when fetching documents: {}", resp.getStatusCode().value());
-                return Collections.emptyList();
-            }
-
-            JsonNode root = objectMapper.readTree(resp.getBody());
             List<Integer> ids = new ArrayList<>();
-            if (root.isArray()) {
-                for (JsonNode node : root) {
-                    JsonNode idNode = node.get("id");
-                    if (idNode != null && idNode.canConvertToInt()) {
-                        ids.add(idNode.intValue());
-                    }
+
+            while (url != null) {
+                HttpEntity<Void> req = new HttpEntity<>(headers);
+
+                String currentUrl = url;
+                Supplier<ResponseEntity<String>> supplier = () -> restTemplate.exchange(currentUrl, HttpMethod.GET, req, String.class);
+                Supplier<ResponseEntity<String>> decorated = io.github.resilience4j.circuitbreaker.CircuitBreaker.decorateSupplier(circuitBreaker, supplier);
+                decorated = io.github.resilience4j.retry.Retry.decorateSupplier(retry, decorated);
+
+                ResponseEntity<String> resp = decorated.get();
+
+                if (!resp.getStatusCode().is2xxSuccessful() || resp.getBody() == null) {
+                    log.warn("Paperless returned non-2xx or empty body when fetching documents: {}", resp.getStatusCode().value());
+                    break;
                 }
-            } else if (root.has("results") && root.get("results").isArray()) {
-                for (JsonNode node : root.get("results")) {
-                    JsonNode idNode = node.get("id");
-                    if (idNode != null && idNode.canConvertToInt()) {
-                        ids.add(idNode.intValue());
+
+                JsonNode root = objectMapper.readTree(resp.getBody());
+
+                if (root.isArray()) {
+                    for (JsonNode node : root) {
+                        JsonNode idNode = node.get("id");
+                        if (idNode != null && idNode.canConvertToInt()) {
+                            ids.add(idNode.intValue());
+                        }
+                    }
+                    // No pagination metadata => stop
+                    url = null;
+                } else {
+                    if (root.has("results") && root.get("results").isArray()) {
+                        for (JsonNode node : root.get("results")) {
+                            JsonNode idNode = node.get("id");
+                            if (idNode != null && idNode.canConvertToInt()) {
+                                ids.add(idNode.intValue());
+                            }
+                        }
+                    }
+                    if (root.has("next") && !root.get("next").isNull()) {
+                        String next = root.get("next").asText();
+                        url = (next == null || next.isBlank()) ? null : next;
+                    } else {
+                        url = null;
                     }
                 }
             }

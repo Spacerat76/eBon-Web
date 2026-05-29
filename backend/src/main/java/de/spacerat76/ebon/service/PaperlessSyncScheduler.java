@@ -3,8 +3,10 @@ package de.spacerat76.ebon.service;
 import de.spacerat76.ebon.config.AppProperties;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 
 @Component
+@ConditionalOnProperty(prefix = "ebon", name = "scheduling.enabled", havingValue = "true", matchIfMissing = true)
 public class PaperlessSyncScheduler {
 
     private final PaperlessSyncService syncService;

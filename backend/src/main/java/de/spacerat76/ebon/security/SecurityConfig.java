@@ -18,7 +18,9 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http.csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/actuator/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                // Allow unauthenticated access to actuator endpoints only
+                .requestMatchers("/actuator/**").permitAll()
+                // All other endpoints (including OpenAPI/Swagger and admin) require API token
                 .anyRequest().authenticated()
             )
             .addFilterBefore(apiTokenFilter, UsernamePasswordAuthenticationFilter.class);

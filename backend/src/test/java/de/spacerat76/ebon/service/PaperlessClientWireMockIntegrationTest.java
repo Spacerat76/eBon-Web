@@ -32,16 +32,24 @@ public class PaperlessClientWireMockIntegrationTest {
 
     @Test
     void client_againstWireMock_returnsIdsAndText() {
-        wireMockServer.stubFor(get(urlPathEqualTo("/api/documents/")).withQueryParam("tag", equalTo("eBON"))
-                .willReturn(aResponse()
-                        .withHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
-                        .withBody("[{\"id\":900},{\"id\":901}]")));
+        // First page with results and a `next` link
+        wireMockServer.stubFor(get(urlPathEqualTo("/api/documents/")).withQueryParam("tags__name", equalTo("eBON"))
+            .willReturn(aResponse()
+                .withHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .withBody("{\"count\":4,\"next\":\"" + wireMockServer.baseUrl() + "/api/documents/?page=2\",\"previous\":null,\"results\":[{\"id\":900},{\"id\":901}]}")
+            ));
+
+        // Second page
+        wireMockServer.stubFor(get(urlPathEqualTo("/api/documents/")).withQueryParam("page", equalTo("2"))
+            .willReturn(aResponse()
+                .withHeader("Content-Type", MediaType.APPLICATION_JSON_VALUE)
+                .withBody("{\"count\":4,\"next\":null,\"previous\":\"" + wireMockServer.baseUrl() + "/api/documents/\",\"results\":[{\"id\":902},{\"id\":903}]}")
+            ));
 
         wireMockServer.stubFor(get(urlPathEqualTo("/api/documents/900/text/"))
-                .willReturn(aResponse()
-                        .withHeader("Content-Type", MediaType.TEXT_PLAIN_VALUE)
-                        .withBody("Text for 900")));
-
+            .willReturn(aResponse()
+                .withHeader("Content-Type", MediaType.TEXT_PLAIN_VALUE)
+                .withBody("Text for 900")));
         AppProperties props = new AppProperties();
         props.setPaperlessBaseUrl(wireMockServer.baseUrl());
         props.setPaperlessEbonTag("eBON");
@@ -51,7 +59,7 @@ public class PaperlessClientWireMockIntegrationTest {
         PaperlessClientHttp client = new PaperlessClientHttp(rt, props, mapper);
 
         List<Integer> ids = client.fetchNewDocumentIds();
-        assertThat(ids).containsExactly(900, 901);
+        assertThat(ids).containsExactly(900, 901, 902, 903);
 
         String text = client.fetchDocumentText(900);
         assertThat(text).isEqualTo("Text for 900");

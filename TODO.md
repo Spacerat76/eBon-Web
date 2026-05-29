@@ -3,20 +3,15 @@
 This file lists remaining open work items after cross-checking the eBon specification against the current backend implementation. Items are grouped by priority (High → Medium → Low). Completed work (migrations, basic rule parser, AI scaffold, naive rule adaptation) has been removed from this list.
 
 ## High Priority
-- Paperless client: follow pagination (`next` links), support server-side tag filtering (`tags__name` / `page_size`) and iterate pages until `next == null`.
-- Paperless sync: deduplicate receipts on import (skip or update by `paperless_document_id`).
-- Paperless sync: detect and handle `TAG_REMOVED` events (remove or mark receipts) and record the action.
-- Persist sync audits: write `sync_log` and `sync_log_entry` records for each sync run and document action.
-- Parser enhancements: extract structured `receipt_items` (quantity/unit/unit_price/total_price), `currency`, and bonus fields (`bonus_balance`, `bonus_points`, `bonus_type`).
-- Parser AI integration: implement AI JSON fallback that returns structured JSON and persist/adapt `parse_rule` entries derived from AI output.
-- Categorization engine: evaluate active `categorization_rule` entries (match_field, match_type, priority) before falling back to AI.
-- AI production integration: implement robust OpenRouter/OpenAI client with prompt engineering, response parsing, batching per receipt, rate-limiting, retries/backoff and AI cost tracking; log calls to `ai_categorization_log`.
-
-## Medium Priority
-
-- Rule adaptation improvements: improve pattern extraction, rule scoring/hit-count updates, de-duplication and UI suggestion flow for confirming learned rules.
-- CRUD APIs: implement management endpoints for `parse_rule` and `categorization_rule` (OpenAPI annotated, with tests).
-- API: add endpoints to query `sync_log`, `sync_log_entry`, `ai_categorization_log`, and `app_settings` (for runtime configuration visibility).
+ - Paperless sync: deduplicate receipts by `paperless_document_id` (skip or update). (implemented)
+ - Paperless sync: handle TAG_REMOVED events (remove/mark receipts). (implemented)
+ - Persist sync audits: write `sync_log` and `sync_log_entry` records for each sync run and document action. (implemented)
+ - Read API for sync audits: `GET /api/sync/logs`, `GET /api/sync/logs/{id}`, `GET /api/sync/logs/{id}/entries`. (implemented)
+ - Unit tests for sync log read API. (implemented)
+ - OpenAPI/README docs: add sync log endpoints to docs. (implemented)
+ - Parser: AI JSON fallback + persist suggested `parse_rule` when AI provides one. (implemented)
+ - CRUD APIs: implement management endpoints for `parse_rule` and `categorization_rule` (OpenAPI annotated, with tests). (parse_rule CRUD implemented)
+ - API: add endpoints to query `sync_log`, `sync_log_entry`, `ai_categorization_log`, and `app_settings` (for runtime configuration visibility). (implemented)
 - Testcontainers E2E: add integration tests that spin up Postgres + WireMock + Flyway to validate full sync → parse → categorize flows.
 - Security: remove temporary OpenAPI/Swagger exemptions and secure docs/admin endpoints (admin/API-token guard) per the spec.
 

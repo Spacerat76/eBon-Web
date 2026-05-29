@@ -11,7 +11,8 @@ spring:
         format_sql: true
   flyway:
     enabled: true
-    locations: filesystem:db/migrations
+    # Look first in filesystem (deployment), then in classpath (tests / packaged migrations)
+    locations: filesystem:db/migrations,classpath:db/migration
 
 ebon:
   paperless-base-url: ${PAPERLESS_BASE_URL:}
@@ -28,7 +29,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
 
 server:
   port: 8080
