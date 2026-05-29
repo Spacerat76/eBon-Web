@@ -3,5 +3,6 @@ de\spacerat76\ebon\EbonApplicationTests.class
 de\spacerat76\ebon\FlywayIntegrationTest.class
 de\spacerat76\ebon\repository\ReceiptRepositoryTest.class
 de\spacerat76\ebon\service\ParserServiceTest.class
+de\spacerat76\ebon\web\ReceiptControllerTest.class
 de\spacerat76\ebon\service\CategorizationServiceTest.class
 de\spacerat76\ebon\security\ApiTokenFilterUnitTest.class
