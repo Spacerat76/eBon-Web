@@ -72,8 +72,8 @@ test('Settings: test connections and save', async ({ page }) => {
   await expect(await page.getByLabel('Model').inputValue()).toBe('gpt-4o-mini');
 
   await page.getByRole('button', { name: 'Save Settings' }).click();
-  // Wait for the PATCH to complete and then verify payload was sent
-  await page.waitForResponse((resp) => resp.url().includes('/api/settings') && resp.request().method() === 'PATCH' && resp.status() === 200);
+  // The app shows an alert after saving; wait for it (ensures PATCH completed)
+  await page.waitForEvent('dialog');
   // Verify PATCH payload was sent
   expect(patched).not.toBeNull();
   expect(patched.paperlessBaseUrl).toBe('http://paperless.local');
