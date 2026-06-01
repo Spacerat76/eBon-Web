@@ -1,7 +1,7 @@
 # eBon Expense Tracker – Software-Spezifikation
 
-**Version:** 1.1  
-**Datum:** 2026-05-27  
+**Version:** 1.2
+**Datum:** 2026-06-01
 **Status:** Final Draft
 
 ---
@@ -23,6 +23,8 @@
 13. [Fehlerbehandlung & Logging](#13-fehlerbehandlung--logging)
 14. [Nicht-funktionale Anforderungen](#14-nicht-funktionale-anforderungen)
 15. [Offene Punkte / Abgrenzung](#15-offene-punkte--abgrenzung)
+16. [KI-Agenten-Umsetzung](#16-ki-agenten-umsetzung)
+17. [Akzeptanzkriterien & Test-Fixtures](#17-akzeptanzkriterien--test-fixtures)
 
 ---
 
@@ -41,7 +43,7 @@ Die Applikation **eBon Expense Tracker** liest elektronische Kassenbons (eBons) 
 
 ### 1.3 Nutzer
 
-Es gibt genau **einen Nutzer** (Single-User-Anwendung). Eine Benutzerverwaltung ist nicht vorgesehen. Der Zugriff ist durch ein einzelnes konfigurierbares API-Token oder HTTP Basic Auth zu sichern (konfigurierbar via Umgebungsvariable).
+Es gibt genau **einen Nutzer** (Single-User-Anwendung). Eine Benutzerverwaltung ist nicht vorgesehen. Der Zugriff ist durch ein einzelnes konfigurierbares API-Token zu sichern. Die Anwendung verwendet ausschließlich Bearer-Token-Authentifizierung über `Authorization: Bearer <APP_API_TOKEN>`. HTTP Basic Auth ist nicht Bestandteil der Anwendung.
 
 ---
 
@@ -100,6 +102,51 @@ Die React-SPA wird von nginx als statische Dateien ausgeliefert. nginx proxied `
 | Charts | Recharts | aktuell (kompatibel mit React 19) |
 | Webserver (Frontend) | nginx | alpine |
 | Container | Docker + Docker Compose | 26+ / 2.27+ |
+| Entwicklungsumgebung | Devcontainer / VS Code Remote Containers | aktuell |
+
+**Versionsregel:** Die genannten Versionen sind Zielversionen. Falls ein KI-Agent oder Build-System eine Zielversion noch nicht zuverlässig auflösen kann, muss der Agent den Konflikt dokumentieren und darf nur nach expliziter Entscheidung auf folgende stabile Fallbacks ausweichen: Spring Boot 3.5.x, Java 21 LTS, PostgreSQL 17.x, Vite 7.x. Ohne dokumentierte Abweichung gelten die Zielversionen als verpflichtend.
+
+### 3.1 Entwicklungsumgebung mit Devcontainer
+
+Die Anwendung wird in einer reproduzierbaren Devcontainer-Umgebung entwickelt. Das Repository enthält mindestens:
+
+```
+.devcontainer/
+├── devcontainer.json
+├── Dockerfile
+└── docker-compose.devcontainer.yml
+```
+
+Der Devcontainer stellt bereit:
+
+- Java 25 JDK
+- Maven 3.9.x
+- Node.js 22 LTS oder neuer
+- Docker CLI
+- PostgreSQL Client (`psql`)
+- Git, curl, jq
+- VS-Code-Extensions für Java, Spring Boot, Maven, ESLint, Prettier, Docker und Dev Containers
+
+Der Devcontainer startet eine lokale PostgreSQL-Entwicklungsdatenbank über `docker-compose.devcontainer.yml`. Backend und Frontend werden im Devcontainer entwickelt, aber nicht zwingend automatisch gestartet.
+
+Standard-Kommandos im Devcontainer:
+
+```bash
+# Backend
+cd backend
+mvn verify
+mvn spring-boot:run
+
+# Frontend
+cd frontend
+npm ci
+npm run dev
+
+# Gesamtsystem
+docker compose up --build
+```
+
+Die Datei `.env.example` dokumentiert alle erforderlichen Umgebungsvariablen mit sicheren Beispielwerten. Echte Tokens und Passwörter dürfen nicht in das Repository eingecheckt werden.
 
 ---
 
@@ -127,6 +174,8 @@ Die React-SPA wird von nginx als statische Dateien ausgeliefert. nginx proxied `
 | `parse_status` | VARCHAR(32) | NOT NULL | Enum: `PENDING`, `PARSED`, `PARSE_ERROR`, `MANUALLY_EDITED` |
 | `parse_error_message` | TEXT | NULL | Fehlermeldung bei `PARSE_ERROR` |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update (automatisch) |
+| `deleted_at` | TIMESTAMPTZ | NULL | Soft-Delete-Zeitpunkt, z.B. bei `TAG_REMOVED` |
+| `delete_reason` | VARCHAR(32) | NULL | Enum: `USER_DELETED`, `TAG_REMOVED`, falls `deleted_at` gesetzt ist |
 
 #### 4.1.2 `receipt_item` (Bon-Position)
 
@@ -154,7 +203,7 @@ Die React-SPA wird von nginx als statische Dateien ausgeliefert. nginx proxied `
 | `name` | VARCHAR(128) | UNIQUE, NOT NULL | Kategoriename (z.B. „Lebensmittel", „Getränke") |
 | `color_hex` | CHAR(7) | NULL | Farbe für UI-Darstellung (z.B. `#FF5733`) |
 | `icon` | VARCHAR(64) | NULL | Icon-Bezeichner für UI |
-| `is_active` | BOOLEAN | NOT NULL, DEFAULT TRUE | Soft-Delete |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT TRUE | Aktiv-Status; Kategorien werden standardmäßig deaktiviert statt physisch gelöscht |
 | `sort_order` | INTEGER | NOT NULL, DEFAULT 0 | Sortierreihenfolge in der UI |
 
 #### 4.1.4 `categorization_rule` (Kategorisierungsregel)
@@ -330,7 +379,9 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 - **F-01.4:** Ein manueller Sync-Trigger ist über die UI und API auslösbar.
 - **F-01.5:** Der Sync-Status (letzter Sync, Anzahl neuer Dokumente, Fehler) ist über die API abrufbar.
 - **F-01.6:** Bereits importierte Dokumente werden nicht erneut importiert, auch wenn sich ihr Inhalt in Paperless-NGX ändert. Ausnahme: explizites Re-Import-Kommando (UC-09).
-- **F-01.7:** Wenn ein zuvor importiertes Dokument in Paperless-NGX den konfigurierten Tag (`PAPERLESS_EBON_TAG`, Standard `eBON`) nicht mehr besitzt, entfernt der Sync den lokalen `receipt` aus der Datenbank und protokolliert die Entfernung mit Grund `TAG_REMOVED` (Log-Eintrag als INFO). Das Dokument wird in der `sync_log`-Tabelle als entfernt vermerkt.
+- **F-01.7:** Wenn ein zuvor importiertes Dokument in Paperless-NGX den konfigurierten Tag (`PAPERLESS_EBON_TAG`, Standard `eBON`) nicht mehr besitzt, markiert der Sync den lokalen `receipt` per Soft-Delete (`deleted_at`, `delete_reason = TAG_REMOVED`) und protokolliert die Entfernung mit Grund `TAG_REMOVED` (Log-Eintrag als INFO). Das Dokument wird in der `sync_log`-Tabelle als entfernt vermerkt.
+- **F-01.8:** `TAG_REMOVED` darf nur nach einem vollständig erfolgreichen Abruf aller Paperless-Paginierungsseiten angewendet werden. Bei leerem oder fehlerhaftem Paperless-Ergebnis werden keine lokalen Bons als entfernt markiert.
+- **F-01.9:** Parallele Sync-Läufe sind ausgeschlossen. Läuft bereits ein Sync, gibt `POST /api/sync/trigger` `409 Conflict` mit dem aktuellen Sync-Status zurück.
 
 ### F-02: Bon-Parsing
 
@@ -342,8 +393,9 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
   - Gesamtbetrag (`total_amount`)
 - **F-02.3:** Der Parser verwendet **primär** reguläre Ausdrücke und strukturbasiertes Parsen (regelbasiert). Der Parser ist erweiterbar für verschiedene Bon-Formate (Store-spezifische Parser als Strategy-Pattern).
 - **F-02.3a:** Schlägt das regelbasierte Parsing fehl (kein vollständiger Parse möglich), wird ein **KI-Fallback** über OpenRouter.ai durchgeführt. Der Prompt enthält den `raw_text` und fordert die Extraktion aller Bon-Felder als strukturiertes JSON an.
-- **F-02.3b:** Die KI-Ergebnisse werden validiert und anschließend verwendet, um die **Parsing-Regeln automatisch anzupassen** (Rule-Adaptation): Neue Muster, Store-spezifische Formate oder abweichende Datumsformate werden in die regelbasierten Parser übernommen, sodass beim nächsten Durchlauf die Regeln greifen.
+- **F-02.3b:** Die KI-Ergebnisse werden validiert und anschließend verwendet, um ausschließlich **Parsing-Regeln** automatisch anzupassen (Rule-Adaptation): Neue Muster, Store-spezifische Formate oder abweichende Datumsformate werden in die regelbasierten Parser übernommen, sodass beim nächsten Durchlauf die Regeln greifen. Diese Rule-Adaptation erzeugt keine `categorization_rule`-Einträge.
 - **F-02.3c:** Die Rule-Adaptation speichert die neuen Muster persistent in der Tabelle `parse_rule` (s. Abschnitt 4.1.7), sodass sie nach einem Neustart erhalten bleiben.
+- **F-02.3d:** Der KI-Fallback für Parsing muss ein festes JSON-Schema liefern. Antworten außerhalb des Schemas werden verworfen und führen zu `PARSE_ERROR`, außer ein gültiger Teilparse kann nach F-02.5 gespeichert werden.
 - **F-02.4:** Der Parser extrahiert aus dem `raw_text` zusätzlich folgende Bonus-Felder:
   - `bonus_balance`: Aktuelles Bonusguthaben zum Bon-Zeitpunkt
   - `bonus_points`: Gesammelte Payback-Punkte oder ähnliche Punktesysteme (mit Typ-Angabe)
@@ -352,16 +404,52 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 - **F-02.6:** Ein erfolgreich geparstes Dokument erhält `parse_status = PARSED`. **Definition „PARSED":** Ein Bon gilt als erfolgreich geparst (PARSED), wenn mindestens `total_amount`, `receipt_date` und `store_name` extrahiert wurden UND mindestens eine `receipt_item` mit gültigem `total_price` vorliegt. Fehlen einzelne optionale Felder (z.B. `receipt_time`, `store_branch`), gilt der Bon dennoch als PARSED.
 - **F-02.7:** Der Nutzer kann den Re-Parse eines einzelnen Bons über die UI triggern (UC-09).
 
+**Parser-Normalisierung und Validierung:**
+
+- Deutsche Zahlenformate werden normalisiert: `1,99` → `1.99`, `1.234,56` → `1234.56`.
+- Negative Beträge, Rabatte, Coupons und Pfandpositionen werden als eigene Positionen gespeichert, sofern sie im Bon als Position erscheinen.
+- Mehrzeilige Artikelbezeichnungen werden zu einer `description` zusammengeführt.
+- Die Summe aller `receipt_item.total_price` darf vom `receipt.total_amount` maximal um `0.02` abweichen. Größere Abweichungen setzen `parse_status = PARSE_ERROR`, speichern aber den Teilparse.
+- `receipt_item.position_index` ist pro Bon fortlaufend und eindeutig.
+
+**JSON-Schema für KI-Parsing-Fallback (semantisch):**
+
+```json
+{
+  "receiptDate": "YYYY-MM-DD",
+  "receiptTime": "HH:mm:ss|null",
+  "storeName": "string",
+  "storeBranch": "string|null",
+  "totalAmount": 12.34,
+  "currency": "EUR",
+  "bonusBalance": 0.0,
+  "bonusPoints": 0.0,
+  "bonusType": "string|null",
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "string",
+      "quantity": 1.0,
+      "unit": "string|null",
+      "unitPrice": 1.23,
+      "totalPrice": 1.23,
+      "discountAmount": 0.0
+    }
+  ]
+}
+```
+
 ### F-03: Kategorisierung
 
 - **F-03.1:** Nach dem Parsing wird jede `receipt_item` kategorisiert.
 - **F-03.2:** Die Kategorisierung erfolgt zweistufig:
   1. **Regelbasiert:** Alle aktiven `categorization_rule`-Einträge werden in Prioritätsreihenfolge gegen `description` und/oder `store_name` geprüft. Bei Treffer: Zuweisung der Kategorie, `category_source = RULE`.
   2. **KI-Fallback:** Gibt es keinen Regeltr­effer, wird ein KI-Call an OpenRouter.ai gesendet. Das Ergebnis wird zugewiesen, `category_source = AI`. Der Call wird in `ai_categorization_log` protokolliert.
-- **F-03.3:** KI-Calls für die Kategorisierung werden **gebündelt** (nicht pro Position einzeln): Pro Bon wird ein einziger KI-Call mit allen unkategorisierten Positionen des Bons abgesetzt (falls das Modell Batch-Fähigkeit unterstützt), oder es werden sequenzielle Calls mit Rate-Limiting (max. 10 Calls/Minute) ausgeführt.
+- **F-03.3:** KI-Calls für die Kategorisierung werden bevorzugt **gebündelt**: Pro Bon wird ein einziger KI-Call mit allen unkategorisierten Positionen des Bons abgesetzt. Wenn die Antwort nicht valide ist oder das Modell keine Batch-Antwort liefert, wird auf sequenzielle Calls mit Rate-Limiting (max. 10 Calls/Minute) zurückgefallen.
 - **F-03.4:** Wenn die KI eine Kategorie ermittelt, die dem Nutzer als neue Regel vorgeschlagen wird (UC-06), kann der Nutzer die Regel bestätigen und speichern.
 - **F-03.5:** Kategorisierung kann manuell überschrieben werden (UC-07). In diesem Fall: `category_source = MANUAL`, `is_manually_edited = TRUE`.
 - **F-03.6:** Eine Kategorisierung kann für einzelne Positionen oder alle gleichen Beschreibungen im gesamten Datenbestand angewendet werden (Bulk-Kategorisierung).
+- **F-03.7:** Wenn kein `OPENROUTER_API_KEY` konfiguriert ist, wird der KI-Fallback übersprungen. Positionen bleiben unkategorisiert (`category_id = NULL`, `category_source = NULL`) und werden in der UI als „Ohne Kategorie" angezeigt.
 
 ### F-04: Suche
 
@@ -413,8 +501,8 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 
 ### F-08: Kategorien verwalten
 
-- **F-08.1:** Der Nutzer kann Kategorien anlegen, umbenennen, deaktivieren und löschen.
-- **F-08.2:** Beim Löschen einer Kategorie werden alle zugehörigen `receipt_item`-Einträge auf `category_id = NULL` gesetzt (kein Cascade-Delete).
+- **F-08.1:** Der Nutzer kann Kategorien anlegen, umbenennen, deaktivieren und wieder aktivieren. Physisches Löschen ist nur erlaubt, wenn keine `receipt_item`-Einträge und keine aktiven Regeln auf die Kategorie verweisen.
+- **F-08.2:** Beim Deaktivieren einer Kategorie bleiben bestehende `receipt_item`-Zuordnungen erhalten. Die Kategorie wird in Filtern und neuen Zuordnungen standardmäßig ausgeblendet, kann aber mit `includeInactive=true` angezeigt werden.
 - **F-08.3:** Jede Kategorie hat einen Namen, optional eine Farbe und ein Icon-Bezeichner.
 
 ### F-09: Backup & Restore
@@ -443,20 +531,22 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
   - OpenRouter API-Key und Modell-Auswahl (mit Verbindungstest)
   - Sync-Intervall (Minuten)
   - Anzuzeigende Währung
-- **F-11.2:** Sensible Felder (API-Keys) werden bei der Anzeige maskiert und nur im Klartext übertragen, wenn explizit angefordert.
+- **F-11.2:** Sensible Felder (API-Keys) werden bei der Anzeige maskiert. Maskierte Platzhalterwerte dürfen beim Speichern nicht als neue Secrets persistiert werden. Klartext-Secrets werden ausschließlich beim initialen Setzen oder expliziten Ersetzen übertragen.
 - **F-11.3:** Einstellungen werden in `app_settings` gespeichert (nicht in Umgebungsvariablen überschreibbar via UI, aber initial aus Umgebungsvariablen befüllt).
+- **F-11.4:** Secrets in `app_settings` müssen in Logs, Fehlerantworten, Backup-Metadaten und UI-Responses maskiert werden. Für lokale Single-User-Deployments ist Speicherung im Klartext in der Datenbank zulässig, aber die Implementierung muss zentral über einen `SecretValue`/Maskierungsmechanismus erfolgen, damit spätere Verschlüsselung möglich bleibt.
 
 ### F-12: Test-Suite
 
-- **F-12.1:** Für alle Backend-Klassen und -Methoden existieren automatisierte Unit-Tests.
+- **F-12.1:** Für fachlich kritische Backend-Komponenten existieren automatisierte Tests. Priorität haben Parser, Sync, Kategorisierung, Backup/Restore, Settings/Secret-Masking und API-Fehlerbehandlung.
 - **F-12.2:** Verwendete Test-Frameworks: **JUnit 5**, **Mockito** (Mocking), **Cucumber** (BDD/Akzeptanztests für Parsing und Kategorisierung).
-- **F-12.3:** Testabdeckung wird über JaCoCo gemessen; Ziel: ≥ 80 % Zeilenabdeckung für Service- und Parser-Klassen.
+- **F-12.3:** Testabdeckung wird über JaCoCo gemessen; Ziel: ≥ 80 % Zeilenabdeckung für Service-Klassen und ≥ 90 % Branch-Coverage für Parser-Klassen.
 - **F-12.4:** Cucumber-Feature-Files definieren Akzeptanzkriterien für:
   - Bon-Parsing (regelbasiert und KI-Fallback)
   - Kategorisierung (Regeln + KI)
   - Sync-Verhalten (inkl. TAG_REMOVED)
   - Re-Parse-Konfliktauflösung
 - **F-12.5:** Tests werden automatisch im CI-Build (`mvn verify`) ausgeführt.
+- **F-12.6:** Tests dürfen keine echten Paperless-NGX- oder OpenRouter.ai-Calls ausführen. Externe Systeme werden über WireMock, MockWebServer oder vergleichbare Test-Doubles simuliert.
 
 ### F-13: Parser-Test-Corpus
 
@@ -531,14 +621,14 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 2. Das System identifiziert Dokumente mit dem konfigurierten Tag.
 3. Für jedes Dokument: Prüfung ob `paperless_document_id` bereits in `receipt` existiert.
 4. Neue Dokumente: Anlegen eines `receipt`-Eintrags mit `raw_text = content`, `parse_status = PENDING`.
-5. **Tag-Entfernung prüfen:** Alle in der DB vorhandenen `receipt`-Einträge, deren `paperless_document_id` nicht mehr im Paperless-Ergebnis vorkommt, werden entfernt (Grund `TAG_REMOVED`). Die Entfernung wird in `sync_log_entry` protokolliert und als INFO geloggt.
+5. **Tag-Entfernung prüfen:** Nach vollständigem erfolgreichem Abruf aller Paperless-Seiten werden alle aktiven `receipt`-Einträge, deren `paperless_document_id` nicht mehr im Paperless-Ergebnis vorkommt, per Soft-Delete markiert (Grund `TAG_REMOVED`). Die Entfernung wird in `sync_log_entry` protokolliert und als INFO geloggt.
 6. Das System startet den Parsing-Prozess (F-02) für alle neuen Receipts.
 7. Der Sync-Status und Sync-Log werden aktualisiert.
 
 **Alternativer Ablauf – Paperless-NGX nicht erreichbar:**
 - Das System markiert den Sync als fehlgeschlagen, schreibt einen Logeintrag. Kein Datenverlust.
 
-**Nachbedingung:** Alle neuen eBON-Dokumente sind als `receipt` in der DB, neue Receipts haben `parse_status = PARSED` oder `PARSE_ERROR`.
+**Nachbedingung:** Alle neuen eBON-Dokumente sind als aktive `receipt` in der DB, neue Receipts haben `parse_status = PARSED` oder `PARSE_ERROR`. Dokumente mit entferntem Tag sind nicht physisch gelöscht, sondern per `deleted_at` ausgeblendet.
 
 ---
 
@@ -550,7 +640,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 
 **Hauptablauf:**
 1. Frontend sendet `POST /api/sync/trigger`.
-2. Backend startet den Sync asynchron, antwortet sofort mit `202 Accepted`.
+2. Backend startet den Sync asynchron, antwortet sofort mit `202 Accepted`. Wenn bereits ein Sync läuft, antwortet das Backend mit `409 Conflict` und dem aktuellen Sync-Status.
 3. Frontend zeigt einen Ladestatus und pollt `GET /api/sync/status` alle 3 Sekunden.
 4. Nach Abschluss zeigt die UI: Anzahl neuer Bons, Anzahl Fehler, Zeitstempel.
 
@@ -636,12 +726,15 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 3. Frontend sendet `POST /api/categories`.
 4. Backend validiert (Name eindeutig, Farbe valides Hex) und speichert.
 
-**Hauptablauf – Kategorie löschen:**
-1. Nutzer klickt „Löschen" bei einer Kategorie.
-2. System zeigt Warnung: „X Positionen sind dieser Kategorie zugeordnet und werden unkategorisiert."
+**Hauptablauf – Kategorie deaktivieren:**
+1. Nutzer klickt „Deaktivieren" bei einer Kategorie.
+2. System zeigt Hinweis: „Die Kategorie bleibt für bestehende Positionen erhalten, steht aber für neue Zuordnungen nicht mehr zur Auswahl."
 3. Nutzer bestätigt.
-4. Frontend sendet `DELETE /api/categories/{id}`.
-5. Backend setzt `category_id = NULL` für alle betroffenen `receipt_item`, löscht dann die Kategorie.
+4. Frontend sendet `PATCH /api/categories/{id}` mit `{ "isActive": false }`.
+5. Backend setzt `is_active = FALSE`.
+
+**Alternativer Ablauf – Kategorie physisch löschen:**
+- Physisches Löschen über `DELETE /api/categories/{id}` ist nur möglich, wenn keine Positionen und keine aktiven Regeln mehr auf die Kategorie verweisen. Andernfalls antwortet das Backend mit `409 Conflict`.
 
 ---
 
@@ -807,6 +900,7 @@ Query-Parameter für `GET /api/receipts`:
 - `status` (`PENDING`, `PARSED`, `PARSE_ERROR`, `MANUALLY_EDITED`)
 - `dateFrom` (ISO 8601 Date), `dateTo` (ISO 8601 Date)
 - `store` (partial match)
+- `includeDeleted` (default `false`; nur für administrative Ansichten)
 
 #### Receipt Items
 
@@ -823,7 +917,8 @@ Query-Parameter für `GET /api/receipts`:
 | GET | `/api/categories` | Alle Kategorien (inkl. inaktiver, wenn `includeInactive=true`) |
 | POST | `/api/categories` | Neue Kategorie anlegen |
 | PUT | `/api/categories/{id}` | Kategorie aktualisieren |
-| DELETE | `/api/categories/{id}` | Kategorie löschen (s. UC-07) |
+| PATCH | `/api/categories/{id}` | Kategorie teilweise aktualisieren, z.B. aktivieren/deaktivieren |
+| DELETE | `/api/categories/{id}` | Kategorie physisch löschen, nur wenn unreferenziert (s. UC-07) |
 
 #### Kategorisierungsregeln
 
@@ -907,6 +1002,129 @@ Response `DashboardDTO`:
 }
 ```
 
+## 8.4 DTO- und Validierungsregeln
+
+Die Implementierung muss explizite Request-/Response-DTOs verwenden. JPA-Entities werden nicht direkt über die API serialisiert.
+
+### Gemeinsames Pagination-Format
+
+```json
+{
+  "content": [],
+  "page": 0,
+  "size": 20,
+  "totalElements": 125,
+  "totalPages": 7,
+  "sortBy": "receiptDate",
+  "sortDir": "desc"
+}
+```
+
+### ReceiptDTO
+
+```json
+{
+  "id": 1,
+  "paperlessDocumentId": 42,
+  "importedAt": "2026-05-26T10:00:00Z",
+  "receiptDate": "2026-05-26",
+  "receiptTime": "10:00:00",
+  "storeName": "REWE",
+  "storeBranch": "Berlin Mitte",
+  "totalAmount": 42.15,
+  "currency": "EUR",
+  "bonusBalance": 12.5,
+  "bonusPoints": 25.0,
+  "bonusType": "Payback",
+  "parseStatus": "PARSED",
+  "parseErrorMessage": null,
+  "deletedAt": null,
+  "deleteReason": null,
+  "items": []
+}
+```
+
+Validierung:
+
+- `receiptDate`: ISO-8601-Date oder `null`
+- `receiptTime`: ISO-8601-Time oder `null`
+- `storeName`: maximal 255 Zeichen
+- `totalAmount`: `>= 0`, maximal 2 Nachkommastellen
+- `currency`: ISO-4217-Code, Standard `EUR`
+
+### ReceiptItemDTO
+
+```json
+{
+  "id": 10,
+  "receiptId": 1,
+  "positionIndex": 0,
+  "description": "Bio Milch",
+  "quantity": 1.0,
+  "unit": "Stk",
+  "unitPrice": 1.49,
+  "totalPrice": 1.49,
+  "discountAmount": 0.0,
+  "categoryId": 2,
+  "categoryName": "Lebensmittel",
+  "categorySource": "RULE",
+  "isManuallyEdited": false
+}
+```
+
+Validierung:
+
+- `description`: Pflichtfeld, 1-512 Zeichen
+- `totalPrice`: Pflichtfeld, maximal 2 Nachkommastellen
+- `quantity`: optional, `> 0`
+- `categorySource`: `RULE`, `AI`, `MANUAL` oder `null`
+
+### SearchResultDTO
+
+```json
+{
+  "receiptId": 1,
+  "receiptItemId": 10,
+  "receiptDate": "2026-05-26",
+  "storeName": "REWE",
+  "description": "Bio Milch",
+  "totalPrice": 1.49,
+  "categoryId": 2,
+  "categoryName": "Lebensmittel",
+  "highlights": ["Bio Milch"]
+}
+```
+
+### CategoryDTO
+
+```json
+{
+  "id": 2,
+  "name": "Lebensmittel",
+  "colorHex": "#4CAF50",
+  "icon": "shopping-basket",
+  "isActive": true,
+  "sortOrder": 10,
+  "assignedItemsCount": 123
+}
+```
+
+### SettingsDTO
+
+```json
+{
+  "paperlessBaseUrl": "http://paperless:8000",
+  "paperlessApiToken": "********",
+  "paperlessEbonTag": "eBON",
+  "openRouterApiKey": "********",
+  "openRouterModel": "google/gemini-flash-1.5",
+  "syncIntervalMinutes": 60,
+  "currency": "EUR"
+}
+```
+
+Beim Speichern bedeuten fehlende Secret-Felder „unverändert lassen". Der Wert `"********"` darf nie persistiert werden.
+
 ---
 
 ## 9. UI-Spezifikation (Frontend)
@@ -966,7 +1184,7 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 #### 9.2.7 Einstellungen – Kategorien
 
 - Liste aller Kategorien mit Color-Badge, Name, Anzahl zugewiesener Positionen.
-- Buttons: Neu, Bearbeiten, Deaktivieren/Aktivieren, Löschen.
+- Buttons: Neu, Bearbeiten, Deaktivieren/Aktivieren. Ein zusätzlicher Löschen-Button ist nur sichtbar, wenn die Kategorie unreferenziert ist.
 - Bearbeiten: Inline-Formular mit Color-Picker und Name.
 
 #### 9.2.8 Einstellungen – Regeln
@@ -1128,6 +1346,90 @@ server {
 }
 ```
 
+### 11.5 Devcontainer-Dateien
+
+Die Entwicklungsumgebung ist Teil des Repositories. Ein KI-Agent muss diese Dateien zuerst anlegen oder aktualisieren, bevor Backend/Frontend implementiert werden.
+
+#### `.devcontainer/devcontainer.json`
+
+```json
+{
+  "name": "eBon Web Dev",
+  "dockerComposeFile": "docker-compose.devcontainer.yml",
+  "service": "devcontainer",
+  "workspaceFolder": "/workspace",
+  "shutdownAction": "stopCompose",
+  "forwardPorts": [5173, 8080, 5432],
+  "postCreateCommand": "java -version && mvn -version && node --version && npm --version",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vmware.vscode-boot-dev-pack",
+        "redhat.vscode-xml",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  }
+}
+```
+
+#### `.devcontainer/docker-compose.devcontainer.yml`
+
+```yaml
+services:
+  devcontainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ebon
+      POSTGRES_USER: ebon
+      POSTGRES_PASSWORD: ebon_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - devcontainer_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ebon -d ebon"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  devcontainer_db_data:
+```
+
+#### `.devcontainer/Dockerfile`
+
+```dockerfile
+FROM mcr.microsoft.com/devcontainers/java:25
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl jq postgresql-client ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG NODE_VERSION=22
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends nodejs \
+    && npm install -g npm@latest \
+    && rm -rf /var/lib/apt/lists/*
+```
+
+Falls das Basisimage `mcr.microsoft.com/devcontainers/java:25` nicht verfügbar ist, darf auf `mcr.microsoft.com/devcontainers/java:21` ausgewichen werden, sofern die Abweichung in `README.md` dokumentiert wird.
+
 ---
 
 ## 12. Backup & Restore
@@ -1147,6 +1449,8 @@ ebon-backup-2026-05-26_10-00.zip
 ├── sync_log_entry.json
 └── app_settings.json
 ```
+
+Secret-Werte in `app_settings.json` werden nicht im Klartext exportiert. Für Secret-Keys enthält das Backup entweder `null` oder einen maskierten Platzhalter mit zusätzlichem Feld `"requiresReconfiguration": true`. Nach einem Restore müssen externe Secrets über die Einstellungsseite oder Umgebungsvariablen neu gesetzt werden.
 
 ### 12.2 manifest.json
 
@@ -1180,6 +1484,9 @@ Das Restore-Backend prüft `manifest.version`. Nur Backups mit kompatibler Versi
 - Fehler werden mit Stack-Trace auf `ERROR` geloggt.
 - KI-Calls werden auf `INFO` geloggt (Modell, Positions-ID, Ergebnis-Kategorie, Dauer).
 - `TAG_REMOVED`-Events werden als INFO geloggt.
+- Secrets (`APP_API_TOKEN`, `PAPERLESS_API_TOKEN`, `OPENROUTER_API_KEY`, Datenbankpasswörter) dürfen nie im Klartext geloggt werden.
+- `raw_text`, KI-Prompts und KI-Rohantworten dürfen standardmäßig nicht auf `INFO` oder `ERROR` geloggt werden. Auf `DEBUG` dürfen sie nur gekürzt und mit sichtbarer PII-Warnung erscheinen.
+- Jeder Request erhält eine `traceId`, die in Fehlerantworten und Logs korreliert werden kann.
 
 ### 13.2 Globale Fehlerbehandlung (Backend)
 
@@ -1205,6 +1512,9 @@ Ein `@ControllerAdvice` fängt alle Exceptions ab und gibt strukturierte Fehlero
 | NF-06 | Die Applikation läuft auf einem System mit 2 CPU-Cores und 2 GB RAM ohne Performance-Probleme (bei NF-01-Datenmenge). |
 | NF-07 | Alle API-Keys und Passwörter werden niemals im Klartext in Logs geschrieben. |
 | NF-08 | Datenbankpasswörter und API-Keys werden ausschließlich über Umgebungsvariablen übergeben, nicht in Konfigurationsdateien im Repository. |
+| NF-09 | Swagger UI und `/v3/api-docs` sind durch denselben Bearer Token geschützt oder per Konfiguration vollständig deaktivierbar. |
+| NF-10 | Alle lokal gelöschten oder durch `TAG_REMOVED` ausgeblendeten Bons werden in Standardlisten, Suche, Reports und Dashboard nicht berücksichtigt, außer ein Endpunkt bietet explizit `includeDeleted=true`. |
+| NF-11 | Die Entwicklungsumgebung muss per Devcontainer ohne manuelle lokale Installation von Java, Maven, Node.js oder PostgreSQL startbar sein. |
 
 ---
 
@@ -1221,5 +1531,123 @@ Ein `@ControllerAdvice` fängt alle Exceptions ab und gibt strukturierte Fehlero
 | Bon-Erkennung per KI | **Eingeschlossen:** Parsing verwendet regelbasierten Ansatz; bei Fehlschlag KI-Fallback über OpenRouter.ai mit automatischer Rule-Adaptation. |
 | Mehrere Paperless-Instanzen | Nicht im Scope. Genau eine Paperless-NGX-Instanz wird unterstützt. |
 | HTTPS/TLS im Container | Nicht im Scope. TLS-Terminierung obliegt einem vorgelagerten Reverse Proxy. |
-| Automatische Regelgenerierung per KI | Nicht im Scope. KI ermittelt nur Kategorie; Regeln werden manuell durch Nutzer angelegt. |
+| Automatische Kategorisierungsregel-Generierung per KI | Nicht im Scope. KI darf Kategorien vorschlagen; `categorization_rule`-Einträge werden nur durch Nutzerbestätigung angelegt. Automatische `parse_rule`-Adaptation für Bon-Parsing ist hingegen eingeschlossen. |
 | CI/CD-Pipeline | Nicht im Scope dieser Spezifikation. Test-Suite wird über `mvn verify` ausgeführt. |
+
+---
+
+## 16. KI-Agenten-Umsetzung
+
+Diese Spezifikation ist so umzusetzen, dass ein KI-Agent das Projekt schrittweise und prüfbar erzeugen kann. Der Agent arbeitet in kleinen, verifizierbaren Inkrementen und muss nach jeder Phase mindestens Build- oder Testkommandos ausführen.
+
+### 16.1 Repository-Zielstruktur
+
+```
+.
+├── .devcontainer/
+├── backend/
+│   ├── pom.xml
+│   └── src/
+├── frontend/
+│   ├── package.json
+│   └── src/
+├── docs/
+│   └── restore-runbook.md
+├── docker-compose.yml
+├── .env.example
+└── README.md
+```
+
+### 16.2 Implementierungsphasen
+
+| Phase | Ziel | Mindestnachweis |
+|---|---|---|
+| 1 | Devcontainer, `.env.example`, Docker-Grundstruktur | Devcontainer öffnet, `java -version`, `mvn -version`, `node --version` funktionieren |
+| 2 | Backend-Skeleton mit Spring Boot, Security, Health, OpenAPI | `mvn verify`, `GET /api/health` |
+| 3 | Datenmodell, Flyway-Migrationen, JPA-Repositories | Migrationstest gegen PostgreSQL |
+| 4 | Paperless-Client und Sync-Service mit Mock-Tests | Tests für Import, Idempotenz, `TAG_REMOVED`, Sync-Lock |
+| 5 | Parser mit Corpus-Tests und KI-Fallback-Mock | Parser-Corpus grün, ungültiges KI-JSON führt zu `PARSE_ERROR` |
+| 6 | Kategorisierung mit Regeln, Batch-KI-Mock und manueller Überschreibung | Tests für Priorität, Bulk-Apply, fehlenden API-Key |
+| 7 | REST-API-DTOs, Validierung, Fehlerbehandlung | Controller-/Contract-Tests |
+| 8 | React-Frontend mit Dashboard, Bons, Suche, Reports, Einstellungen | `npm run build`, zentrale UI-Flows manuell oder per E2E geprüft |
+| 9 | Backup/Restore, Dry-Run, Runbook | Restore-Dry-Run-Test, transaktionaler Restore-Test |
+| 10 | Hardening, Logging, README, finale Docker-Verifikation | `docker compose up --build`, Smoke-Test |
+
+### 16.3 Agenten-Regeln
+
+- Der Agent darf keine echten externen API-Calls in Tests ausführen.
+- Der Agent muss DTOs, OpenAPI und Frontend-Typen konsistent halten.
+- Der Agent darf bei unklaren Parser-Fällen einen failing Test im Corpus ergänzen und danach die Implementierung anpassen.
+- Der Agent muss bei jeder Abweichung von Zielversionen, API-Verträgen oder Datenmodell eine kurze Notiz in `README.md` oder `docs/implementation-notes.md` ergänzen.
+- Der Agent muss destructive Operationen wie Restore, Hard-Delete oder Datenbank-Reset in Tests isolieren und darf sie nicht gegen produktive Volumes ausführen.
+
+---
+
+## 17. Akzeptanzkriterien & Test-Fixtures
+
+### 17.1 Globale Definition of Done
+
+Eine Implementierung gilt als vollständig, wenn:
+
+- `docker compose up --build` alle Services startet.
+- `GET /api/health` ohne Auth `{ "status": "UP" }` zurückgibt.
+- Alle geschützten API-Endpunkte ohne Token `401` zurückgeben.
+- `mvn verify` im Backend erfolgreich läuft.
+- `npm run build` im Frontend erfolgreich läuft.
+- OpenAPI unter `/v3/api-docs` verfügbar und geschützt ist.
+- Mindestens ein Parser-Corpus mit mehreren Store-Formaten erfolgreich verarbeitet wird.
+- Backup-Dry-Run und Restore-Transaktion automatisiert getestet sind.
+
+### 17.2 Parser-Corpus
+
+Das Repository enthält unter `backend/src/test/resources/corpus/` mindestens:
+
+```
+rewe_simple.txt
+rewe_simple.expected.json
+aldi_discount.txt
+aldi_discount.expected.json
+dm_bonus.txt
+dm_bonus.expected.json
+lidl_multiline_items.txt
+lidl_multiline_items.expected.json
+parse_error_missing_total.txt
+parse_error_missing_total.expected.json
+```
+
+Jede `expected.json` folgt dem KI-Parsing-JSON-Schema aus F-02. Bei negativen Tests enthält sie zusätzlich:
+
+```json
+{
+  "expectedParseStatus": "PARSE_ERROR",
+  "expectedErrorContains": "total_amount"
+}
+```
+
+### 17.3 Akzeptanzkriterien je Kernfeature
+
+**Sync:**
+
+- Given Paperless liefert ein neues Dokument mit `content`, when der Sync läuft, then entsteht genau ein aktiver `receipt`.
+- Given dasselbe Dokument wird erneut geliefert, when der Sync erneut läuft, then entsteht kein Duplikat.
+- Given ein zuvor importiertes Dokument fehlt nach vollständigem erfolgreichen Sync, then wird es per `deleted_at` und `delete_reason = TAG_REMOVED` ausgeblendet.
+- Given Paperless liefert einen Fehler oder unvollständige Pagination, then werden keine Bons als `TAG_REMOVED` markiert.
+
+**Parsing:**
+
+- Given ein gültiger Corpus-Bon, when der Parser läuft, then erfüllt das Ergebnis die Definition `PARSED`.
+- Given die Item-Summe weicht um mehr als `0.02` vom Gesamtbetrag ab, then wird `PARSE_ERROR` gesetzt und der Teilparse gespeichert.
+- Given regelbasiertes Parsing scheitert und KI liefert valides JSON, then wird der Bon aus dem KI-JSON gespeichert.
+- Given KI liefert invalides JSON, then wird kein ungeprüftes Ergebnis persistiert.
+
+**Kategorisierung:**
+
+- Given mehrere passende Regeln, then gewinnt die Regel mit der niedrigsten `priority`.
+- Given keine passende Regel und kein `OPENROUTER_API_KEY`, then bleibt die Position unkategorisiert.
+- Given manuelle Kategorieänderung, then wird `category_source = MANUAL` und `is_manually_edited = TRUE` gesetzt.
+
+**Backup/Restore:**
+
+- Given ein valides Backup, when Dry-Run ausgeführt wird, then werden keine Daten verändert.
+- Given ein inkompatibles Manifest, when Restore ausgeführt wird, then antwortet die API mit `422`.
+- Given ein Fehler während Restore-Import, then wird die gesamte Transaktion zurückgerollt.
