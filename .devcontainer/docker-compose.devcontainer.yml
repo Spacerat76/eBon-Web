@@ -19,7 +19,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - devcontainer_db_data:/var/lib/postgresql/data
+      - devcontainer_db_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ebon -d ebon"]
       interval: 10s
@@ -28,4 +28,3 @@ services:
 
 volumes:
   devcontainer_db_data:
-

@@ -4,17 +4,13 @@
   "service": "devcontainer",
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
-  "forwardPorts": [5173, 8080, 5432],
-  "postCreateCommand": "java -version && mvn -version && node --version && npm --version",
-  "features": {
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
-    "ghcr.io/devcontainers/features/maven:1": {
-      "version": "3.9.9"
-    },
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "22"
+  "forwardPorts": [5432],
+  "portsAttributes": {
+    "5432": {
+      "label": "PostgreSQL"
     }
   },
+  "postCreateCommand": "java -version && mvn -version && node --version && npm --version && docker --version",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -28,4 +24,3 @@
     }
   }
 }
-

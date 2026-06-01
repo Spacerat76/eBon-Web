@@ -18,11 +18,11 @@ You do not need Java, Maven, Node.js, or PostgreSQL installed on the host. The D
 3. Open the repository in VS Code.
 4. Run `Dev Containers: Reopen in Container`.
 
-The Devcontainer starts a local PostgreSQL database and forwards these ports:
+The Devcontainer starts a local PostgreSQL database and forwards this port:
 
 - `5432` PostgreSQL
-- `8080` future backend API
-- `5173` future Vite frontend
+
+Backend port `8080` and frontend port `5173` are intentionally not forwarded in Phase 1 because no backend or frontend service exists yet. They will be added when those phases are implemented.
 
 ## Verify the Devcontainer
 
@@ -54,7 +54,13 @@ docker compose up db
 
 ## Version Notes
 
-The Devcontainer targets Java 25 with `mcr.microsoft.com/devcontainers/java:1-25-bookworm`, Maven 3.9.x, Node.js 22, and PostgreSQL 18. If the Java 25 Devcontainer base image is not available in your environment, use the documented fallback from `ebon-specification.md`: Java 21 LTS, and record that deviation before continuing.
+The Devcontainer uses the documented fallback Java 21 LTS image `mcr.microsoft.com/devcontainers/java:1-21-bookworm`, Maven 3.9.x, Node.js 22, Docker CLI, and PostgreSQL 18.
+
+PostgreSQL 18 volumes are mounted at `/var/lib/postgresql` rather than `/var/lib/postgresql/data`, matching the official image layout for PostgreSQL 18+.
+
+Deviation from target versions: `ebon-specification.md` targets Java 25, but the Java 25 Devcontainer image was not available as `mcr.microsoft.com/devcontainers/java:1-25-bookworm`. Per the specification's fallback rule, local development uses Java 21 LTS until a Java 25 Devcontainer image is available.
+
+The Devcontainer intentionally installs Maven, Node.js, and Docker CLI in `.devcontainer/Dockerfile` instead of using Devcontainer Features from `ghcr.io`. This avoids failures in environments where the Feature registry cannot resolve `ghcr.io/devcontainers/features/*`.
 
 ## Safety
 
