@@ -78,6 +78,37 @@ class PaperlessRestClientTests {
         server.verify();
     }
 
+    @Test
+    void acceptsPaperlessDateOnlyCreatedField() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("http://paperless");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        PaperlessRestClient client = new PaperlessRestClient(properties(), builder);
+
+        server.expect(requestTo("http://paperless/api/documents/?tags__name=eBON&page_size=100&ordering=-created"))
+                .andRespond(withSuccess("""
+                        {
+                          "next": null,
+                          "results": [
+                            {
+                              "id": 3,
+                              "title": "Date only",
+                              "created": "2026-06-03",
+                              "content": "date only raw"
+                            }
+                          ]
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        List<PaperlessDocument> documents = client.fetchDocumentsByTag();
+
+        assertThat(documents).singleElement()
+                .satisfies(document -> {
+                    assertThat(document.id()).isEqualTo(3);
+                    assertThat(document.created()).isEqualTo("2026-06-03");
+                });
+        server.verify();
+    }
+
     private static PaperlessProperties properties() {
         PaperlessProperties properties = new PaperlessProperties();
         properties.setBaseUrl("http://paperless");

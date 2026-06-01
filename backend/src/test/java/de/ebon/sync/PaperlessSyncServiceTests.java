@@ -9,7 +9,6 @@ import de.ebon.persistence.model.SyncStatus;
 import de.ebon.persistence.repository.ReceiptRepository;
 import de.ebon.persistence.repository.SyncLogRepository;
 import de.ebon.support.PostgresIntegrationTestSupport;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -141,7 +140,7 @@ class PaperlessSyncServiceTests extends PostgresIntegrationTestSupport {
     }
 
     private static PaperlessDocument document(int id, String content) {
-        return new PaperlessDocument(id, "Document " + id, OffsetDateTime.parse("2026-01-01T10:00:00Z"), content);
+        return new PaperlessDocument(id, "Document " + id, "2026-01-01", content);
     }
 
     @TestConfiguration

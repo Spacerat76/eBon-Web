@@ -1,11 +1,9 @@
 package de.ebon.paperless;
 
-import java.time.OffsetDateTime;
-
 record PaperlessDocumentResponse(
         Integer id,
         String title,
-        OffsetDateTime created,
+        String created,
         String content) {
 
     PaperlessDocument toDocument() {
