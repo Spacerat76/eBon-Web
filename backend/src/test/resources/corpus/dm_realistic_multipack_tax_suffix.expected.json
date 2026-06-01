@@ -1,0 +1,49 @@
+{
+  "receiptDate": "2025-01-03",
+  "receiptTime": "14:28",
+  "storeName": "dm",
+  "storeBranch": null,
+  "totalAmount": 27.20,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": 17,
+  "bonusType": "Payback",
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Muster Schwamme 3",
+      "quantity": 3,
+      "unit": "Stk",
+      "unitPrice": 0.95,
+      "totalPrice": 2.85,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Muster Tuecher 48St",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.45,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "Muster Lufterfrischer",
+      "quantity": 2,
+      "unit": "Stk",
+      "unitPrice": 3.45,
+      "totalPrice": 6.90,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 3,
+      "description": "Muster Gift Card 15 Euro",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 15.00,
+      "discountAmount": null
+    }
+  ]
+}

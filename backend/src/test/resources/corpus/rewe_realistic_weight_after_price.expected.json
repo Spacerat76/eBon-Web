@@ -1,0 +1,49 @@
+{
+  "receiptDate": "2025-10-09",
+  "receiptTime": "17:36:31",
+  "storeName": "REWE",
+  "storeBranch": "Musterstrasse 1",
+  "totalAmount": 9.65,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "SERVICE ARTIKEL",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 3.03,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "BANANE MUSTER",
+      "quantity": 0.916,
+      "unit": "kg",
+      "unitPrice": 1.79,
+      "totalPrice": 1.64,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "MEHRFACH ARTIKEL",
+      "quantity": 2,
+      "unit": "Stk",
+      "unitPrice": 1.99,
+      "totalPrice": 3.98,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 3,
+      "description": "PFAND 0,25 EURO",
+      "quantity": 4,
+      "unit": "Stk",
+      "unitPrice": 0.25,
+      "totalPrice": 1.00,
+      "discountAmount": null
+    }
+  ]
+}

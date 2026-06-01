@@ -87,11 +87,50 @@ public class ReceiptItem {
         }
     }
 
+    public void updateParsedValues(
+            BigDecimal quantity,
+            String unit,
+            BigDecimal unitPrice,
+            BigDecimal discountAmount) {
+        this.quantity = quantity;
+        this.unit = unit;
+        this.unitPrice = unitPrice;
+        this.discountAmount = discountAmount;
+    }
+
     void setReceipt(Receipt receipt) {
         this.receipt = receipt;
     }
 
     public Long getId() {
         return id;
+    }
+
+    public int getPositionIndex() {
+        return positionIndex;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public BigDecimal getQuantity() {
+        return quantity;
+    }
+
+    public String getUnit() {
+        return unit;
+    }
+
+    public BigDecimal getUnitPrice() {
+        return unitPrice;
+    }
+
+    public BigDecimal getTotalPrice() {
+        return totalPrice;
+    }
+
+    public BigDecimal getDiscountAmount() {
+        return discountAmount;
     }
 }

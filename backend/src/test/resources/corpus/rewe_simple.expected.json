@@ -1,0 +1,31 @@
+{
+  "receiptDate": "2026-06-01",
+  "receiptTime": "18:35:00",
+  "storeName": "REWE",
+  "storeBranch": "Musterstr. 1",
+  "totalAmount": 3.75,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Bio Milch 1,5%",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 1.29,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Bananen",
+      "quantity": 1.234,
+      "unit": "kg",
+      "unitPrice": 1.99,
+      "totalPrice": 2.46,
+      "discountAmount": null
+    }
+  ]
+}

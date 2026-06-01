@@ -66,8 +66,8 @@ class PaperlessSyncServiceTests extends PostgresIntegrationTestSupport {
         assertThat(receiptRepository.findAll()).hasSize(2);
         assertThat(receiptRepository.findByPaperlessDocumentId(1001)).get()
                 .satisfies(receipt -> {
-                    assertThat(receipt.getRawText()).isEqualTo("first raw text");
-                    assertThat(receipt.getParseStatus()).isEqualTo(ParseStatus.PENDING);
+                    assertThat(receipt.getRawText()).contains("first raw text");
+                    assertThat(receipt.getParseStatus()).isEqualTo(ParseStatus.PARSED);
                     assertThat(receipt.getDeletedAt()).isNull();
                 });
     }
@@ -140,7 +140,13 @@ class PaperlessSyncServiceTests extends PostgresIntegrationTestSupport {
     }
 
     private static PaperlessDocument document(int id, String content) {
-        return new PaperlessDocument(id, "Document " + id, "2026-01-01", content);
+        String rawText = """
+                REWE
+                01.01.2026
+                %s 1,00
+                Summe 1,00
+                """.formatted(content);
+        return new PaperlessDocument(id, "Document " + id, "2026-01-01", rawText);
     }
 
     @TestConfiguration

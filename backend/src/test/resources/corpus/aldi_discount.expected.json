@@ -1,0 +1,40 @@
+{
+  "receiptDate": "2026-06-02",
+  "receiptTime": "09:14:00",
+  "storeName": "ALDI",
+  "storeBranch": "Filiale 123",
+  "totalAmount": 5.68,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Toastbrot",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 1.19,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Kaffee",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 4.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "Coupon Rabatt",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": -0.50,
+      "discountAmount": 0.50
+    }
+  ]
+}

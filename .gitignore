@@ -5,6 +5,8 @@ build/
 target/
 **/target/
 .env
+rewe/
+dm/
 .DS_Store
 Thumbs.db
 .idea/

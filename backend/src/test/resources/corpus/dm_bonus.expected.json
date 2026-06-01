@@ -1,0 +1,31 @@
+{
+  "receiptDate": "2026-06-03",
+  "receiptTime": "12:05:00",
+  "storeName": "dm",
+  "storeBranch": "Hauptstrasse 5",
+  "totalAmount": 4.20,
+  "currency": "EUR",
+  "bonusBalance": 0.60,
+  "bonusPoints": 12.0,
+  "bonusType": "Payback",
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Zahnpasta",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 1.95,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Shampoo",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.25,
+      "discountAmount": null
+    }
+  ]
+}

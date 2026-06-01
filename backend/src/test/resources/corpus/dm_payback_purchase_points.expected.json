@@ -1,0 +1,31 @@
+{
+  "receiptDate": "2025-11-15",
+  "receiptTime": "14:15",
+  "storeName": "dm",
+  "storeBranch": "Hauptstrasse 5",
+  "totalAmount": 5.85,
+  "currency": "EUR",
+  "bonusBalance": 63.13,
+  "bonusPoints": 20,
+  "bonusType": "Payback",
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Muster Tuecher",
+      "quantity": 2,
+      "unit": "Stk",
+      "unitPrice": 0.95,
+      "totalPrice": 1.90,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Muster Pflege",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 3.95,
+      "discountAmount": null
+    }
+  ]
+}

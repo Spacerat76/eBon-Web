@@ -3,6 +3,9 @@ package de.ebon.sync;
 import de.ebon.paperless.PaperlessClient;
 import de.ebon.paperless.PaperlessClientException;
 import de.ebon.paperless.PaperlessDocument;
+import de.ebon.parser.ReceiptParseApplier;
+import de.ebon.parser.ReceiptParseResult;
+import de.ebon.parser.ReceiptParserService;
 import de.ebon.persistence.model.DeleteReason;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.SyncLog;
@@ -27,14 +30,20 @@ class PaperlessSyncRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(PaperlessSyncRunner.class);
 
     private final PaperlessClient paperlessClient;
+    private final ReceiptParserService receiptParserService;
+    private final ReceiptParseApplier receiptParseApplier;
     private final ReceiptRepository receiptRepository;
     private final SyncLogRepository syncLogRepository;
 
     PaperlessSyncRunner(
             PaperlessClient paperlessClient,
+            ReceiptParserService receiptParserService,
+            ReceiptParseApplier receiptParseApplier,
             ReceiptRepository receiptRepository,
             SyncLogRepository syncLogRepository) {
         this.paperlessClient = paperlessClient;
+        this.receiptParserService = receiptParserService;
+        this.receiptParseApplier = receiptParseApplier;
         this.receiptRepository = receiptRepository;
         this.syncLogRepository = syncLogRepository;
     }
@@ -74,6 +83,8 @@ class PaperlessSyncRunner {
             }
 
             Receipt receipt = new Receipt(document.id(), document.content() == null ? "" : document.content());
+            ReceiptParseResult parseResult = receiptParserService.parse(receipt.getRawText());
+            receiptParseApplier.apply(receipt, parseResult);
             Receipt savedReceipt = receiptRepository.save(receipt);
             syncLog.addEntry(new SyncLogEntry(
                     document.id(),

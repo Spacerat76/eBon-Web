@@ -116,6 +116,35 @@ public class Receipt {
         item.setReceipt(this);
     }
 
+    public void clearItems() {
+        items.clear();
+    }
+
+    public void applyParseResult(
+            ParseStatus parseStatus,
+            String parseErrorMessage,
+            LocalDate receiptDate,
+            LocalTime receiptTime,
+            String storeName,
+            String storeBranch,
+            BigDecimal totalAmount,
+            String currency,
+            BigDecimal bonusBalance,
+            BigDecimal bonusPoints,
+            String bonusType) {
+        this.parseStatus = parseStatus;
+        this.parseErrorMessage = parseErrorMessage;
+        this.receiptDate = receiptDate;
+        this.receiptTime = receiptTime;
+        this.storeName = storeName;
+        this.storeBranch = storeBranch;
+        this.totalAmount = totalAmount;
+        this.currency = currency == null || currency.isBlank() ? "EUR" : currency;
+        this.bonusBalance = bonusBalance;
+        this.bonusPoints = bonusPoints;
+        this.bonusType = bonusType;
+    }
+
     public void markDeleted(DeleteReason reason) {
         deletedAt = OffsetDateTime.now(ZoneOffset.UTC);
         deleteReason = reason;
@@ -143,6 +172,10 @@ public class Receipt {
 
     public String getRawText() {
         return rawText;
+    }
+
+    public String getParseErrorMessage() {
+        return parseErrorMessage;
     }
 
     public void setStoreName(String storeName) {

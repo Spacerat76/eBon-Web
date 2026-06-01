@@ -1,0 +1,40 @@
+{
+  "receiptDate": "2026-06-04",
+  "receiptTime": "20:01:00",
+  "storeName": "Lidl",
+  "storeBranch": "Filiale Berlin",
+  "totalAmount": 4.43,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Bio Vollkornbrot",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 1.79,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Mineralwasser",
+      "quantity": 6.0,
+      "unit": "Stk",
+      "unitPrice": 0.19,
+      "totalPrice": 1.14,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "Pfand Mehrweg",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 1.50,
+      "discountAmount": null
+    }
+  ]
+}

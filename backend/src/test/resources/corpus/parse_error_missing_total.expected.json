@@ -1,0 +1,33 @@
+{
+  "receiptDate": "2026-06-05",
+  "receiptTime": null,
+  "storeName": "EDEKA",
+  "storeBranch": null,
+  "totalAmount": null,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "expectedParseStatus": "PARSE_ERROR",
+  "expectedErrorContains": "total_amount",
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Apfel",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 1.20,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Brot",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.30,
+      "discountAmount": null
+    }
+  ]
+}

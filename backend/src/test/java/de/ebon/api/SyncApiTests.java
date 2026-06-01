@@ -109,7 +109,16 @@ class SyncApiTests extends PostgresIntegrationTestSupport {
         @Bean
         @Primary
         PaperlessClient paperlessClient() {
-            return () -> List.of(new PaperlessDocument(9001, "API Test", null, "api raw text"));
+            return () -> List.of(new PaperlessDocument(
+                    9001,
+                    "API Test",
+                    null,
+                    """
+                            REWE
+                            01.01.2026
+                            API Test Artikel 1,00
+                            Summe 1,00
+                            """));
         }
     }
 }

@@ -1,0 +1,49 @@
+{
+  "receiptDate": "2026-03-13",
+  "receiptTime": "12:45:57",
+  "storeName": "REWE",
+  "storeBranch": "Musterstrasse 1",
+  "totalAmount": 5.55,
+  "currency": "EUR",
+  "bonusBalance": 32.36,
+  "bonusPoints": null,
+  "bonusType": "Rewe Bonus",
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "MUSTER ARTIKEL",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 4.95,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "MUSTER GETRAENK",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 6.76,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "PFAND 0,15 EUR",
+      "quantity": 4,
+      "unit": "Stk",
+      "unitPrice": 0.15,
+      "totalPrice": 0.60,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 3,
+      "description": "CC gratis",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": -6.76,
+      "discountAmount": 6.76
+    }
+  ]
+}

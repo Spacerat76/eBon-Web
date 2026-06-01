@@ -1,0 +1,23 @@
+R E W E Mustermarkt
+Musterstrasse 1
+12345 Musterstadt
+Tel.: 01234/567890
+UID Nr.: DE000000000
+EUR
+SERVICE ARTIKEL 3,03 B
+Handeingabe E-Bon 0,095 kg
+BANANE MUSTER 1,64 B
+0,916 kg x 1,79 EUR/kg
+MEHRFACH ARTIKEL 3,98 B
+2 Stk x 1,99
+PFAND 0,25 EURO 1,00 A *
+4 Stk x 0,25
+--------------------------------------
+SUMME EUR 9,65
+======================================
+Geg. EC-Cash EUR 9,65
+* * Kundenbeleg * *
+Datum: 09.10.2025
+Uhrzeit: 17:36:31 Uhr
+Beleg-Nr. 1596
+Trace-Nr. 055079
