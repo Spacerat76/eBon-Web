@@ -1,0 +1,23 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ebon-backend
+
+app:
+  security:
+    api-token: ${APP_API_TOKEN:change_me_local_dev_token}
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+  pattern:
+    level: "%5p [traceId:%X{traceId:-}]"
+

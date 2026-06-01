@@ -4,10 +4,14 @@
   "service": "devcontainer",
   "workspaceFolder": "/workspace",
   "shutdownAction": "stopCompose",
-  "forwardPorts": [5432],
+  "forwardPorts": [5432, 8080],
   "portsAttributes": {
     "5432": {
       "label": "PostgreSQL"
+    },
+    "8080": {
+      "label": "Backend API",
+      "onAutoForward": "notify"
     }
   },
   "postCreateCommand": "java -version && mvn -version && node --version && npm --version && docker --version",

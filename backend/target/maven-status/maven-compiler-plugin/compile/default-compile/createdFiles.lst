@@ -1,0 +1,14 @@
+de\ebon\security\JsonAuthenticationEntryPoint.class
+de\ebon\security\ApiTokenAuthenticationFilter.class
+de\ebon\config\OpenApiConfig.class
+de\ebon\config\AppSecurityProperties.class
+de\ebon\config\SupportConfig.class
+de\ebon\api\HealthController.class
+de\ebon\security\SecurityConfig.class
+de\ebon\api\error\ApiErrorFactory.class
+de\ebon\EbonBackendApplication.class
+de\ebon\api\error\GlobalExceptionHandler.class
+de\ebon\security\JsonAccessDeniedHandler.class
+de\ebon\trace\TraceIdFilter.class
+de\ebon\api\error\ApiError.class
+de\ebon\api\SystemController.class

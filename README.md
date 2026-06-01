@@ -18,11 +18,12 @@ You do not need Java, Maven, Node.js, or PostgreSQL installed on the host. The D
 3. Open the repository in VS Code.
 4. Run `Dev Containers: Reopen in Container`.
 
-The Devcontainer starts a local PostgreSQL database and forwards this port:
+The Devcontainer starts a local PostgreSQL database and forwards these ports:
 
 - `5432` PostgreSQL
+- `8080` backend API
 
-Backend port `8080` and frontend port `5173` are intentionally not forwarded in Phase 1 because no backend or frontend service exists yet. They will be added when those phases are implemented.
+Frontend port `5173` is intentionally not forwarded yet because no frontend service exists.
 
 ## Verify the Devcontainer
 
@@ -51,6 +52,32 @@ Start the development database with:
 ```bash
 docker compose up db
 ```
+
+## Backend Skeleton
+
+Phase 2 adds a Spring Boot backend under `backend/`.
+
+Run the backend from the Devcontainer:
+
+```bash
+cd backend
+mvn verify
+mvn spring-boot:run
+```
+
+Smoke checks:
+
+```bash
+curl http://localhost:8080/api/health
+curl -i http://localhost:8080/api/system/ping
+curl -H "Authorization: Bearer change_me_local_dev_token" http://localhost:8080/api/system/ping
+```
+
+Expected behavior:
+
+- `GET /api/health` is public and returns `{ "status": "UP" }`.
+- Other endpoints require `Authorization: Bearer <APP_API_TOKEN>`.
+- `/v3/api-docs` and `/swagger-ui.html` are protected by the same bearer token.
 
 ## Version Notes
 
