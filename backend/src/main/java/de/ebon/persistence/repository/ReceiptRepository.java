@@ -10,4 +10,6 @@ public interface ReceiptRepository extends JpaRepository<Receipt, Long> {
     Optional<Receipt> findByPaperlessDocumentId(Integer paperlessDocumentId);
 
     List<Receipt> findByDeletedAtIsNullOrderByImportedAtDesc();
+
+    long countByPaperlessDocumentId(Integer paperlessDocumentId);
 }

@@ -77,6 +77,7 @@ Smoke checks:
 curl http://localhost:8080/api/health
 curl -i http://localhost:8080/api/system/ping
 curl -H "Authorization: Bearer change_me_local_dev_token" http://localhost:8080/api/system/ping
+curl -H "Authorization: Bearer change_me_local_dev_token" http://localhost:8080/api/sync/status
 ```
 
 Expected behavior:
@@ -86,6 +87,16 @@ Expected behavior:
 - `/v3/api-docs` and `/swagger-ui.html` are public in local development so the browser can load Swagger UI.
 - Set `APP_OPENAPI_PUBLIC_ACCESS=false` to protect OpenAPI and Swagger UI with the same bearer token.
 - Flyway creates the schema and seed data for default categories and application settings.
+
+Paperless sync endpoints are available in the backend:
+
+```bash
+curl -X POST -H "Authorization: Bearer change_me_local_dev_token" http://localhost:8080/api/sync/trigger
+curl -H "Authorization: Bearer change_me_local_dev_token" http://localhost:8080/api/sync/status
+curl -H "Authorization: Bearer change_me_local_dev_token" "http://localhost:8080/api/sync/log?page=0&size=20"
+```
+
+The scheduled sync uses `SYNC_INTERVAL_MINUTES` and starts after `SYNC_INITIAL_DELAY_MS`. Set `SYNC_SCHEDULER_ENABLED=false` for local runs where Paperless-NGX should never be contacted automatically.
 
 If Maven fails with `Operation not permitted` while writing `backend/target`, remove the generated build directory once inside the Devcontainer and start again:
 

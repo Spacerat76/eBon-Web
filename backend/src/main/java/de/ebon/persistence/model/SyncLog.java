@@ -58,7 +58,49 @@ public class SyncLog {
         entry.setSyncLog(this);
     }
 
+    public void markSuccess(int newDocumentsCount, int removedDocumentsCount) {
+        this.status = SyncStatus.SUCCESS;
+        this.newDocumentsCount = newDocumentsCount;
+        this.removedDocumentsCount = removedDocumentsCount;
+        this.finishedAt = OffsetDateTime.now(ZoneOffset.UTC);
+        this.errorMessage = null;
+    }
+
+    public void markFailed(String errorMessage) {
+        this.status = SyncStatus.FAILED;
+        this.finishedAt = OffsetDateTime.now(ZoneOffset.UTC);
+        this.errorMessage = errorMessage;
+    }
+
     public Long getId() {
         return id;
+    }
+
+    public OffsetDateTime getStartedAt() {
+        return startedAt;
+    }
+
+    public OffsetDateTime getFinishedAt() {
+        return finishedAt;
+    }
+
+    public SyncStatus getStatus() {
+        return status;
+    }
+
+    public int getNewDocumentsCount() {
+        return newDocumentsCount;
+    }
+
+    public int getRemovedDocumentsCount() {
+        return removedDocumentsCount;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public List<SyncLogEntry> getEntries() {
+        return List.copyOf(entries);
     }
 }

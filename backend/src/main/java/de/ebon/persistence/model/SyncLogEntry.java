@@ -68,4 +68,24 @@ public class SyncLogEntry {
     public Long getId() {
         return id;
     }
+
+    public Integer getPaperlessDocumentId() {
+        return paperlessDocumentId;
+    }
+
+    public SyncLogEntryAction getAction() {
+        return action;
+    }
+
+    public Receipt getReceipt() {
+        return receipt;
+    }
+
+    public String getDetails() {
+        return details;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
 }

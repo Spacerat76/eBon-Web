@@ -24,6 +24,15 @@ app:
     api-token: ${APP_API_TOKEN:change_me_local_dev_token}
   openapi:
     public-access: ${APP_OPENAPI_PUBLIC_ACCESS:true}
+  paperless:
+    base-url: ${PAPERLESS_BASE_URL:http://localhost:8000}
+    api-token: ${PAPERLESS_API_TOKEN:change_me_paperless_token}
+    ebon-tag: ${PAPERLESS_EBON_TAG:eBON}
+  sync:
+    scheduler:
+      enabled: ${SYNC_SCHEDULER_ENABLED:true}
+      interval-minutes: ${SYNC_INTERVAL_MINUTES:60}
+      initial-delay-ms: ${SYNC_INITIAL_DELAY_MS:3600000}
 
 springdoc:
   api-docs:

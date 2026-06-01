@@ -137,6 +137,14 @@ public class Receipt {
         return deleteReason;
     }
 
+    public ParseStatus getParseStatus() {
+        return parseStatus;
+    }
+
+    public String getRawText() {
+        return rawText;
+    }
+
     public void setStoreName(String storeName) {
         this.storeName = storeName;
     }
