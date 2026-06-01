@@ -1,6 +1,5 @@
 package de.ebon.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import de.ebon.api.error.ApiErrorFactory;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -9,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
+import tools.jackson.databind.ObjectMapper;
 
 public class JsonAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
@@ -31,4 +31,3 @@ public class JsonAuthenticationEntryPoint implements AuthenticationEntryPoint {
                 apiErrorFactory.create(HttpStatus.UNAUTHORIZED, "Token fehlt oder ist ungueltig.", request));
     }
 }
-

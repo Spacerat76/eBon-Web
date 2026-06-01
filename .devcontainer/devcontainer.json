@@ -3,6 +3,8 @@
   "dockerComposeFile": "docker-compose.devcontainer.yml",
   "service": "devcontainer",
   "workspaceFolder": "/workspace",
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
   "shutdownAction": "stopCompose",
   "forwardPorts": [5432, 8080],
   "portsAttributes": {

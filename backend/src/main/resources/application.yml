@@ -4,10 +4,26 @@ server:
 spring:
   application:
     name: ebon-backend
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ebon}
+    username: ${DB_USER:ebon}
+    password: ${DB_PASSWORD:change_me_dev_password}
+  flyway:
+    enabled: true
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
 
 app:
   security:
     api-token: ${APP_API_TOKEN:change_me_local_dev_token}
+  openapi:
+    public-access: ${APP_OPENAPI_PUBLIC_ACCESS:true}
 
 springdoc:
   api-docs:
@@ -20,4 +36,3 @@ logging:
     root: ${LOG_LEVEL:INFO}
   pattern:
     level: "%5p [traceId:%X{traceId:-}]"
-

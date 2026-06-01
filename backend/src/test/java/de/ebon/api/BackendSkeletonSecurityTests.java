@@ -1,7 +1,6 @@
 package de.ebon.api;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import de.ebon.support.PostgresIntegrationTestSupport;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -11,13 +10,14 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.TestPropertySource;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 @TestPropertySource(properties = "app.security.api-token=test-token")
-class BackendSkeletonSecurityTests {
+class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
 
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -57,20 +57,23 @@ class BackendSkeletonSecurityTests {
     }
 
     @Test
-    void openApiDocsAreProtected() throws Exception {
+    void openApiDocsArePublicByDefault() throws Exception {
         HttpResponse<String> response = sendGet("/v3/api-docs", null);
-
-        assertThat(response.statusCode()).isEqualTo(401);
-    }
-
-    @Test
-    void openApiDocsAreAvailableWithBearerToken() throws Exception {
-        HttpResponse<String> response = sendGet("/v3/api-docs", "test-token");
         JsonNode body = objectMapper.readTree(response.body());
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(body.get("openapi").asText()).isNotBlank();
         assertThat(body.get("info").get("title").asText()).isEqualTo("eBon Expense Tracker API");
+    }
+
+    @Test
+    void swaggerUiIsPublicByDefault() throws Exception {
+        HttpResponse<String> response = sendGet("/swagger-ui.html", null);
+        HttpResponse<String> indexResponse = sendGet("/swagger-ui/index.html", null);
+
+        assertThat(response.statusCode()).isEqualTo(302);
+        assertThat(response.headers().firstValue("location")).contains("/swagger-ui/index.html");
+        assertThat(indexResponse.statusCode()).isEqualTo(200);
     }
 
     private HttpResponse<String> sendGet(String path, String token) throws Exception {

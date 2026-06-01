@@ -62,7 +62,13 @@ Run the backend from the Devcontainer:
 ```bash
 cd backend
 mvn verify
-mvn spring-boot:run
+mvn clean spring-boot:run
+```
+
+The backend now uses PostgreSQL and runs Flyway migrations automatically at startup. In the Devcontainer, PostgreSQL is started by the Devcontainer Compose setup. Outside the Devcontainer, start the database first:
+
+```bash
+docker compose up db
 ```
 
 Smoke checks:
@@ -77,7 +83,19 @@ Expected behavior:
 
 - `GET /api/health` is public and returns `{ "status": "UP" }`.
 - Other endpoints require `Authorization: Bearer <APP_API_TOKEN>`.
-- `/v3/api-docs` and `/swagger-ui.html` are protected by the same bearer token.
+- `/v3/api-docs` and `/swagger-ui.html` are public in local development so the browser can load Swagger UI.
+- Set `APP_OPENAPI_PUBLIC_ACCESS=false` to protect OpenAPI and Swagger UI with the same bearer token.
+- Flyway creates the schema and seed data for default categories and application settings.
+
+If Maven fails with `Operation not permitted` while writing `backend/target`, remove the generated build directory once inside the Devcontainer and start again:
+
+```bash
+sudo rm -rf backend/target
+cd backend
+mvn clean spring-boot:run
+```
+
+`backend/target` contains generated Maven output only and must not be committed.
 
 ## Version Notes
 
