@@ -166,25 +166,18 @@ public class RuleBasedReceiptParser {
     }
 
     private BigDecimal parseBonusBalance(List<String> lines) {
-        for (String line : lines) {
-            String upper = line.toUpperCase(Locale.ROOT);
-            if (upper.contains("AKTUELLES BONUS-GUTHABEN")) {
-                return extractAmount(line);
-            }
-        }
-
-        for (String line : lines) {
-            String upper = line.toUpperCase(Locale.ROOT);
-            if (upper.contains("DIESER PUNKTESTAND ENTSPRICHT")) {
-                return extractAmount(line);
-            }
+        BigDecimal earnedReweBonus = parseEarnedReweBonus(lines);
+        if (earnedReweBonus != null) {
+            return earnedReweBonus;
         }
 
         for (String line : lines) {
             String upper = line.toUpperCase(Locale.ROOT);
             if (!upper.contains("GUTHABEN")
+                    || !upper.contains("GESAMMELT")
+                    || upper.contains("AKTUELLES")
                     || upper.contains("EINGESETZTES")
-                    || upper.contains("GESAMMELT")) {
+                    || upper.contains("PUNKTESTAND")) {
                 continue;
             }
             BigDecimal amount = extractAmount(line);
@@ -193,6 +186,32 @@ public class RuleBasedReceiptParser {
             }
         }
         return null;
+    }
+
+    private BigDecimal parseEarnedReweBonus(List<String> lines) {
+        if (!hasReweBonusContext(lines)) {
+            return null;
+        }
+
+        for (String line : lines) {
+            String upper = line.toUpperCase(Locale.ROOT);
+            if (!upper.contains("MIT DIESEM EINKAUF HAST DU")) {
+                continue;
+            }
+            BigDecimal amount = extractAmount(line);
+            if (amount != null) {
+                return amount;
+            }
+        }
+        return null;
+    }
+
+    private boolean hasReweBonusContext(List<String> lines) {
+        return lines.stream()
+                .map(line -> line.toUpperCase(Locale.ROOT))
+                .anyMatch(upper -> upper.contains("REWE BONUS")
+                        || upper.contains("BONUS-GUTHABEN GESAMMELT")
+                        || upper.contains("BONUS-VORTEILE"));
     }
 
     private BigDecimal parseBonusPoints(List<String> lines) {

@@ -5,7 +5,7 @@
   "storeBranch": "Hauptstrasse 5",
   "totalAmount": 5.85,
   "currency": "EUR",
-  "bonusBalance": 63.13,
+  "bonusBalance": null,
   "bonusPoints": 20,
   "bonusType": "Payback",
   "items": [

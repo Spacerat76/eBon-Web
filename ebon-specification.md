@@ -168,8 +168,8 @@ Die Datei `.env.example` dokumentiert alle erforderlichen Umgebungsvariablen mit
 | `total_amount` | NUMERIC(10,2) | NULL | Gesamtbetrag laut Bon |
 | `currency` | CHAR(3) | NOT NULL, DEFAULT 'EUR' | Währung (ISO 4217) |
 | `raw_text` | TEXT | NOT NULL | Roher Text des Dokuments aus Paperless-NGX |
-| `bonus_balance` | NUMERIC(10,2) | NULL | Bonusguthaben / Punkte zum Bon-Zeitpunkt (geparst) |
-| `bonus_points` | NUMERIC(10,2) | NULL | Payback-Punkte o.Ä. aus dem Bon (geparst) |
+| `bonus_balance` | NUMERIC(10,2) | NULL | In diesem Einkauf neu gesammeltes Bonusguthaben, nicht der aktuelle Kontostand (geparst) |
+| `bonus_points` | NUMERIC(10,2) | NULL | In diesem Einkauf neu gesammelte Payback-Punkte o.Ä. aus dem Bon (geparst) |
 | `bonus_type` | VARCHAR(64) | NULL | Art des Bonusprogramms (z.B. „Payback", „DeutschlandCard", „Bonusclub") |
 | `parse_status` | VARCHAR(32) | NOT NULL | Enum: `PENDING`, `PARSED`, `PARSE_ERROR`, `MANUALLY_EDITED` |
 | `parse_error_message` | TEXT | NULL | Fehlermeldung bei `PARSE_ERROR` |
@@ -397,8 +397,8 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 - **F-02.3c:** Die Rule-Adaptation speichert die neuen Muster persistent in der Tabelle `parse_rule` (s. Abschnitt 4.1.7), sodass sie nach einem Neustart erhalten bleiben.
 - **F-02.3d:** Der KI-Fallback für Parsing muss ein festes JSON-Schema liefern. Antworten außerhalb des Schemas werden verworfen und führen zu `PARSE_ERROR`, außer ein gültiger Teilparse kann nach F-02.5 gespeichert werden.
 - **F-02.4:** Der Parser extrahiert aus dem `raw_text` zusätzlich folgende Bonus-Felder:
-  - `bonus_balance`: Aktuelles Bonusguthaben zum Bon-Zeitpunkt
-  - `bonus_points`: Gesammelte Payback-Punkte oder ähnliche Punktesysteme (mit Typ-Angabe)
+  - `bonus_balance`: In diesem Einkauf neu gesammeltes Bonusguthaben, nicht das aktuelle Bonuskonto-/Punkteguthaben
+  - `bonus_points`: In diesem Einkauf neu gesammelte Payback-Punkte oder ähnliche Punktesysteme (mit Typ-Angabe)
   - `bonus_type`: Art des Bonusprogramms (z.B. „Payback", „DeutschlandCard", „Bonusclub")
 - **F-02.5:** Kann ein Bon nicht vollständig geparst werden, wird `parse_status = PARSE_ERROR` gesetzt und `parse_error_message` befüllt. Teilweise geparste Daten werden dennoch gespeichert.
 - **F-02.6:** Ein erfolgreich geparstes Dokument erhält `parse_status = PARSED`. **Definition „PARSED":** Ein Bon gilt als erfolgreich geparst (PARSED), wenn mindestens `total_amount`, `receipt_date` und `store_name` extrahiert wurden UND mindestens eine `receipt_item` mit gültigem `total_price` vorliegt. Fehlen einzelne optionale Felder (z.B. `receipt_time`, `store_branch`), gilt der Bon dennoch als PARSED.
@@ -413,6 +413,8 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 - `receipt_item.position_index` ist pro Bon fortlaufend und eindeutig.
 
 **JSON-Schema für KI-Parsing-Fallback (semantisch):**
+
+`bonusBalance` steht für neu in diesem Einkauf gesammeltes Bonusguthaben, nicht für den aktuellen Konto-/Punktestand des Bonusprogramms.
 
 ```json
 {
@@ -475,7 +477,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
   | Ausgaben nach Geschäft | Summe und Anzahl Besuche pro Geschäft |
   | Kombinierter Report | Kategorie + Zeitraum oder Geschäft + Zeitraum |
   | Top-Artikel | Häufigste/teuerste Positionen im Zeitraum |
-  | Bonusübersicht | Bonusguthaben und Punkte aggregiert nach Typ und Geschäft |
+  | Bonusübersicht | Neu gesammeltes Bonusguthaben und neu gesammelte Punkte aggregiert nach Typ und Geschäft |
 
 - **F-05.3:** Alle Reports unterstützen Filterung nach: Zeitraum (von/bis), Geschäft, Kategorie.
 - **F-05.4:** Report-Daten werden als JSON über die API geliefert und im Frontend als Balkendiagramm, Kreisdiagramm oder Tabelle dargestellt.
@@ -1051,6 +1053,8 @@ Validierung:
 - `storeName`: maximal 255 Zeichen
 - `totalAmount`: `>= 0`, maximal 2 Nachkommastellen
 - `currency`: ISO-4217-Code, Standard `EUR`
+- `bonusBalance`: neu in diesem Einkauf gesammeltes Bonusguthaben oder `null`, nicht aktueller Bonuskonto-/Punktestand
+- `bonusPoints`: neu in diesem Einkauf gesammelte Punkte oder `null`
 
 ### ReceiptItemDTO
 
@@ -1142,9 +1146,9 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 
 #### 9.2.1 Dashboard
 
-- KPI-Cards: Ausgaben aktueller Monat, Delta zu Vormonat (Pfeil + Prozent), Anzahl Bons, unkategorisierte Positionen, Bonus-Saldo.
+- KPI-Cards: Ausgaben aktueller Monat, Delta zu Vormonat (Pfeil + Prozent), Anzahl Bons, unkategorisierte Positionen, neu gesammeltes Bonusguthaben.
 - Tortendiagramm: Ausgaben nach Kategorie (aktueller Monat).
-- Bonus-Karte: Aktuelle Punkte/Guthaben nach Bonustyp.
+- Bonus-Karte: Neu gesammelte Punkte/Guthaben nach Bonustyp.
 - Tabelle: Letzte 5 Bons mit Datum, Geschäft, Betrag, Status-Badge, Bonus-Info.
 - Sync-Status-Banner (grün/gelb/rot) inkl. TAG_REMOVED-Zähler.
 
@@ -1158,7 +1162,7 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 
 #### 9.2.3 Bon-Detailansicht
 
-- Header: Geschäft, Datum/Uhrzeit, Gesamtbetrag, Bonus-Info (Typ + Guthaben/Punkte), Parse-Status-Badge, Buttons „Bearbeiten" / „Erneut parsen" / „Löschen".
+- Header: Geschäft, Datum/Uhrzeit, Gesamtbetrag, Bonus-Info (Typ + in diesem Einkauf gesammeltes Guthaben/Punkte), Parse-Status-Badge, Buttons „Bearbeiten" / „Erneut parsen" / „Löschen".
 - Positionstabelle: Beschreibung, Menge, Einheit, Einzelpreis, Gesamtpreis, Rabatt, Kategorie (Chip mit Farbe), Quelle-Badge.
 - Im Editiermodus: Inline-Editierung aller Felder, Dropdown für Kategorie, Buttons „Position löschen" / „Position hinzufügen".
 - Rohtextansicht (ausklappbar): `raw_text` in Monospace-Font.
