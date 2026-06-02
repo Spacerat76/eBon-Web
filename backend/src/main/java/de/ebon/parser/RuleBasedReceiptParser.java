@@ -33,6 +33,9 @@ public class RuleBasedReceiptParser {
     private static final Pattern DM_ITEM_LINE = Pattern.compile(
             "^(?:(?<quantity>\\d+)x\\s+(?<unitPrice>\\d+(?:,\\d+)?)\\s+)?(?<description>.+?)\\s+(?<total>-?\\d{1,3}(?:\\.\\d{3})*,\\d{2}|-?\\d+,\\d{2})\\s+(?<taxCode>§?\\d)\\s*$",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern PHARMACY_ITEM_LINE = Pattern.compile(
+            "^(?<description>.+?)\\s+1x\\s+(?<unitPrice>\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d+,\\d{2})\\s+(?<total>\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d+,\\d{2})\\s+[A-Z]\\s*$",
+            Pattern.CASE_INSENSITIVE);
 
     private final ReceiptParseValidator validator = new ReceiptParseValidator();
 
@@ -133,23 +136,25 @@ public class RuleBasedReceiptParser {
     }
 
     private BigDecimal parseTotal(List<String> lines) {
-        for (String line : lines) {
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
             if (!isFinalPayableLine(line)) {
                 continue;
             }
-            Matcher matcher = AMOUNT_AT_END.matcher(line);
-            if (matcher.find()) {
-                return GermanNumberParser.parse(matcher.group("amount"));
+            BigDecimal amount = amountOnLineOrFollowing(lines, i);
+            if (amount != null) {
+                return amount.add(parseGiftCardPaymentTotal(lines));
             }
         }
 
-        for (String line : lines) {
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
             if (!isPrimaryTotalLine(line)) {
                 continue;
             }
-            Matcher matcher = AMOUNT_AT_END.matcher(line);
-            if (matcher.find()) {
-                return GermanNumberParser.parse(matcher.group("amount"));
+            BigDecimal amount = amountOnLineOrFollowing(lines, i);
+            if (amount != null) {
+                return amount;
             }
         }
 
@@ -163,6 +168,40 @@ public class RuleBasedReceiptParser {
             }
         }
         return null;
+    }
+
+    private BigDecimal amountOnLineOrFollowing(List<String> lines, int lineIndex) {
+        Matcher matcher = AMOUNT_AT_END.matcher(lines.get(lineIndex));
+        if (matcher.find()) {
+            return GermanNumberParser.parse(matcher.group("amount"));
+        }
+
+        for (int nextIndex = lineIndex + 1; nextIndex < lines.size() && nextIndex <= lineIndex + 2; nextIndex++) {
+            String nextLine = lines.get(nextIndex);
+            if (nextLine.isBlank()) {
+                continue;
+            }
+            Matcher nextMatcher = AMOUNT_AT_END.matcher(nextLine);
+            if (nextMatcher.find()) {
+                return GermanNumberParser.parse(nextMatcher.group("amount"));
+            }
+            break;
+        }
+        return null;
+    }
+
+    private BigDecimal parseGiftCardPaymentTotal(List<String> lines) {
+        BigDecimal total = BigDecimal.ZERO;
+        for (String line : lines) {
+            if (!isGiftCardPaymentLine(line)) {
+                continue;
+            }
+            BigDecimal amount = extractAmount(line);
+            if (amount != null) {
+                total = total.add(amount.abs());
+            }
+        }
+        return total;
     }
 
     private BigDecimal parseBonusBalance(List<String> lines) {
@@ -285,6 +324,23 @@ public class RuleBasedReceiptParser {
                 continue;
             }
 
+            QuantityDetails pipeQuantityDetails = parsePipeQuantityDetailLine(line);
+            if (pipeQuantityDetails != null) {
+                if (!items.isEmpty() && pendingDescriptionLines.isEmpty()) {
+                    updateLastItemWithQuantityDetails(items, pipeQuantityDetails);
+                } else {
+                    pendingDescriptionLines.add(line);
+                }
+                continue;
+            }
+
+            ParsedReceiptItem pipeTableItem = parsePipeTableItemLine(line, pendingDescriptionLines, items.size());
+            if (pipeTableItem != null) {
+                pendingDescriptionLines.clear();
+                items.add(pipeTableItem);
+                continue;
+            }
+
             QuantityDetails quantityDetails = parseQuantityDetailLine(line);
             if (quantityDetails != null) {
                 if (!items.isEmpty() && pendingDescriptionLines.isEmpty()) {
@@ -311,7 +367,16 @@ public class RuleBasedReceiptParser {
                 pendingDescriptionLines.clear();
 
                 String description = cleanupDescription(String.join(" ", descriptionLines));
-                if (description.isBlank()) {
+                if (description.isBlank() || isTotalLine(description) || isPaymentDetailLine(description)) {
+                    continue;
+                }
+
+                ParsedReceiptItem pharmacyItem = parsePharmacyItemLine(
+                        description,
+                        totalPrice,
+                        items.size());
+                if (pharmacyItem != null) {
+                    items.add(pharmacyItem);
                     continue;
                 }
 
@@ -345,6 +410,92 @@ public class RuleBasedReceiptParser {
         }
 
         return items;
+    }
+
+    private QuantityDetails parsePipeQuantityDetailLine(String line) {
+        if (!line.trim().startsWith("|") || isPipeTableNoiseLine(line)) {
+            return null;
+        }
+
+        List<String> cells = pipeTableCells(line);
+        if (cells.size() < 2) {
+            return null;
+        }
+
+        String candidate = cells.get(0) + " " + cells.get(1);
+        return parseQuantityDetailLine(candidate);
+    }
+
+    private ParsedReceiptItem parsePipeTableItemLine(
+            String line,
+            List<String> pendingDescriptionLines,
+            int positionIndex) {
+        if (!line.trim().startsWith("|") || isPipeTableNoiseLine(line) || isTaxTableLine(line)) {
+            return null;
+        }
+
+        List<String> cells = pipeTableCells(line);
+        if (cells.isEmpty()) {
+            return null;
+        }
+
+        int amountCellIndex = -1;
+        BigDecimal totalPrice = null;
+        for (int i = cells.size() - 1; i >= 0; i--) {
+            Matcher matcher = AMOUNT_AT_END.matcher(cells.get(i));
+            if (matcher.find()) {
+                amountCellIndex = i;
+                totalPrice = GermanNumberParser.parse(matcher.group("amount"));
+                break;
+            }
+        }
+        if (totalPrice == null) {
+            return null;
+        }
+
+        List<String> descriptionParts = new ArrayList<>(pendingDescriptionLines);
+        for (int i = 0; i < amountCellIndex; i++) {
+            String cell = cells.get(i);
+            if (isQuantityOnlyCell(cell) || isAmountOnlyCell(cell) || isPznLine(cell)) {
+                continue;
+            }
+            descriptionParts.add(cell);
+        }
+
+        String description = cleanupDescription(String.join(" ", descriptionParts));
+        if (description.isBlank() || isTotalLine(description) || isPaymentDetailLine(description)) {
+            return null;
+        }
+
+        BigDecimal discountAmount = totalPrice.signum() < 0 || description.toUpperCase(Locale.ROOT).contains("RABATT")
+                ? totalPrice.abs()
+                : null;
+        return new ParsedReceiptItem(
+                positionIndex,
+                description,
+                null,
+                null,
+                null,
+                totalPrice,
+                discountAmount);
+    }
+
+    private ParsedReceiptItem parsePharmacyItemLine(String description, BigDecimal totalPrice, int positionIndex) {
+        Matcher matcher = PHARMACY_ITEM_LINE.matcher(description);
+        if (!matcher.find()) {
+            return null;
+        }
+
+        BigDecimal unitPrice = GermanNumberParser.parse(matcher.group("unitPrice"));
+        String itemDescription = cleanupDescription(matcher.group("description"));
+        return new ParsedReceiptItem(
+                positionIndex,
+                itemDescription,
+                BigDecimal.ONE,
+                "Stk",
+                unitPrice,
+                totalPrice,
+                null);
     }
 
     private ParsedReceiptItem parseDmItemLine(String line, int positionIndex) {
@@ -406,9 +557,10 @@ public class RuleBasedReceiptParser {
     }
 
     private String cleanupDescription(String description) {
-        String cleaned = QUANTITY_PRICE.matcher(description).replaceAll(" ");
+        String cleaned = QUANTITY_PRICE.matcher(description.replace('|', ' ')).replaceAll(" ");
         return cleaned
                 .replaceAll("\\bEUR/\\w+\\b", " ")
+                .replaceAll("\\*+", " ")
                 .replaceAll("\\s+", " ")
                 .replaceAll("\\s+[*A-Z]$", "")
                 .trim();
@@ -433,6 +585,8 @@ public class RuleBasedReceiptParser {
                 || upper.contains("GEG.")
                 || upper.contains("RUECKGELD")
                 || upper.contains("RÜCKGELD")
+                || upper.contains("AUSZAHLUNG")
+                || upper.contains("CASHBACK")
                 || upper.contains("BAR")
                 || upper.contains("KARTE")
                 || upper.contains("EC-CASH")
@@ -444,6 +598,7 @@ public class RuleBasedReceiptParser {
                 || upper.startsWith("EUR ")
                 || upper.startsWith("BETRAG EUR")
                 || upper.startsWith("WERT:")
+                || upper.startsWith("NEUER WERT")
                 || upper.contains("VORTEIL")
                 || upper.contains("GUTHABEN");
     }
@@ -455,9 +610,17 @@ public class RuleBasedReceiptParser {
                 || upper.contains("BON")
                 || upper.contains("BELEG")
                 || upper.contains("TEL.")
+                || upper.startsWith("FAX")
                 || upper.contains("UID")
                 || upper.contains("WWW.")
                 || upper.equals("EUR")
+                || upper.contains("ARTIKELPREIS")
+                || upper.startsWith("PRIVATREZEPT")
+                || upper.startsWith("POSITIONEN:")
+                || upper.startsWith("PZN:")
+                || isPznLine(line)
+                || upper.contains("ACHTUNG KUHL")
+                || upper.contains("ACHTUNG KÜHL")
                 || isTaxMarkerLine(line)
                 || upper.contains("FISKAL")
                 || upper.contains("TSE")
@@ -468,12 +631,14 @@ public class RuleBasedReceiptParser {
                 || upper.contains("HANDEINGABE")
                 || upper.contains("KARTENZAHLUNG")
                 || upper.contains("K-U-N-D-E-N-B-E-L-E-G")
+                || upper.contains("ZAHLUNG ERFOLGT")
                 || upper.matches("[-=* ]{5,}")
                 || isPostalAddressLine(line)
                 || upper.contains("PAYBACK")
                 || upper.contains("DEUTSCHLANDCARD")
                 || isTaxTableLine(line)
                 || isBranchLine(line)
+                || isPipeTableNoiseLine(line)
                 || isKnownStoreLine(line);
     }
 
@@ -510,6 +675,28 @@ public class RuleBasedReceiptParser {
                 || upper.contains("ENDSUMME");
     }
 
+    private boolean isPaymentDetailLine(String line) {
+        String upper = line.toUpperCase(Locale.ROOT);
+        return isGiftCardPaymentLine(line)
+                || upper.contains("AUSZAHLUNG")
+                || upper.contains("CASHBACK")
+                || upper.contains("RUECKGELD")
+                || upper.contains("RÜCKGELD")
+                || upper.contains("KARTENZAHLUNG")
+                || upper.contains("EC-KARTE")
+                || upper.contains("EC-CASH")
+                || upper.contains("GIROCARD")
+                || upper.startsWith("NEUER WERT");
+    }
+
+    private boolean isGiftCardPaymentLine(String line) {
+        String upper = line.toUpperCase(Locale.ROOT);
+        return upper.contains("GESCHENKKARTE")
+                || upper.contains("GESCHENK-KARTE")
+                || upper.contains("GUTSCHEINKARTE")
+                || upper.contains("GUTSCHEIN-KARTE");
+    }
+
     private boolean isPrimaryTotalLine(String line) {
         String upper = line.toUpperCase(Locale.ROOT);
         return upper.startsWith("SUMME EUR")
@@ -526,7 +713,9 @@ public class RuleBasedReceiptParser {
     }
 
     private boolean isTaxTableLine(String line) {
-        return line.matches("^\\s*(?:\\d+|[A-Z])=\\s*\\d{1,2},\\d{1,2}%.*")
+        String trimmed = line.trim();
+        return line.matches("^\\s*(?:\\d+|[A-Z])\\s*=?\\s*\\d{1,2},\\d{1,2}%.*")
+                || trimmed.matches("^\\|\\s*[A-Z]\\s*=?\\s*\\d{1,2},\\d{1,2}%.*")
                 || line.toUpperCase(Locale.ROOT).startsWith("GESAMTBETRAG ");
     }
 
@@ -541,6 +730,47 @@ public class RuleBasedReceiptParser {
 
     private boolean isPostalAddressLine(String line) {
         return line.matches("^\\s*\\d{5}\\s+.*");
+    }
+
+    private boolean isPipeTableNoiseLine(String line) {
+        if (!line.trim().startsWith("|")) {
+            return false;
+        }
+        List<String> cells = pipeTableCells(line);
+        if (cells.isEmpty()) {
+            return true;
+        }
+        String joined = String.join(" ", cells).toUpperCase(Locale.ROOT);
+        return joined.matches("[- ]+")
+                || joined.equals("EUR")
+                || (joined.contains("ARTIKEL") && (joined.contains("PREIS") || joined.contains("ZUZAHLUNG")))
+                || joined.contains("MWST-SATZ")
+                || joined.contains("NETTO")
+                || joined.contains("BRUTTO");
+    }
+
+    private List<String> pipeTableCells(String line) {
+        String[] rawCells = line.split("\\|");
+        List<String> cells = new ArrayList<>();
+        for (String rawCell : rawCells) {
+            String cell = rawCell.trim();
+            if (!cell.isBlank()) {
+                cells.add(cell);
+            }
+        }
+        return cells;
+    }
+
+    private boolean isQuantityOnlyCell(String value) {
+        return value.matches("\\d+");
+    }
+
+    private boolean isAmountOnlyCell(String value) {
+        return AMOUNT_AT_END.matcher(value).matches();
+    }
+
+    private boolean isPznLine(String line) {
+        return line.trim().matches("(?:PZN:\\s*)?\\d{8}");
     }
 
     private record QuantityDetails(BigDecimal quantity, String unit, BigDecimal unitPrice) {

@@ -24,7 +24,7 @@ class PaperlessRestClientTests {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         PaperlessRestClient client = new PaperlessRestClient(properties(), builder);
 
-        server.expect(requestTo("http://paperless/api/documents/?tags__name=eBON&page_size=100&ordering=-created"))
+        server.expect(requestTo("http://paperless/api/documents/?tags__name__iexact=eBON&page_size=100&ordering=-created"))
                 .andExpect(header(HttpHeaders.AUTHORIZATION, "Token test-paperless-token"))
                 .andRespond(withSuccess("""
                         {
@@ -70,7 +70,7 @@ class PaperlessRestClientTests {
 
         server.expect(
                         ExpectedCount.times(3),
-                        requestTo("http://paperless/api/documents/?tags__name=eBON&page_size=100&ordering=-created"))
+                        requestTo("http://paperless/api/documents/?tags__name__iexact=eBON&page_size=100&ordering=-created"))
                 .andRespond(withServerError());
 
         assertThatThrownBy(client::fetchDocumentsByTag)
@@ -84,7 +84,7 @@ class PaperlessRestClientTests {
         MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
         PaperlessRestClient client = new PaperlessRestClient(properties(), builder);
 
-        server.expect(requestTo("http://paperless/api/documents/?tags__name=eBON&page_size=100&ordering=-created"))
+        server.expect(requestTo("http://paperless/api/documents/?tags__name__iexact=eBON&page_size=100&ordering=-created"))
                 .andRespond(withSuccess("""
                         {
                           "next": null,

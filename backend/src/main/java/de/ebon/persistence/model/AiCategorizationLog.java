@@ -55,6 +55,21 @@ public class AiCategorizationLog {
         this.modelUsed = modelUsed;
     }
 
+    public AiCategorizationLog(
+            ReceiptItem receiptItem,
+            String promptSent,
+            String responseReceived,
+            Category assignedCategory,
+            BigDecimal aiConfidence,
+            String modelUsed) {
+        this.receiptItem = receiptItem;
+        this.promptSent = promptSent;
+        this.responseReceived = responseReceived;
+        this.assignedCategory = assignedCategory;
+        this.aiConfidence = aiConfidence;
+        this.modelUsed = modelUsed;
+    }
+
     @PrePersist
     void prePersist() {
         if (createdAt == null) {
@@ -64,5 +79,21 @@ public class AiCategorizationLog {
 
     public Long getId() {
         return id;
+    }
+
+    public ReceiptItem getReceiptItem() {
+        return receiptItem;
+    }
+
+    public Category getAssignedCategory() {
+        return assignedCategory;
+    }
+
+    public BigDecimal getAiConfidence() {
+        return aiConfidence;
+    }
+
+    public String getModelUsed() {
+        return modelUsed;
     }
 }

@@ -45,7 +45,8 @@ class PaperlessRestClient implements PaperlessClient {
     }
 
     private String firstPagePath() {
-        return "/api/documents/?tags__name=" + UriUtils.encodeQueryParam(properties.getEbonTag(), StandardCharsets.UTF_8)
+        return "/api/documents/?tags__name__iexact="
+                + UriUtils.encodeQueryParam(properties.getEbonTag(), StandardCharsets.UTF_8)
                 + "&page_size=" + PAGE_SIZE
                 + "&ordering=-created";
     }

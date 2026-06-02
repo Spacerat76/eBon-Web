@@ -80,11 +80,22 @@ public class ReceiptItem {
     }
 
     public void assignCategory(Category category, CategorySource source) {
+        if (category == null && source != null) {
+            throw new IllegalArgumentException("categorySource darf ohne Kategorie nicht gesetzt werden.");
+        }
+        if (category != null && source == null) {
+            throw new IllegalArgumentException("categorySource muss mit Kategorie gesetzt werden.");
+        }
         this.category = category;
         this.categorySource = source;
         if (source == CategorySource.MANUAL) {
             manuallyEdited = true;
         }
+    }
+
+    public void clearCategory() {
+        this.category = null;
+        this.categorySource = null;
     }
 
     public void updateParsedValues(
@@ -104,6 +115,10 @@ public class ReceiptItem {
 
     public Long getId() {
         return id;
+    }
+
+    public Receipt getReceipt() {
+        return receipt;
     }
 
     public int getPositionIndex() {
@@ -132,5 +147,17 @@ public class ReceiptItem {
 
     public BigDecimal getDiscountAmount() {
         return discountAmount;
+    }
+
+    public Category getCategory() {
+        return category;
+    }
+
+    public CategorySource getCategorySource() {
+        return categorySource;
+    }
+
+    public boolean isManuallyEdited() {
+        return manuallyEdited;
     }
 }

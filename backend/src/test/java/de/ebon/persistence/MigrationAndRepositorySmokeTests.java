@@ -42,10 +42,22 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         String receiptItemFtsIndex = jdbcTemplate.queryForObject(
                 "select to_regclass('idx_receipt_item_description_fts')::text",
                 String.class);
+        String categorySourceConstraint = jdbcTemplate.queryForObject(
+                """
+                        select conname
+                        from pg_constraint
+                        where conname = 'chk_receipt_item_category_source_requires_category'
+                        """,
+                String.class);
+        Integer categorizationRules = jdbcTemplate.queryForObject(
+                "select count(*) from categorization_rule",
+                Integer.class);
 
-        assertThat(successfulMigrations).isGreaterThanOrEqualTo(2);
+        assertThat(successfulMigrations).isGreaterThanOrEqualTo(4);
         assertThat(receiptItemFtsIndex).isEqualTo("idx_receipt_item_description_fts");
-        assertThat(categoryRepository.findByActiveTrueOrderBySortOrderAscNameAsc()).hasSizeGreaterThanOrEqualTo(8);
+        assertThat(categorySourceConstraint).isEqualTo("chk_receipt_item_category_source_requires_category");
+        assertThat(categoryRepository.findByActiveTrueOrderBySortOrderAscNameAsc()).hasSizeGreaterThanOrEqualTo(20);
+        assertThat(categorizationRules).isGreaterThan(0);
         assertThat(appSettingRepository.findById("sync_interval_minutes")).isPresent();
         assertThat(appSettingRepository.findById("ai_model")).isPresent();
     }

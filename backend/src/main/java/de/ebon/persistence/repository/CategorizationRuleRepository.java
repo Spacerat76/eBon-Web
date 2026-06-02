@@ -7,4 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface CategorizationRuleRepository extends JpaRepository<CategorizationRule, Long> {
 
     List<CategorizationRule> findByActiveTrueOrderByPriorityAscIdAsc();
+
+    boolean existsByCategory_Id(Long categoryId);
 }

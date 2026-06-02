@@ -68,4 +68,32 @@ public class CategorizationRule {
     public Long getId() {
         return id;
     }
+
+    public Category getCategory() {
+        return category;
+    }
+
+    public RuleMatchField getMatchField() {
+        return matchField;
+    }
+
+    public RuleMatchType getMatchType() {
+        return matchType;
+    }
+
+    public String getMatchValue() {
+        return matchValue;
+    }
+
+    public int getPriority() {
+        return priority;
+    }
+
+    public boolean isActive() {
+        return active;
+    }
+
+    public void deactivate() {
+        active = false;
+    }
 }

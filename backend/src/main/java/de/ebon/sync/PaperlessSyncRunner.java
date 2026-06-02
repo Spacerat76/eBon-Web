@@ -1,5 +1,6 @@
 package de.ebon.sync;
 
+import de.ebon.categorization.CategorizationService;
 import de.ebon.paperless.PaperlessClient;
 import de.ebon.paperless.PaperlessClientException;
 import de.ebon.paperless.PaperlessDocument;
@@ -32,6 +33,7 @@ class PaperlessSyncRunner {
     private final PaperlessClient paperlessClient;
     private final ReceiptParserService receiptParserService;
     private final ReceiptParseApplier receiptParseApplier;
+    private final CategorizationService categorizationService;
     private final ReceiptRepository receiptRepository;
     private final SyncLogRepository syncLogRepository;
 
@@ -39,11 +41,13 @@ class PaperlessSyncRunner {
             PaperlessClient paperlessClient,
             ReceiptParserService receiptParserService,
             ReceiptParseApplier receiptParseApplier,
+            CategorizationService categorizationService,
             ReceiptRepository receiptRepository,
             SyncLogRepository syncLogRepository) {
         this.paperlessClient = paperlessClient;
         this.receiptParserService = receiptParserService;
         this.receiptParseApplier = receiptParseApplier;
+        this.categorizationService = categorizationService;
         this.receiptRepository = receiptRepository;
         this.syncLogRepository = syncLogRepository;
     }
@@ -85,7 +89,8 @@ class PaperlessSyncRunner {
             Receipt receipt = new Receipt(document.id(), document.content() == null ? "" : document.content());
             ReceiptParseResult parseResult = receiptParserService.parse(receipt.getRawText());
             receiptParseApplier.apply(receipt, parseResult);
-            Receipt savedReceipt = receiptRepository.save(receipt);
+            Receipt savedReceipt = receiptRepository.saveAndFlush(receipt);
+            categorizationService.categorizeReceipt(savedReceipt.getId());
             syncLog.addEntry(new SyncLogEntry(
                     document.id(),
                     SyncLogEntryAction.IMPORTED,

@@ -47,6 +47,10 @@ public class Category {
         active = false;
     }
 
+    public void activate() {
+        active = true;
+    }
+
     public Long getId() {
         return id;
     }
@@ -55,7 +59,19 @@ public class Category {
         return name;
     }
 
+    public String getColorHex() {
+        return colorHex;
+    }
+
+    public String getIcon() {
+        return icon;
+    }
+
     public boolean isActive() {
         return active;
+    }
+
+    public int getSortOrder() {
+        return sortOrder;
     }
 }

@@ -174,6 +174,14 @@ public class Receipt {
         return rawText;
     }
 
+    public String getStoreName() {
+        return storeName;
+    }
+
+    public List<ReceiptItem> getItems() {
+        return List.copyOf(items);
+    }
+
     public String getParseErrorMessage() {
         return parseErrorMessage;
     }
