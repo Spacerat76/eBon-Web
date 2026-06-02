@@ -11,6 +11,7 @@ Ziel:
 - Verbindungstest fuer Paperless und OpenRouter implementieren
 - Secret-Masking in der UI korrekt behandeln
 - Kategorien- und Regelverwaltung UI vervollstaendigen
+- Suche/Filter muessen "Ohne Kategorie" fuer Items mit category_id = NULL und category_source = NULL unterstuetzen
 - Backend-Test-Hardening vorbereiten:
   - Mockito explizit als Java-Agent konfigurieren, damit keine Self-Attaching-Warnung entsteht
   - JaCoCo integrieren und Coverage-Regeln aus ebon-specification.md F-12 beruecksichtigen
@@ -23,6 +24,7 @@ Bitte:
 - UI auf Deutsch.
 - ******** darf beim Speichern nie als Secret persistiert werden.
 - Inaktive Kategorien standardmaessig ausblenden, aber bei includeInactive anzeigen.
+- Regelverwaltung/Bulk-Apply darf manuelle Kategorien nicht stillschweigend ueberschreiben und soll unkategorisierte Items gezielt adressieren koennen.
 
 Pruefkommandos:
 - cd frontend && npm run build

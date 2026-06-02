@@ -9,6 +9,7 @@ Ziel:
 - Rohtextansicht ausklappbar anzeigen
 - Editiermodus fuer Bon-Metadaten und Positionen implementieren
 - Kategorie-Badges und Parse-Status-Badges anzeigen
+- Unkategorisierte Positionen mit category_id = NULL und category_source = NULL als "Ohne Kategorie" anzeigen und bearbeitbar machen
 - Re-Parse-Button mit Konflikthinweis fuer manuelle Aenderungen vorbereiten
 - Loeschen/Soft-Delete Verhalten im UI korrekt abbilden
 
@@ -19,6 +20,7 @@ Bitte:
 - UI auf Deutsch.
 - Keine Secrets anzeigen.
 - Manuell editierte Positionen duerfen nicht stillschweigend ueberschrieben werden.
+- categorySource-Badge nur anzeigen, wenn eine Kategorie gesetzt ist; fuer "Ohne Kategorie" kein RULE/AI/MANUAL-Badge vortaeuschen.
 
 Pruefkommandos:
 - cd frontend && npm run build
@@ -34,4 +36,3 @@ Am Ende bitte zusammenfassen:
 - wie ich Bons lokal pruefe
 - offene Punkte
 ```
-

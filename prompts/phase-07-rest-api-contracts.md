@@ -11,6 +11,7 @@ Ziel:
 - Einheitliches Fehlerformat implementieren
 - OpenAPI-Dokumentation aktualisieren
 - Controller- oder Contract-Tests schreiben
+- ReceiptItemDTO/Requests validieren: categorySource = AI/RULE/MANUAL nur mit gesetzter categoryId; ohne Kategorie muessen categoryId und categorySource null bleiben
 
 Bitte:
 - Lies zuerst AGENTS.md.
@@ -20,6 +21,7 @@ Bitte:
 - Alle Endpunkte ausser GET /api/health schuetzen.
 - includeDeleted nur dort unterstuetzen, wo spezifiziert.
 - Secrets in SettingsDTO maskieren; ******** nie persistieren.
+- "Ohne Kategorie" als expliziten Zustand in DTOs/OpenAPI abbilden, damit die UI diese Positionen spaeter bearbeiten kann.
 
 Pruefkommandos:
 - cd backend && mvn verify
@@ -35,4 +37,3 @@ Am Ende bitte zusammenfassen:
 - wie ich Swagger/OpenAPI pruefe
 - offene Punkte
 ```
-

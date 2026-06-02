@@ -191,7 +191,7 @@ Die Datei `.env.example` dokumentiert alle erforderlichen Umgebungsvariablen mit
 | `total_price` | NUMERIC(10,2) | NOT NULL | Gesamtpreis der Position |
 | `discount_amount` | NUMERIC(10,2) | NULL | Rabattbetrag (sofern erkennbar) |
 | `category_id` | BIGINT | FK → category.id, NULL | Zugewiesene Kategorie |
-| `category_source` | VARCHAR(32) | NULL | Enum: `RULE`, `AI`, `MANUAL` |
+| `category_source` | VARCHAR(32) | NULL | Enum: `RULE`, `AI`, `MANUAL`; nur gesetzt, wenn `category_id` gesetzt ist |
 | `is_manually_edited` | BOOLEAN | NOT NULL, DEFAULT FALSE | Wurde die Position manuell bearbeitet |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update |
 
@@ -364,7 +364,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 
 - Die Antwort wird aus `choices[0].message.content` extrahiert.
 - Der Text wird bereinigt (Trim, Lowercase-Vergleich) und mit bekannten Kategorienamen abgeglichen.
-- Bei keinem Treffer: `category_id = NULL`, `category_source = AI`, Logzeile als Warnung.
+- Bei keinem Treffer: `category_id = NULL`, `category_source = NULL`, Logzeile als Warnung.
 - Es werden maximal **3 Retry-Versuche** bei HTTP-5xx-Fehlern unternommen (exponential backoff: 1s, 2s, 4s).
 
 ---
@@ -446,12 +446,13 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 - **F-03.1:** Nach dem Parsing wird jede `receipt_item` kategorisiert.
 - **F-03.2:** Die Kategorisierung erfolgt zweistufig:
   1. **Regelbasiert:** Alle aktiven `categorization_rule`-Einträge werden in Prioritätsreihenfolge gegen `description` und/oder `store_name` geprüft. Bei Treffer: Zuweisung der Kategorie, `category_source = RULE`.
-  2. **KI-Fallback:** Gibt es keinen Regeltr­effer, wird ein KI-Call an OpenRouter.ai gesendet. Das Ergebnis wird zugewiesen, `category_source = AI`. Der Call wird in `ai_categorization_log` protokolliert.
-- **F-03.3:** KI-Calls für die Kategorisierung werden bevorzugt **gebündelt**: Pro Bon wird ein einziger KI-Call mit allen unkategorisierten Positionen des Bons abgesetzt. Wenn die Antwort nicht valide ist oder das Modell keine Batch-Antwort liefert, wird auf sequenzielle Calls mit Rate-Limiting (max. 10 Calls/Minute) zurückgefallen.
+  2. **KI-Fallback:** Gibt es keinen Regeltr­effer, wird ein KI-Call an OpenRouter.ai gesendet. Nur wenn die KI-Antwort einer aktiven Kategorie eindeutig zugeordnet werden kann, wird diese Kategorie gesetzt und `category_source = AI` gespeichert. Der Call wird in `ai_categorization_log` protokolliert.
+- **F-03.3:** KI-Calls für die Kategorisierung werden bevorzugt **gebündelt**: Pro Bon wird ein einziger KI-Call mit allen unkategorisierten Positionen des Bons abgesetzt. Wenn die Antwort nicht valide ist oder das Modell keine Batch-Antwort liefert, wird auf sequenzielle Calls mit Rate-Limiting (max. 10 Calls/Minute) zurückgefallen. Liefert auch der Fallback keine gültige Kategorie, bleibt die Position unkategorisiert (`category_id = NULL`, `category_source = NULL`) und kann später in der UI manuell bearbeitet werden.
 - **F-03.4:** Wenn die KI eine Kategorie ermittelt, die dem Nutzer als neue Regel vorgeschlagen wird (UC-06), kann der Nutzer die Regel bestätigen und speichern.
 - **F-03.5:** Kategorisierung kann manuell überschrieben werden (UC-07). In diesem Fall: `category_source = MANUAL`, `is_manually_edited = TRUE`.
 - **F-03.6:** Eine Kategorisierung kann für einzelne Positionen oder alle gleichen Beschreibungen im gesamten Datenbestand angewendet werden (Bulk-Kategorisierung).
 - **F-03.7:** Wenn kein `OPENROUTER_API_KEY` konfiguriert ist, wird der KI-Fallback übersprungen. Positionen bleiben unkategorisiert (`category_id = NULL`, `category_source = NULL`) und werden in der UI als „Ohne Kategorie" angezeigt.
+- **F-03.8:** `category_source = AI` darf nie ohne gesetzte `category_id` persistiert werden. `category_source = NULL` bedeutet, dass die Position noch offen ist und vom Nutzer später manuell kategorisiert werden kann.
 
 ### F-04: Suche
 
@@ -661,7 +662,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
    - Metadaten (Datum, Geschäft, Gesamtbetrag, Import-Datum)
    - Alle Positionen mit Betrag und Kategorie (farbig markiert)
    - Parse-Status und ggf. Fehlermeldung
-2. Jede Position zeigt ihren `category_source` als kleines Badge (`RULE`, `AI`, `MANUAL`).
+2. Jede kategorisierte Position zeigt ihren `category_source` als kleines Badge (`RULE`, `AI`, `MANUAL`). Unkategorisierte Positionen (`category_id = NULL`, `category_source = NULL`) werden als „Ohne Kategorie" angezeigt und bleiben in der UI bearbeitbar.
 
 ---
 
@@ -1081,7 +1082,7 @@ Validierung:
 - `description`: Pflichtfeld, 1-512 Zeichen
 - `totalPrice`: Pflichtfeld, maximal 2 Nachkommastellen
 - `quantity`: optional, `> 0`
-- `categorySource`: `RULE`, `AI`, `MANUAL` oder `null`
+- `categorySource`: `RULE`, `AI`, `MANUAL` oder `null`; `AI` nur zusammen mit gesetzter `categoryId`, `null` bedeutet „Ohne Kategorie"
 
 ### SearchResultDTO
 
@@ -1498,7 +1499,7 @@ Ein `@ControllerAdvice` fängt alle Exceptions ab und gibt strukturierte Fehlero
 
 ### 13.3 Resilience
 
-- KI-Calls: 3 Versuche mit exponential backoff. Schlägt der letzte Versuch fehl: Position bleibt unkategorisiert, Warnung wird geloggt.
+- KI-Calls: 3 Versuche mit exponential backoff. Schlägt der letzte Versuch fehl oder liefert die KI keine eindeutig passende Kategorie: Position bleibt unkategorisiert (`category_id = NULL`, `category_source = NULL`), Warnung wird geloggt.
 - Paperless-NGX-Calls: 3 Versuche bei HTTP 5xx. Bei endgültigem Fehler: Sync schlägt fehl, kein Partial-Import kaputt.
 - Datenbank-Fehler: Bei Transaktionsfehler vollständiges Rollback, Fehlermeldung in Response.
 
@@ -1648,6 +1649,8 @@ Jede `expected.json` folgt dem KI-Parsing-JSON-Schema aus F-02. Bei negativen Te
 
 - Given mehrere passende Regeln, then gewinnt die Regel mit der niedrigsten `priority`.
 - Given keine passende Regel und kein `OPENROUTER_API_KEY`, then bleibt die Position unkategorisiert.
+- Given KI liefert keine gültige oder keine bekannte Kategorie, then bleibt die Position unkategorisiert und `category_source = NULL`.
+- Given KI liefert eine gültige bekannte Kategorie, then wird die Kategorie gesetzt und `category_source = AI`.
 - Given manuelle Kategorieänderung, then wird `category_source = MANUAL` und `is_manually_edited = TRUE` gesetzt.
 
 **Backup/Restore:**
