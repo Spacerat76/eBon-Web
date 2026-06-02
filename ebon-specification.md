@@ -520,7 +520,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 
 - **F-10.1:** Das Dashboard zeigt auf einen Blick:
   - Gesamtausgaben im aktuellen Monat (vs. Vormonat)
-  - Bonusguthaben-Übersicht (Summe nach Typ)
+  - Übersicht des neu gesammelten Bonusguthabens und der neu gesammelten Punkte (Summe nach Typ)
   - Ausgaben nach Kategorie im aktuellen Monat (Tortendiagramm)
   - Letzte 5 importierte Bons
   - Anzahl der Positionen ohne Kategorie (mit Link zur Kategorisierung)
@@ -949,7 +949,7 @@ Query-Parameter: `q`, `store`, `dateFrom`, `dateTo`, `categoryIds` (kommagetrenn
 | GET | `/api/reports/by-period` | Ausgaben gruppiert nach Zeitraum |
 | GET | `/api/reports/by-store` | Ausgaben gruppiert nach Geschäft |
 | GET | `/api/reports/top-items` | Häufigste/teuerste Positionen |
-| GET | `/api/reports/bonus` | Bonusguthaben und Punkte aggregiert |
+| GET | `/api/reports/bonus` | Neu gesammeltes Bonusguthaben und neu gesammelte Punkte aggregiert |
 | GET | `/api/reports/by-category/export` | CSV-Export |
 | GET | `/api/reports/by-period/export` | CSV-Export |
 | GET | `/api/reports/by-store/export` | CSV-Export |
@@ -996,7 +996,7 @@ Response `DashboardDTO`:
     { "categoryId": 1, "categoryName": "Lebensmittel", "total": 198.30 }
   ],
   "bonusSummary": [
-    { "bonusType": "Payback", "totalPoints": 1250, "totalBalance": 45.90 }
+    { "bonusType": "Payback", "totalPoints": 1250, "totalEarnedBalance": 45.90 }
   ],
   "recentReceipts": [ /* letzte 5 Receipts */ ],
   "uncategorizedItemsCount": 12,
