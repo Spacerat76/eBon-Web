@@ -229,8 +229,11 @@ Regeln werden in absteigender Priorität (niedrigster `priority`-Wert zuerst) ge
 | `receipt_item_id` | BIGINT | FK → receipt_item.id, NOT NULL | Zugehörige Position |
 | `prompt_sent` | TEXT | NOT NULL | Gesendeter Prompt |
 | `response_received` | TEXT | NOT NULL | Rohantwort der KI |
-| `assigned_category_id` | BIGINT | FK → category.id, NULL | Ermittelte Kategorie |
+| `suggested_category_id` | BIGINT | FK → category.id, NULL | Von der KI vorgeschlagene, bekannte Kategorie; NULL bei unbekannter Kategorie oder invalider Antwort |
+| `suggested_category_name` | VARCHAR(128) | NULL | Von der KI gelieferter Kategoriename, auch wenn er keiner bekannten Kategorie zugeordnet werden konnte |
+| `assigned_category_id` | BIGINT | FK → category.id, NULL | Tatsächlich automatisch übernommene Kategorie; NULL, wenn Vorschlag nicht akzeptiert wurde |
 | `ai_confidence` | NUMERIC(4,3) | NULL | Konfidenzwert (0.000–1.000), sofern geliefert |
+| `rejection_reason` | VARCHAR(32) | NULL | Grund, warum kein `assigned_category_id` gesetzt wurde; z.B. `LOW_CONFIDENCE`, `UNKNOWN_CATEGORY`, `INVALID_RESPONSE` |
 | `model_used` | VARCHAR(128) | NOT NULL | Verwendetes KI-Modell |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Zeitpunkt des KI-Calls |
 
@@ -243,7 +246,7 @@ Regeln werden in absteigender Priorität (niedrigster `priority`-Wert zuerst) ge
 | `description` | TEXT | NULL | Beschreibung der Einstellung |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update |
 
-Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_temperature`.
+Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_temperature`, `ai_categorization_min_confidence`.
 
 #### 4.1.7 `parse_rule` (Parsing-Regel, automatisch gelernt)
 
@@ -446,8 +449,8 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 - **F-03.1:** Nach dem Parsing wird jede `receipt_item` kategorisiert.
 - **F-03.2:** Die Kategorisierung erfolgt zweistufig:
   1. **Regelbasiert:** Alle aktiven `categorization_rule`-Einträge werden in Prioritätsreihenfolge gegen `description` und/oder `store_name` geprüft. Bei Treffer: Zuweisung der Kategorie, `category_source = RULE`.
-  2. **KI-Fallback:** Gibt es keinen Regeltr­effer, wird ein KI-Call an OpenRouter.ai gesendet. Nur wenn die KI-Antwort einer aktiven Kategorie eindeutig zugeordnet werden kann, wird diese Kategorie gesetzt und `category_source = AI` gespeichert. Der Call wird in `ai_categorization_log` protokolliert.
-- **F-03.3:** KI-Calls für die Kategorisierung werden bevorzugt **gebündelt**: Pro Bon wird ein einziger KI-Call mit allen unkategorisierten Positionen des Bons abgesetzt. Wenn die Antwort nicht valide ist oder das Modell keine Batch-Antwort liefert, wird auf sequenzielle Calls mit Rate-Limiting (max. 10 Calls/Minute) zurückgefallen. Liefert auch der Fallback keine gültige Kategorie, bleibt die Position unkategorisiert (`category_id = NULL`, `category_source = NULL`) und kann später in der UI manuell bearbeitet werden.
+  2. **KI-Fallback:** Gibt es keinen Regeltr­effer, wird ein KI-Call an OpenRouter.ai gesendet. Nur wenn die KI-Antwort einer aktiven Kategorie eindeutig zugeordnet werden kann und die konfigurierte Mindest-Konfidenz erreicht, wird diese Kategorie gesetzt und `category_source = AI` gespeichert. Der Call wird in `ai_categorization_log` protokolliert.
+- **F-03.3:** KI-Calls für die Kategorisierung werden bevorzugt **gebündelt**: Pro Bon wird ein einziger KI-Call mit allen unkategorisierten Positionen des Bons abgesetzt. Wenn die Antwort nicht valide ist oder das Modell keine Batch-Antwort liefert, wird auf sequenzielle Calls mit Rate-Limiting (max. 10 Calls/Minute) zurückgefallen. Liefert auch der Fallback keine gültige Kategorie oder liegt die Konfidenz unter `app_settings.ai_categorization_min_confidence`, bleibt die Position unkategorisiert (`category_id = NULL`, `category_source = NULL`) und kann später in der UI manuell bearbeitet werden. Ein nicht übernommener KI-Vorschlag wird dennoch strukturiert in `ai_categorization_log` gespeichert, damit die UI ihn als Entscheidungshilfe anzeigen kann.
 - **F-03.4:** Wenn die KI eine Kategorie ermittelt, die dem Nutzer als neue Regel vorgeschlagen wird (UC-06), kann der Nutzer die Regel bestätigen und speichern.
 - **F-03.5:** Kategorisierung kann manuell überschrieben werden (UC-07). In diesem Fall: `category_source = MANUAL`, `is_manually_edited = TRUE`.
 - **F-03.6:** Eine Kategorisierung kann für einzelne Positionen oder alle gleichen Beschreibungen im gesamten Datenbestand angewendet werden (Bulk-Kategorisierung).
@@ -532,6 +535,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 - **F-11.1:** Über eine Einstellungsseite kann der Nutzer konfigurieren:
   - Paperless-NGX URL und API-Token (mit Verbindungstest)
   - OpenRouter API-Key und Modell-Auswahl (mit Verbindungstest)
+  - Mindest-Konfidenz für automatische KI-Kategorisierung (`ai_categorization_min_confidence`, Standard `0.900`, Wertebereich `0.000` bis `1.000`)
   - Sync-Intervall (Minuten)
   - Anzuzeigende Währung
 - **F-11.2:** Sensible Felder (API-Keys) werden bei der Anzeige maskiert. Maskierte Platzhalterwerte dürfen beim Speichern nicht als neue Secrets persistiert werden. Klartext-Secrets werden ausschließlich beim initialen Setzen oder expliziten Ersetzen übertragen.
@@ -663,6 +667,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
    - Alle Positionen mit Betrag und Kategorie (farbig markiert)
    - Parse-Status und ggf. Fehlermeldung
 2. Jede kategorisierte Position zeigt ihren `category_source` als kleines Badge (`RULE`, `AI`, `MANUAL`). Unkategorisierte Positionen (`category_id = NULL`, `category_source = NULL`) werden als „Ohne Kategorie" angezeigt und bleiben in der UI bearbeitbar.
+3. Wenn zu einer unkategorisierten Position ein nicht übernommener KI-Vorschlag existiert, zeigt die Detailansicht diesen als Hinweis, z.B. „KI-Vorschlag: Drogerie (82 %) – nicht automatisch übernommen wegen niedriger Konfidenz". Der Nutzer kann den Vorschlag übernehmen oder eine andere Kategorie wählen.
 
 ---
 
@@ -1073,7 +1078,13 @@ Validierung:
   "categoryId": 2,
   "categoryName": "Lebensmittel",
   "categorySource": "RULE",
-  "isManuallyEdited": false
+  "isManuallyEdited": false,
+  "aiSuggestion": {
+    "categoryId": 3,
+    "categoryName": "Drogerie",
+    "confidence": 0.820,
+    "rejectionReason": "LOW_CONFIDENCE"
+  }
 }
 ```
 
@@ -1083,6 +1094,7 @@ Validierung:
 - `totalPrice`: Pflichtfeld, maximal 2 Nachkommastellen
 - `quantity`: optional, `> 0`
 - `categorySource`: `RULE`, `AI`, `MANUAL` oder `null`; `AI` nur zusammen mit gesetzter `categoryId`, `null` bedeutet „Ohne Kategorie"
+- `aiSuggestion`: optionaler letzter nicht übernommener KI-Vorschlag für diese Position; nur anzeigen, wenn `categoryId = NULL`. `rejectionReason`: `LOW_CONFIDENCE`, `UNKNOWN_CATEGORY`, `INVALID_RESPONSE` oder `null`.
 
 ### SearchResultDTO
 
@@ -1123,6 +1135,7 @@ Validierung:
   "paperlessEbonTag": "eBON",
   "openRouterApiKey": "********",
   "openRouterModel": "google/gemini-flash-1.5",
+  "aiCategorizationMinConfidence": 0.900,
   "syncIntervalMinutes": 60,
   "currency": "EUR"
 }

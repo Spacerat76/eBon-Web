@@ -98,6 +98,11 @@ public class ReceiptItem {
         this.categorySource = null;
     }
 
+    public void manuallyClearCategory() {
+        clearCategory();
+        manuallyEdited = true;
+    }
+
     public void updateParsedValues(
             BigDecimal quantity,
             String unit,

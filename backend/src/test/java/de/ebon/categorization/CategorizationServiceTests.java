@@ -3,6 +3,7 @@ package de.ebon.categorization;
 import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.CategorySource;
 import de.ebon.persistence.model.CategorizationRule;
+import de.ebon.persistence.model.AiCategorizationRejectionReason;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.model.RuleMatchField;
@@ -66,6 +67,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
     void resetState() {
         aiClient.reset();
         jdbcTemplate.execute("truncate ai_categorization_log, categorization_rule, receipt_item, receipt restart identity cascade");
+        jdbcTemplate.update("update app_settings set value = '0.900' where key = 'ai_categorization_min_confidence'");
     }
 
     @Test
@@ -134,11 +136,55 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         ReceiptItem item = firstItem(receipt);
         assertThat(item.getCategory().getName()).isEqualTo("Drogerie");
         assertThat(item.getCategorySource()).isEqualTo(CategorySource.AI);
+        assertThat(aiClient.lastRequest.minConfidence()).isEqualByComparingTo("0.900");
+        assertThat(aiClient.lastRequest.categoryNames()).contains("Drogerie");
         assertThat(aiLogRepository.findAll()).singleElement()
                 .satisfies(log -> {
                     assertThat(log.getReceiptItem().getId()).isEqualTo(itemId);
+                    assertThat(log.getSuggestedCategory().getName()).isEqualTo("Drogerie");
+                    assertThat(log.getSuggestedCategoryName()).isEqualTo("Drogerie");
                     assertThat(log.getAssignedCategory().getName()).isEqualTo("Drogerie");
                     assertThat(log.getAiConfidence()).isEqualByComparingTo("0.900");
+                    assertThat(log.getRejectionReason()).isNull();
+                });
+    }
+
+    @Test
+    void configuredAiConfidenceThresholdControlsAcceptedAiCategories() {
+        jdbcTemplate.update("update app_settings set value = '0.750' where key = 'ai_categorization_min_confidence'");
+        aiClient.available = true;
+        Receipt receipt = receipt("dm", "Unscharf aber plausibel");
+        Long itemId = firstItem(receipt).getId();
+        aiClient.suggest(itemId, "Drogerie", new BigDecimal("0.800"));
+
+        categorizationService.categorizeReceipt(receipt.getId());
+
+        ReceiptItem item = firstItem(receipt);
+        assertThat(item.getCategory().getName()).isEqualTo("Drogerie");
+        assertThat(item.getCategorySource()).isEqualTo(CategorySource.AI);
+        assertThat(aiClient.lastRequest.minConfidence()).isEqualByComparingTo("0.750");
+    }
+
+    @Test
+    void lowConfidenceAiCategoryKeepsItemUncategorizedAndWritesLogWithoutAssignment() {
+        aiClient.available = true;
+        Receipt receipt = receipt("dm", "Mehrdeutiger Artikel");
+        Long itemId = firstItem(receipt).getId();
+        aiClient.suggest(itemId, "Drogerie", new BigDecimal("0.899"));
+
+        categorizationService.categorizeReceipt(receipt.getId());
+
+        ReceiptItem item = firstItem(receipt);
+        assertThat(item.getCategory()).isNull();
+        assertThat(item.getCategorySource()).isNull();
+        assertThat(aiLogRepository.findAll()).singleElement()
+                .satisfies(log -> {
+                    assertThat(log.getReceiptItem().getId()).isEqualTo(itemId);
+                    assertThat(log.getSuggestedCategory().getName()).isEqualTo("Drogerie");
+                    assertThat(log.getSuggestedCategoryName()).isEqualTo("Drogerie");
+                    assertThat(log.getAssignedCategory()).isNull();
+                    assertThat(log.getAiConfidence()).isEqualByComparingTo("0.899");
+                    assertThat(log.getRejectionReason()).isEqualTo(AiCategorizationRejectionReason.LOW_CONFIDENCE);
                 });
     }
 
@@ -157,8 +203,32 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         assertThat(aiLogRepository.findAll()).singleElement()
                 .satisfies(log -> {
                     assertThat(log.getReceiptItem().getId()).isEqualTo(itemId);
+                    assertThat(log.getSuggestedCategory()).isNull();
+                    assertThat(log.getSuggestedCategoryName()).isEqualTo("Unbekannt");
                     assertThat(log.getAssignedCategory()).isNull();
                     assertThat(log.getAiConfidence()).isEqualByComparingTo("0.400");
+                    assertThat(log.getRejectionReason()).isEqualTo(AiCategorizationRejectionReason.UNKNOWN_CATEGORY);
+                });
+    }
+
+    @Test
+    void invalidAiResponseKeepsItemUncategorizedAndWritesSuggestionLog() {
+        aiClient.available = true;
+        Receipt receipt = receipt("REWE", "Nicht beantworteter Artikel");
+
+        categorizationService.categorizeReceipt(receipt.getId());
+
+        ReceiptItem item = firstItem(receipt);
+        assertThat(item.getCategory()).isNull();
+        assertThat(item.getCategorySource()).isNull();
+        assertThat(aiLogRepository.findAll()).singleElement()
+                .satisfies(log -> {
+                    assertThat(log.getReceiptItem().getId()).isEqualTo(item.getId());
+                    assertThat(log.getSuggestedCategory()).isNull();
+                    assertThat(log.getSuggestedCategoryName()).isNull();
+                    assertThat(log.getAssignedCategory()).isNull();
+                    assertThat(log.getAiConfidence()).isNull();
+                    assertThat(log.getRejectionReason()).isEqualTo(AiCategorizationRejectionReason.INVALID_RESPONSE);
                 });
     }
 
@@ -189,6 +259,30 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         assertThat(reloaded.get(2).getCategory().getName()).isEqualTo("Drogerie");
         assertThat(reloaded.get(2).getCategorySource()).isEqualTo(CategorySource.MANUAL);
         assertThat(reloaded.get(2).isManuallyEdited()).isTrue();
+    }
+
+    @Test
+    void manuallyClearedCategoryStaysUncategorizedAndIsProtectedFromRules() {
+        Category lebensmittel = category("Lebensmittel");
+        ruleRepository.save(new CategorizationRule(
+                lebensmittel,
+                RuleMatchField.DESCRIPTION,
+                RuleMatchType.CONTAINS,
+                "Milch",
+                10));
+        Receipt receipt = receipt("REWE", "Bio Milch");
+
+        categorizationService.categorizeReceipt(receipt.getId());
+        ReceiptItem item = firstItem(receipt);
+        assertThat(item.getCategory().getName()).isEqualTo("Lebensmittel");
+
+        categorizationService.manuallyClearItemCategory(item.getId());
+        categorizationService.categorizeReceipt(receipt.getId());
+
+        ReceiptItem reloaded = firstItem(receipt);
+        assertThat(reloaded.getCategory()).isNull();
+        assertThat(reloaded.getCategorySource()).isNull();
+        assertThat(reloaded.isManuallyEdited()).isTrue();
     }
 
     @Test
@@ -246,6 +340,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
 
         private boolean available;
         private int callCount;
+        private AiCategorizationBatchRequest lastRequest;
         private final Map<Long, AiCategorizationSuggestion> suggestions = new LinkedHashMap<>();
 
         @Override
@@ -256,6 +351,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         @Override
         public AiCategorizationBatchResponse categorize(AiCategorizationBatchRequest request) {
             callCount++;
+            lastRequest = request;
             return new AiCategorizationBatchResponse(
                     "fake prompt",
                     "fake response",
@@ -273,6 +369,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         void reset() {
             available = false;
             callCount = 0;
+            lastRequest = null;
             suggestions.clear();
         }
     }

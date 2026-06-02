@@ -10,6 +10,7 @@ Ziel:
 - Editiermodus fuer Bon-Metadaten und Positionen implementieren
 - Kategorie-Badges und Parse-Status-Badges anzeigen
 - Unkategorisierte Positionen mit category_id = NULL und category_source = NULL als "Ohne Kategorie" anzeigen und bearbeitbar machen
+- Nicht uebernommene KI-Vorschlaege bei "Ohne Kategorie"-Positionen anzeigen, z.B. "KI-Vorschlag: Drogerie (82 %)"; Ablehnungsgrund nutzerfreundlich erklaeren, etwa niedrige Konfidenz oder unbekannte Kategorie
 - Re-Parse-Button mit Konflikthinweis fuer manuelle Aenderungen vorbereiten
 - Loeschen/Soft-Delete Verhalten im UI korrekt abbilden
 
@@ -21,6 +22,7 @@ Bitte:
 - Keine Secrets anzeigen.
 - Manuell editierte Positionen duerfen nicht stillschweigend ueberschrieben werden.
 - categorySource-Badge nur anzeigen, wenn eine Kategorie gesetzt ist; fuer "Ohne Kategorie" kein RULE/AI/MANUAL-Badge vortaeuschen.
+- Wenn `aiSuggestion` vorhanden ist, soll die UI eine schnelle Uebernahme des Vorschlags anbieten und alternativ die normale Kategorieauswahl offen halten. Die Uebernahme ist eine manuelle Kategorieentscheidung (`MANUAL`), keine nachtraegliche AI-Zuweisung.
 
 Pruefkommandos:
 - cd frontend && npm run build

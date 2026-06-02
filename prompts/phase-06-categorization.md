@@ -12,6 +12,7 @@ Ziel:
 - KI-Kategorisierung mit Mock-Tests implementieren
 - Verhalten ohne OPENROUTER_API_KEY: Items bleiben unkategorisiert
 - Verhalten bei invalidem oder unbekanntem KI-Ergebnis: Items bleiben mit category_id = NULL und category_source = NULL unkategorisiert
+- Nicht uebernommene KI-Vorschlaege strukturiert loggen: vorgeschlagener Kategoriename, bekannte vorgeschlagene Kategorie falls zuordenbar, Konfidenz und Ablehnungsgrund (`LOW_CONFIDENCE`, `UNKNOWN_CATEGORY`, `INVALID_RESPONSE`)
 
 Bitte:
 - Lies zuerst AGENTS.md.
@@ -21,6 +22,7 @@ Bitte:
 - KI darf Kategorien vorschlagen, aber categorization_rule nur nach Nutzerbestaetigung anlegen.
 - category_source = AI darf nur gesetzt werden, wenn auch eine gueltige category_id gesetzt wird.
 - Unkategorisierte Items muessen category_id = NULL und category_source = NULL behalten, damit sie spaeter in der UI als "Ohne Kategorie" bearbeitbar sind.
+- Wenn die KI eine bekannte Kategorie vorschlaegt, diese aber wegen niedriger Konfidenz nicht uebernommen wird, muss der Vorschlag im `ai_categorization_log` fuer die spaetere UI sichtbar bleiben.
 - Category hard-delete nur wenn unreferenziert; sonst deaktivieren.
 
 Pruefkommandos:

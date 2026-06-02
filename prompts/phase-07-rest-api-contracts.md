@@ -12,6 +12,9 @@ Ziel:
 - OpenAPI-Dokumentation aktualisieren
 - Controller- oder Contract-Tests schreiben
 - ReceiptItemDTO/Requests validieren: categorySource = AI/RULE/MANUAL nur mit gesetzter categoryId; ohne Kategorie muessen categoryId und categorySource null bleiben
+- Manuelles Zuruecksetzen auf "Ohne Kategorie" implementieren: Wenn ein Receipt-Item-Update `categoryId = null` fuer die Kategorieaenderung sendet, muss der Controller `CategorizationService.manuallyClearItemCategory(...)` verwenden. Nicht einfach Felder direkt auf null setzen, damit `is_manually_edited = true` gesetzt wird und spaetere Regeln/Bulk-Apply diese Nutzerentscheidung nicht still ueberschreiben.
+- SettingsDTO um `aiCategorizationMinConfidence` ergaenzen. Wert aus `app_settings.ai_categorization_min_confidence` lesen/speichern, Wertebereich 0.000 bis 1.000 validieren, Default 0.900 dokumentieren.
+- ReceiptItemDTO um optionales `aiSuggestion` ergaenzen, damit nicht uebernommene KI-Vorschlaege fuer "Ohne Kategorie"-Positionen in der UI sichtbar sind.
 
 Bitte:
 - Lies zuerst AGENTS.md.
@@ -22,6 +25,10 @@ Bitte:
 - includeDeleted nur dort unterstuetzen, wo spezifiziert.
 - Secrets in SettingsDTO maskieren; ******** nie persistieren.
 - "Ohne Kategorie" als expliziten Zustand in DTOs/OpenAPI abbilden, damit die UI diese Positionen spaeter bearbeiten kann.
+- Fuer "Ohne Kategorie" in Request/Response dokumentieren: `categoryId = null`, `categorySource = null`; kein RULE/AI/MANUAL-Badge vortaeuschen.
+- Fuer `aiCategorizationMinConfidence` OpenAPI-Schema mit `minimum: 0`, `maximum: 1`, sinnvollem Beispiel `0.900` und Validierungsfehlern dokumentieren.
+- `aiSuggestion` aus dem letzten strukturierten KI-Log pro Position ableiten: `categoryId`, `categoryName`, `confidence`, `rejectionReason`. Nur nicht uebernommene Vorschlaege anzeigen; bei bereits gesetzter Kategorie `aiSuggestion = null`.
+- Contract-Tests fuer LOW_CONFIDENCE/UNKNOWN_CATEGORY-Suggestions schreiben, damit die UI keine rohe KI-JSON-Antwort parsen muss.
 
 Pruefkommandos:
 - cd backend && mvn verify

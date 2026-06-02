@@ -19,12 +19,18 @@ class CategorizationRuleMatcher {
 
         String normalizedTarget = target.toLowerCase(Locale.ROOT);
         String normalizedValue = rule.getMatchValue().toLowerCase(Locale.ROOT);
+        String compactTarget = compact(target);
+        String compactValue = compact(rule.getMatchValue());
 
         return switch (rule.getMatchType()) {
-            case CONTAINS -> normalizedTarget.contains(normalizedValue);
-            case STARTS_WITH -> normalizedTarget.startsWith(normalizedValue);
-            case ENDS_WITH -> normalizedTarget.endsWith(normalizedValue);
-            case EXACT -> normalizedTarget.equals(normalizedValue);
+            case CONTAINS -> normalizedTarget.contains(normalizedValue)
+                    || (!compactValue.isEmpty() && compactTarget.contains(compactValue));
+            case STARTS_WITH -> normalizedTarget.startsWith(normalizedValue)
+                    || (!compactValue.isEmpty() && compactTarget.startsWith(compactValue));
+            case ENDS_WITH -> normalizedTarget.endsWith(normalizedValue)
+                    || (!compactValue.isEmpty() && compactTarget.endsWith(compactValue));
+            case EXACT -> normalizedTarget.equals(normalizedValue)
+                    || (!compactValue.isEmpty() && compactTarget.equals(compactValue));
             case REGEX -> regexMatches(rule.getMatchValue(), target);
         };
     }
@@ -44,5 +50,14 @@ class CategorizationRuleMatcher {
         } catch (PatternSyntaxException exception) {
             return false;
         }
+    }
+
+    private String compact(String value) {
+        return value.toLowerCase(Locale.ROOT)
+                .replace("ä", "ae")
+                .replace("ö", "oe")
+                .replace("ü", "ue")
+                .replace("ß", "ss")
+                .replaceAll("[^a-z0-9]", "");
     }
 }

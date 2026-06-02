@@ -1,5 +1,6 @@
 package de.ebon.persistence;
 
+import de.ebon.categorization.CategorizationService;
 import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.CategorySource;
 import de.ebon.persistence.model.DeleteReason;
@@ -7,9 +8,11 @@ import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.AppSettingRepository;
 import de.ebon.persistence.repository.CategoryRepository;
+import de.ebon.persistence.repository.ReceiptItemRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
 import de.ebon.support.PostgresIntegrationTestSupport;
 import java.math.BigDecimal;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,6 +37,12 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
     @Autowired
     private ReceiptRepository receiptRepository;
 
+    @Autowired
+    private ReceiptItemRepository receiptItemRepository;
+
+    @Autowired
+    private CategorizationService categorizationService;
+
     @Test
     void flywayCreatesSchemaAndReferenceData() {
         Integer successfulMigrations = jdbcTemplate.queryForObject(
@@ -49,17 +58,62 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
                         where conname = 'chk_receipt_item_category_source_requires_category'
                         """,
                 String.class);
+        String aiRejectionReasonConstraint = jdbcTemplate.queryForObject(
+                """
+                        select conname
+                        from pg_constraint
+                        where conname = 'chk_ai_categorization_log_rejection_reason'
+                        """,
+                String.class);
         Integer categorizationRules = jdbcTemplate.queryForObject(
                 "select count(*) from categorization_rule",
                 Integer.class);
+        Integer activeBroadStoreFallbacks = jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from categorization_rule
+                        where match_field = 'STORE_NAME'
+                            and match_type = 'CONTAINS'
+                            and priority = 900
+                            and is_active = true
+                        """,
+                Integer.class);
 
-        assertThat(successfulMigrations).isGreaterThanOrEqualTo(4);
+        assertThat(successfulMigrations).isGreaterThanOrEqualTo(6);
         assertThat(receiptItemFtsIndex).isEqualTo("idx_receipt_item_description_fts");
         assertThat(categorySourceConstraint).isEqualTo("chk_receipt_item_category_source_requires_category");
+        assertThat(aiRejectionReasonConstraint).isEqualTo("chk_ai_categorization_log_rejection_reason");
         assertThat(categoryRepository.findByActiveTrueOrderBySortOrderAscNameAsc()).hasSizeGreaterThanOrEqualTo(20);
         assertThat(categorizationRules).isGreaterThan(0);
+        assertThat(activeBroadStoreFallbacks).isZero();
         assertThat(appSettingRepository.findById("sync_interval_minutes")).isPresent();
         assertThat(appSettingRepository.findById("ai_model")).isPresent();
+        assertThat(appSettingRepository.findById("ai_categorization_min_confidence")).isPresent()
+                .get()
+                .satisfies(setting -> assertThat(setting.getValue()).isEqualTo("0.900"));
+    }
+
+    @Test
+    void seededRulesKeepUnknownStoreItemsUncategorized() {
+        Receipt receipt = new Receipt(4242, "raw paperless text");
+        receipt.setStoreName("REWE");
+        receipt.addItem(new ReceiptItem(0, "Brustfilet", new BigDecimal("3.99")));
+        receipt.addItem(new ReceiptItem(1, "Rotb. Klassik", new BigDecimal("1.49")));
+        receipt.addItem(new ReceiptItem(2, "Lachsfilet", new BigDecimal("8.99")));
+        receipt.addItem(new ReceiptItem(3, "Unklare Sonderposition", new BigDecimal("2.49")));
+        receiptRepository.saveAndFlush(receipt);
+
+        categorizationService.categorizeReceipt(receipt.getId());
+
+        List<ReceiptItem> items = receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId());
+        assertThat(items.get(0).getCategory().getName()).isEqualTo("Fleisch und Wurst");
+        assertThat(items.get(0).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(1).getCategory().getName()).isEqualTo("Getraenke");
+        assertThat(items.get(1).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(2).getCategory().getName()).isEqualTo("Fisch und Meeresfruechte");
+        assertThat(items.get(2).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(3).getCategory()).isNull();
+        assertThat(items.get(3).getCategorySource()).isNull();
     }
 
     @Test

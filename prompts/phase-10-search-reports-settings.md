@@ -8,6 +8,7 @@ Ziel:
 - Reports nach Kategorie, Zeitraum, Geschaeft, Top-Artikel und Bonus implementieren
 - CSV-Export fuer Reports implementieren
 - Einstellungen UI implementieren
+- KI-Kategorisierung-Konfidenz in den Einstellungen steuerbar machen (`aiCategorizationMinConfidence`, 0.000 bis 1.000, Default/Initialwert 0.900)
 - Verbindungstest fuer Paperless und OpenRouter implementieren
 - Secret-Masking in der UI korrekt behandeln
 - Kategorien- und Regelverwaltung UI vervollstaendigen
@@ -22,6 +23,7 @@ Bitte:
 - Lies ebon-specification.md Abschnitte F-04, F-05, F-07, F-08, F-11, F-12, UC-08, UC-10, UC-13, 8 Suche/Reports/Einstellungen, 9.2.4 bis 9.2.8.
 - Verwende die Skills .codex/skills/ebon-frontend, .codex/skills/ebon-backend und .codex/skills/ebon-qa.
 - UI auf Deutsch.
+- `aiCategorizationMinConfidence` als Prozent-/Slider- oder Number-Control darstellen, mit klarer Beschriftung, dass niedrigere Werte mehr automatische KI-Zuordnungen erlauben und hoehere Werte mehr Positionen als "Ohne Kategorie" offen lassen.
 - ******** darf beim Speichern nie als Secret persistiert werden.
 - Inaktive Kategorien standardmaessig ausblenden, aber bei includeInactive anzeigen.
 - Regelverwaltung/Bulk-Apply darf manuelle Kategorien nicht stillschweigend ueberschreiben und soll unkategorisierte Items gezielt adressieren koennen.

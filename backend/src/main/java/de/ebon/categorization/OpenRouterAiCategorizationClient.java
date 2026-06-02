@@ -2,6 +2,7 @@ package de.ebon.categorization;
 
 import de.ebon.config.AiCategorizationProperties;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -79,7 +80,11 @@ class OpenRouterAiCategorizationClient implements AiCategorizationClient {
         body.put("messages", List.of(
                 Map.of(
                         "role", "system",
-                        "content", "Du kategorisierst Einkaufspositionen. Antworte ausschliesslich als JSON."),
+                        "content", """
+                                Du kategorisierst Einkaufspositionen sehr konservativ.
+                                Nutze ausschliesslich Kategorien aus der vorgegebenen Liste.
+                                Antworte ausschliesslich als JSON.
+                                """),
                 Map.of(
                         "role", "user",
                         "content", prompt)));
@@ -91,7 +96,13 @@ class OpenRouterAiCategorizationClient implements AiCategorizationClient {
         builder.append("Verfuegbare Kategorien: ")
                 .append(String.join(", ", request.categoryNames()))
                 .append("\n\n");
-        builder.append("Kategorisiere diese Positionen. Antworte als JSON-Array mit itemId, category und confidence.\n");
+        builder.append("""
+                Kategorisiere diese Positionen nur bei sehr hoher Sicherheit.
+                Verwende exakt einen Kategorienamen aus der Liste.
+                Setze category auf null, wenn die Zuordnung unsicher ist oder keine Kategorie eindeutig passt.
+                confidence muss zwischen 0.000 und 1.000 liegen; verwende Kategoriezuordnungen nur ab Mindest-Konfidenz %s.
+                Antworte als JSON-Array mit itemId, category und confidence.
+                """.formatted(formatConfidence(request.minConfidence())));
         for (AiCategorizationItem item : request.items()) {
             builder.append("- itemId=")
                     .append(item.itemId())
@@ -180,6 +191,11 @@ class OpenRouterAiCategorizationClient implements AiCategorizationClient {
 
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private String formatConfidence(BigDecimal confidence) {
+        BigDecimal value = confidence == null ? new BigDecimal("0.900") : confidence;
+        return value.setScale(3, RoundingMode.HALF_UP).toPlainString();
     }
 
     private record OpenRouterChatResponse(List<OpenRouterChoice> choices) {

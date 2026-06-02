@@ -2,6 +2,8 @@ package de.ebon.persistence.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -33,11 +35,22 @@ public class AiCategorizationLog {
     private String responseReceived;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "suggested_category_id")
+    private Category suggestedCategory;
+
+    @Column(name = "suggested_category_name", length = 128)
+    private String suggestedCategoryName;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_category_id")
     private Category assignedCategory;
 
     @Column(name = "ai_confidence", precision = 4, scale = 3)
     private BigDecimal aiConfidence;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "rejection_reason", length = 32)
+    private AiCategorizationRejectionReason rejectionReason;
 
     @Column(name = "model_used", nullable = false, length = 128)
     private String modelUsed;
@@ -59,14 +72,20 @@ public class AiCategorizationLog {
             ReceiptItem receiptItem,
             String promptSent,
             String responseReceived,
+            Category suggestedCategory,
+            String suggestedCategoryName,
             Category assignedCategory,
             BigDecimal aiConfidence,
+            AiCategorizationRejectionReason rejectionReason,
             String modelUsed) {
         this.receiptItem = receiptItem;
         this.promptSent = promptSent;
         this.responseReceived = responseReceived;
+        this.suggestedCategory = suggestedCategory;
+        this.suggestedCategoryName = suggestedCategoryName;
         this.assignedCategory = assignedCategory;
         this.aiConfidence = aiConfidence;
+        this.rejectionReason = rejectionReason;
         this.modelUsed = modelUsed;
     }
 
@@ -89,8 +108,20 @@ public class AiCategorizationLog {
         return assignedCategory;
     }
 
+    public Category getSuggestedCategory() {
+        return suggestedCategory;
+    }
+
+    public String getSuggestedCategoryName() {
+        return suggestedCategoryName;
+    }
+
     public BigDecimal getAiConfidence() {
         return aiConfidence;
+    }
+
+    public AiCategorizationRejectionReason getRejectionReason() {
+        return rejectionReason;
     }
 
     public String getModelUsed() {

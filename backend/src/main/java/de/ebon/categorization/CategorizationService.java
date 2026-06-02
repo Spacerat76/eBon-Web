@@ -1,22 +1,25 @@
 package de.ebon.categorization;
 
 import de.ebon.persistence.model.AiCategorizationLog;
+import de.ebon.persistence.model.AiCategorizationRejectionReason;
+import de.ebon.persistence.model.AppSetting;
 import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.CategorySource;
 import de.ebon.persistence.model.CategorizationRule;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
+import de.ebon.persistence.repository.AppSettingRepository;
 import de.ebon.persistence.repository.CategorizationRuleRepository;
 import de.ebon.persistence.repository.CategoryRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
 import jakarta.persistence.EntityNotFoundException;
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -26,11 +29,17 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class CategorizationService {
 
+    private static final String AI_CATEGORIZATION_MIN_CONFIDENCE_SETTING = "ai_categorization_min_confidence";
+    private static final BigDecimal DEFAULT_MIN_AI_CONFIDENCE = new BigDecimal("0.900");
+    private static final BigDecimal ZERO = BigDecimal.ZERO;
+    private static final BigDecimal ONE = BigDecimal.ONE;
+
     private final ReceiptRepository receiptRepository;
     private final ReceiptItemRepository receiptItemRepository;
     private final CategoryRepository categoryRepository;
     private final CategorizationRuleRepository categorizationRuleRepository;
     private final AiCategorizationLogRepository aiCategorizationLogRepository;
+    private final AppSettingRepository appSettingRepository;
     private final CategorizationRuleMatcher ruleMatcher;
     private final AiCategorizationClient aiCategorizationClient;
 
@@ -40,6 +49,7 @@ public class CategorizationService {
             CategoryRepository categoryRepository,
             CategorizationRuleRepository categorizationRuleRepository,
             AiCategorizationLogRepository aiCategorizationLogRepository,
+            AppSettingRepository appSettingRepository,
             CategorizationRuleMatcher ruleMatcher,
             AiCategorizationClient aiCategorizationClient) {
         this.receiptRepository = receiptRepository;
@@ -47,6 +57,7 @@ public class CategorizationService {
         this.categoryRepository = categoryRepository;
         this.categorizationRuleRepository = categorizationRuleRepository;
         this.aiCategorizationLogRepository = aiCategorizationLogRepository;
+        this.appSettingRepository = appSettingRepository;
         this.ruleMatcher = ruleMatcher;
         this.aiCategorizationClient = aiCategorizationClient;
     }
@@ -65,6 +76,13 @@ public class CategorizationService {
                 .orElseThrow(() -> new EntityNotFoundException("Bon-Position nicht gefunden."));
         Category category = activeCategory(categoryId);
         item.assignCategory(category, CategorySource.MANUAL);
+    }
+
+    @Transactional
+    public void manuallyClearItemCategory(Long receiptItemId) {
+        ReceiptItem item = receiptItemRepository.findById(receiptItemId)
+                .orElseThrow(() -> new EntityNotFoundException("Bon-Position nicht gefunden."));
+        item.manuallyClearCategory();
     }
 
     @Transactional
@@ -126,12 +144,14 @@ public class CategorizationService {
                         Function.identity(),
                         (first, ignored) -> first,
                         LinkedHashMap::new));
+        BigDecimal minConfidence = configuredMinAiConfidence();
 
         AiCategorizationBatchRequest request = new AiCategorizationBatchRequest(
                 items.stream()
                         .map(item -> new AiCategorizationItem(item.getId(), item.getDescription(), receipt.getStoreName()))
                         .toList(),
-                activeCategories.stream().map(Category::getName).toList());
+                activeCategories.stream().map(Category::getName).toList(),
+                minConfidence);
 
         AiCategorizationBatchResponse response;
         try {
@@ -151,18 +171,29 @@ public class CategorizationService {
         for (ReceiptItem item : items) {
             AiCategorizationSuggestion suggestion = suggestionsByItemId.get(item.getId());
             if (suggestion == null) {
+                saveAiCategorizationLog(
+                        item,
+                        response,
+                        null,
+                        null,
+                        null,
+                        null,
+                        AiCategorizationRejectionReason.INVALID_RESPONSE);
                 continue;
             }
-            Category assignedCategory = categoriesByNormalizedName.get(normalize(suggestion.categoryName()));
-            aiCategorizationLogRepository.save(new AiCategorizationLog(
+            Category suggestedCategory = categoriesByNormalizedName.get(normalize(suggestion.categoryName()));
+            AiCategorizationRejectionReason rejectionReason = rejectionReason(suggestion, suggestedCategory, minConfidence);
+            Category acceptedCategory = rejectionReason == null ? suggestedCategory : null;
+            saveAiCategorizationLog(
                     item,
-                    safe(response.promptSent()),
-                    safe(response.responseReceived()),
-                    assignedCategory,
+                    response,
+                    suggestedCategory,
+                    safeSuggestedCategoryName(suggestion.categoryName()),
+                    acceptedCategory,
                     suggestion.confidence(),
-                    safeModel(response.modelUsed())));
-            if (assignedCategory != null) {
-                item.assignCategory(assignedCategory, CategorySource.AI);
+                    rejectionReason);
+            if (acceptedCategory != null) {
+                item.assignCategory(acceptedCategory, CategorySource.AI);
             }
         }
     }
@@ -181,12 +212,80 @@ public class CategorizationService {
         return category;
     }
 
+    private boolean hasHighConfidence(AiCategorizationSuggestion suggestion, BigDecimal minConfidence) {
+        return suggestion.confidence() != null
+                && suggestion.confidence().compareTo(minConfidence) >= 0;
+    }
+
+    private AiCategorizationRejectionReason rejectionReason(
+            AiCategorizationSuggestion suggestion,
+            Category suggestedCategory,
+            BigDecimal minConfidence) {
+        if (suggestion.categoryName() == null || suggestion.categoryName().isBlank()) {
+            return AiCategorizationRejectionReason.INVALID_RESPONSE;
+        }
+        if (suggestedCategory == null) {
+            return AiCategorizationRejectionReason.UNKNOWN_CATEGORY;
+        }
+        if (!hasHighConfidence(suggestion, minConfidence)) {
+            return AiCategorizationRejectionReason.LOW_CONFIDENCE;
+        }
+        return null;
+    }
+
+    private void saveAiCategorizationLog(
+            ReceiptItem item,
+            AiCategorizationBatchResponse response,
+            Category suggestedCategory,
+            String suggestedCategoryName,
+            Category acceptedCategory,
+            BigDecimal confidence,
+            AiCategorizationRejectionReason rejectionReason) {
+        aiCategorizationLogRepository.save(new AiCategorizationLog(
+                item,
+                safe(response.promptSent()),
+                safe(response.responseReceived()),
+                suggestedCategory,
+                suggestedCategoryName,
+                acceptedCategory,
+                confidence,
+                rejectionReason,
+                safeModel(response.modelUsed())));
+    }
+
+    private BigDecimal configuredMinAiConfidence() {
+        return appSettingRepository.findById(AI_CATEGORIZATION_MIN_CONFIDENCE_SETTING)
+                .map(AppSetting::getValue)
+                .map(this::parseConfidence)
+                .orElse(DEFAULT_MIN_AI_CONFIDENCE);
+    }
+
+    private BigDecimal parseConfidence(String value) {
+        try {
+            BigDecimal parsed = new BigDecimal(value.trim());
+            if (parsed.compareTo(ZERO) < 0 || parsed.compareTo(ONE) > 0) {
+                return DEFAULT_MIN_AI_CONFIDENCE;
+            }
+            return parsed;
+        } catch (RuntimeException exception) {
+            return DEFAULT_MIN_AI_CONFIDENCE;
+        }
+    }
+
     private String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
     }
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    private String safeSuggestedCategoryName(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.length() <= 128 ? trimmed : trimmed.substring(0, 128);
     }
 
     private String safeModel(String value) {
