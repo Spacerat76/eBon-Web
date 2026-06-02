@@ -2,7 +2,7 @@
 
 eBon-Web is a single-user expense tracker for electronic receipts imported from Paperless-NGX.
 
-The project is built incrementally from `ebon-specification.md`. Phase 1 only provides the reproducible development environment and Docker foundation; backend and frontend applications are intentionally not scaffolded yet.
+The project is built incrementally from `ebon-specification.md`. The current state includes the reproducible development environment, Docker database foundation, and the Spring Boot backend. The frontend is intentionally not scaffolded yet.
 
 ## Prerequisites
 

@@ -315,7 +315,7 @@ Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_t
 
 | Verwendeter Endpoint | Methode | Beschreibung |
 |---|---|---|
-| `/api/documents/?tags__name={TAG}&page_size=100&ordering=-created` | GET | Alle Dokumente mit konfiguriertem Tag abrufen (paginiert). `{TAG}` = Wert der Umgebungsvariable `PAPERLESS_EBON_TAG`. |
+| `/api/documents/?tags__name__iexact={TAG}&page_size=100&ordering=-created` | GET | Alle Dokumente mit exakt passendem konfiguriertem Tag abrufen (case-insensitive, paginiert). `{TAG}` = Wert der Umgebungsvariable `PAPERLESS_EBON_TAG`. |
 | `/api/documents/{id}/` | GET | Metadaten eines einzelnen Dokuments |
 | `/api/documents/{id}/download/` | GET | Download des Dokuments (nicht verwendet) |
 
@@ -335,7 +335,7 @@ Die Applikation verwendet ausschließlich den Textinhalt (`content`-Feld) aus de
 }
 ```
 
-Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` der Wert aus `PAPERLESS_EBON_TAG` ist. Sicherheitshalber prüft die Applikation zusätzlich, ob der konfigurierte Tag in der `tags`-Liste enthalten ist (erfordert separaten Tag-Lookup oder Konfiguration der Tag-ID).
+Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei `{TAG}` der Wert aus `PAPERLESS_EBON_TAG` ist. Dieser Paperless-Filter matcht den Tag-Namen exakt und case-insensitive. Die Anwendung verlässt sich auf diesen serverseitigen Filter; eine zusätzliche lokale Tag-Prüfung ist nicht vorgesehen.
 
 ### 5.2 OpenRouter.ai API
 
@@ -450,7 +450,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 - **F-03.2:** Die Kategorisierung erfolgt zweistufig:
   1. **Regelbasiert:** Alle aktiven `categorization_rule`-Einträge werden in Prioritätsreihenfolge gegen `description` und/oder `store_name` geprüft. Bei Treffer: Zuweisung der Kategorie, `category_source = RULE`.
   2. **KI-Fallback:** Gibt es keinen Regeltr­effer, wird ein KI-Call an OpenRouter.ai gesendet. Nur wenn die KI-Antwort einer aktiven Kategorie eindeutig zugeordnet werden kann und die konfigurierte Mindest-Konfidenz erreicht, wird diese Kategorie gesetzt und `category_source = AI` gespeichert. Der Call wird in `ai_categorization_log` protokolliert.
-- **F-03.3:** KI-Calls für die Kategorisierung werden bevorzugt **gebündelt**: Pro Bon wird ein einziger KI-Call mit allen unkategorisierten Positionen des Bons abgesetzt. Wenn die Antwort nicht valide ist oder das Modell keine Batch-Antwort liefert, wird auf sequenzielle Calls mit Rate-Limiting (max. 10 Calls/Minute) zurückgefallen. Liefert auch der Fallback keine gültige Kategorie oder liegt die Konfidenz unter `app_settings.ai_categorization_min_confidence`, bleibt die Position unkategorisiert (`category_id = NULL`, `category_source = NULL`) und kann später in der UI manuell bearbeitet werden. Ein nicht übernommener KI-Vorschlag wird dennoch strukturiert in `ai_categorization_log` gespeichert, damit die UI ihn als Entscheidungshilfe anzeigen kann.
+- **F-03.3:** KI-Calls für die Kategorisierung werden **gebündelt**: Pro Bon wird ein einziger KI-Call mit allen unkategorisierten Positionen des Bons abgesetzt. Wenn die Antwort nicht valide ist, das Modell keine verwertbare Batch-Antwort liefert, keine gültige Kategorie gefunden wird oder die Konfidenz unter `app_settings.ai_categorization_min_confidence` liegt, bleibt die Position unkategorisiert (`category_id = NULL`, `category_source = NULL`) und kann später in der UI manuell bearbeitet werden. Ein nicht übernommener KI-Vorschlag wird dennoch strukturiert in `ai_categorization_log` gespeichert, damit die UI ihn als Entscheidungshilfe anzeigen kann.
 - **F-03.4:** Wenn die KI eine Kategorie ermittelt, die dem Nutzer als neue Regel vorgeschlagen wird (UC-06), kann der Nutzer die Regel bestätigen und speichern.
 - **F-03.5:** Kategorisierung kann manuell überschrieben werden (UC-07). In diesem Fall: `category_source = MANUAL`, `is_manually_edited = TRUE`.
 - **F-03.6:** Eine Kategorisierung kann für einzelne Positionen oder alle gleichen Beschreibungen im gesamten Datenbestand angewendet werden (Bulk-Kategorisierung).
@@ -624,7 +624,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name={TAG}`, wobei `{TAG}` 
 **Auslöser:** Ablauf des konfigurierten Sync-Intervalls.
 
 **Hauptablauf:**
-1. Das System sendet GET `/api/documents/?tags__name={TAG}&page_size=100` an Paperless-NGX.
+1. Das System sendet GET `/api/documents/?tags__name__iexact={TAG}&page_size=100` an Paperless-NGX.
 2. Das System identifiziert Dokumente mit dem konfigurierten Tag.
 3. Für jedes Dokument: Prüfung ob `paperless_document_id` bereits in `receipt` existiert.
 4. Neue Dokumente: Anlegen eines `receipt`-Eintrags mit `raw_text = content`, `parse_status = PENDING`.

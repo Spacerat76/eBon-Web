@@ -79,11 +79,15 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
                         """,
                 Integer.class);
 
-        assertThat(successfulMigrations).isGreaterThanOrEqualTo(6);
+        assertThat(successfulMigrations).isGreaterThanOrEqualTo(10);
         assertThat(receiptItemFtsIndex).isEqualTo("idx_receipt_item_description_fts");
         assertThat(categorySourceConstraint).isEqualTo("chk_receipt_item_category_source_requires_category");
         assertThat(aiRejectionReasonConstraint).isEqualTo("chk_ai_categorization_log_rejection_reason");
-        assertThat(categoryRepository.findByActiveTrueOrderBySortOrderAscNameAsc()).hasSizeGreaterThanOrEqualTo(20);
+        assertThat(categoryRepository.findByActiveTrueOrderBySortOrderAscNameAsc())
+                .extracting(Category::getName)
+                .hasSizeGreaterThanOrEqualTo(22)
+                .contains("Fotos & Bilder", "Salat, Obst & Gemüse")
+                .doesNotContain("Obst und Gemuese", "Salat");
         assertThat(categorizationRules).isGreaterThan(0);
         assertThat(activeBroadStoreFallbacks).isZero();
         assertThat(appSettingRepository.findById("sync_interval_minutes")).isPresent();
@@ -100,7 +104,15 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         receipt.addItem(new ReceiptItem(0, "Brustfilet", new BigDecimal("3.99")));
         receipt.addItem(new ReceiptItem(1, "Rotb. Klassik", new BigDecimal("1.49")));
         receipt.addItem(new ReceiptItem(2, "Lachsfilet", new BigDecimal("8.99")));
-        receipt.addItem(new ReceiptItem(3, "Unklare Sonderposition", new BigDecimal("2.49")));
+        receipt.addItem(new ReceiptItem(3, "Kasseler Lachs", new BigDecimal("4.99")));
+        receipt.addItem(new ReceiptItem(4, "HiPP Karotten", new BigDecimal("1.29")));
+        receipt.addItem(new ReceiptItem(5, "Fotoauftrag", new BigDecimal("7.95")));
+        receipt.addItem(new ReceiptItem(6, "SERVICE GEW", new BigDecimal("2.15")));
+        receipt.addItem(new ReceiptItem(7, "TEXAS MIX", new BigDecimal("2.22")));
+        receipt.addItem(new ReceiptItem(8, "XXL MISCHBEUT.", new BigDecimal("6.99")));
+        receipt.addItem(new ReceiptItem(9, "CLASSIC ROLLE", new BigDecimal("3.98")));
+        receipt.addItem(new ReceiptItem(10, "COUNTRY MIX", new BigDecimal("2.99")));
+        receipt.addItem(new ReceiptItem(11, "Unklare Sonderposition", new BigDecimal("2.49")));
         receiptRepository.saveAndFlush(receipt);
 
         categorizationService.categorizeReceipt(receipt.getId());
@@ -112,8 +124,24 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         assertThat(items.get(1).getCategorySource()).isEqualTo(CategorySource.RULE);
         assertThat(items.get(2).getCategory().getName()).isEqualTo("Fisch und Meeresfruechte");
         assertThat(items.get(2).getCategorySource()).isEqualTo(CategorySource.RULE);
-        assertThat(items.get(3).getCategory()).isNull();
-        assertThat(items.get(3).getCategorySource()).isNull();
+        assertThat(items.get(3).getCategory().getName()).isEqualTo("Fleisch und Wurst");
+        assertThat(items.get(3).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(4).getCategory().getName()).isEqualTo("Baby und Kind");
+        assertThat(items.get(4).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(5).getCategory().getName()).isEqualTo("Fotos & Bilder");
+        assertThat(items.get(5).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(6).getCategory().getName()).isEqualTo("Fleisch und Wurst");
+        assertThat(items.get(6).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(7).getCategory().getName()).isEqualTo("Salat, Obst & Gemüse");
+        assertThat(items.get(7).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(8).getCategory().getName()).isEqualTo("Suesswaren und Snacks");
+        assertThat(items.get(8).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(9).getCategory().getName()).isEqualTo("Milchprodukte und Eier");
+        assertThat(items.get(9).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(10).getCategory().getName()).isEqualTo("Salat, Obst & Gemüse");
+        assertThat(items.get(10).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(11).getCategory()).isNull();
+        assertThat(items.get(11).getCategorySource()).isNull();
     }
 
     @Test
