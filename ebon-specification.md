@@ -399,6 +399,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 - **F-02.3b:** Die KI-Ergebnisse werden validiert und anschließend verwendet, um ausschließlich **Parsing-Regeln** automatisch anzupassen (Rule-Adaptation): Neue Muster, Store-spezifische Formate oder abweichende Datumsformate werden in die regelbasierten Parser übernommen, sodass beim nächsten Durchlauf die Regeln greifen. Diese Rule-Adaptation erzeugt keine `categorization_rule`-Einträge.
 - **F-02.3c:** Die Rule-Adaptation speichert die neuen Muster persistent in der Tabelle `parse_rule` (s. Abschnitt 4.1.7), sodass sie nach einem Neustart erhalten bleiben.
 - **F-02.3d:** Der KI-Fallback für Parsing muss ein festes JSON-Schema liefern. Antworten außerhalb des Schemas werden verworfen und führen zu `PARSE_ERROR`, außer ein gültiger Teilparse kann nach F-02.5 gespeichert werden.
+- **F-02.3e:** Wenn ein Bon die Filialadresse nicht als Text enthält (z.B. Adresse nur als Grafik im dm-eBon), darf der Parser eine aus dem Text extrahierte Filial-ID über eine konfigurierbare Mapping-Tabelle auf `store_branch` auflösen. Ist kein Mapping vorhanden, bleibt ein technischer, eindeutig nachvollziehbarer Fallback wie `Filiale <Code>` zulässig.
 - **F-02.4:** Der Parser extrahiert aus dem `raw_text` zusätzlich folgende Bonus-Felder:
   - `bonus_balance`: In diesem Einkauf neu gesammeltes Bonusguthaben, nicht das aktuelle Bonuskonto-/Punkteguthaben
   - `bonus_points`: In diesem Einkauf neu gesammelte Payback-Punkte oder ähnliche Punktesysteme (mit Typ-Angabe)

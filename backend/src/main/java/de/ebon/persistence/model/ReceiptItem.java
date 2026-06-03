@@ -103,6 +103,38 @@ public class ReceiptItem {
         manuallyEdited = true;
     }
 
+    public void updateManualValues(
+            Integer positionIndex,
+            String description,
+            BigDecimal quantity,
+            String unit,
+            BigDecimal unitPrice,
+            BigDecimal totalPrice,
+            BigDecimal discountAmount) {
+        if (positionIndex != null) {
+            this.positionIndex = positionIndex;
+        }
+        if (description != null) {
+            this.description = description;
+        }
+        if (quantity != null) {
+            this.quantity = quantity;
+        }
+        if (unit != null) {
+            this.unit = unit;
+        }
+        if (unitPrice != null) {
+            this.unitPrice = unitPrice;
+        }
+        if (totalPrice != null) {
+            this.totalPrice = totalPrice;
+        }
+        if (discountAmount != null) {
+            this.discountAmount = discountAmount;
+        }
+        manuallyEdited = true;
+    }
+
     public void updateParsedValues(
             BigDecimal quantity,
             String unit,

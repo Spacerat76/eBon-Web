@@ -98,6 +98,12 @@ curl -H "Authorization: Bearer change_me_local_dev_token" "http://localhost:8080
 
 The scheduled sync uses `SYNC_INTERVAL_MINUTES` and starts after `SYNC_INITIAL_DELAY_MS`. Set `SYNC_SCHEDULER_ENABLED=false` for local runs where Paperless-NGX should never be contacted automatically.
 
+Some dm eBons contain the branch address only as an image. The parser extracts the dm branch code from the text header and resolves it through `app.parser.dm-branch-mappings`. Use the base code before `/` when possible, so codes like `D482/1` and `D482/2` map to the same branch:
+
+```properties
+app.parser.dm-branch-mappings.D482=Example Street 1, 12345 Example City
+```
+
 If Maven fails with `Operation not permitted` while writing `backend/target`, remove the generated build directory once inside the Devcontainer and start again:
 
 ```bash

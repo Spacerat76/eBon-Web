@@ -14,6 +14,7 @@ Ziel:
   - parse_error_missing_total.txt / .expected.json
 - KI-Parsing-Fallback als Interface/Service mit Mock-Tests vorbereiten
 - Valides KI-JSON akzeptieren, invalides KI-JSON ablehnen
+- Konfigurierbares Filial-ID-Mapping vorbereiten, falls ein eBon die Adresse nur als Grafik und nicht als `raw_text` liefert
 - Bonus-Handling nach Spezifikation absichern:
   - bonus_balance speichert nur neu in diesem Einkauf gesammeltes Bonusguthaben
   - bonus_points speichert nur neu in diesem Einkauf gesammelte Punkte
@@ -28,6 +29,7 @@ Bitte:
 - Summentoleranz von 0.02 beachten.
 - Mehrzeilige Artikelbezeichnungen zusammenfuehren.
 - Position-Indizes fortlaufend halten.
+- Wenn `store_branch` nicht im Text steht, aber eine Filial-ID vorhanden ist, darf `store_branch` ueber eine konfigurierbare Mapping-Tabelle gesetzt werden; ohne Mapping muss ein nachvollziehbarer Fallback erhalten bleiben.
 - Mindestens je ein Fixture fuer REWE-Bonus und DM-Payback anlegen, das aktuelle Kontostandszeilen enthaelt und zeigt, dass nur im Einkauf neu gesammeltes Guthaben/Punkte gespeichert werden.
 - Payback-Euro-Gegenwerte eines Punktestands duerfen nicht als bonus_balance uebernommen werden.
 

@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: ebon-backend
+  config:
+    import: optional:file:.env[.properties],optional:file:../.env[.properties]
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ebon}
     username: ${DB_USER:ebon}
@@ -34,6 +36,10 @@ app:
     model: ${OPENROUTER_MODEL:google/gemini-flash-1.5}
     max-tokens: ${OPENROUTER_MAX_TOKENS:500}
     temperature: ${OPENROUTER_TEMPERATURE:0.1}
+  parser:
+    dm-branch-mappings:
+      D482: Am Reuschenberger Markt 3, 41466 Neuss
+      D5A4: Holzheimer Weg 44, 41464 Neuss
   sync:
     scheduler:
       enabled: ${SYNC_SCHEDULER_ENABLED:true}

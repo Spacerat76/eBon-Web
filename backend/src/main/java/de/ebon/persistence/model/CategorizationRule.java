@@ -93,6 +93,37 @@ public class CategorizationRule {
         return active;
     }
 
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void update(
+            Category category,
+            RuleMatchField matchField,
+            RuleMatchType matchType,
+            String matchValue,
+            Integer priority,
+            Boolean active) {
+        if (category != null) {
+            this.category = category;
+        }
+        if (matchField != null) {
+            this.matchField = matchField;
+        }
+        if (matchType != null) {
+            this.matchType = matchType;
+        }
+        if (matchValue != null) {
+            this.matchValue = matchValue;
+        }
+        if (priority != null) {
+            this.priority = priority;
+        }
+        if (active != null) {
+            this.active = active;
+        }
+    }
+
     public void deactivate() {
         active = false;
     }

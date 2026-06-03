@@ -145,6 +145,33 @@ public class Receipt {
         this.bonusType = bonusType;
     }
 
+    public void updateManualValues(
+            LocalDate receiptDate,
+            LocalTime receiptTime,
+            String storeName,
+            String storeBranch,
+            BigDecimal totalAmount,
+            String currency,
+            BigDecimal bonusBalance,
+            BigDecimal bonusPoints,
+            String bonusType) {
+        this.receiptDate = receiptDate;
+        this.receiptTime = receiptTime;
+        this.storeName = storeName;
+        this.storeBranch = storeBranch;
+        this.totalAmount = totalAmount;
+        this.currency = currency == null || currency.isBlank() ? "EUR" : currency;
+        this.bonusBalance = bonusBalance;
+        this.bonusPoints = bonusPoints;
+        this.bonusType = bonusType;
+        markManuallyEdited();
+    }
+
+    public void markManuallyEdited() {
+        parseStatus = ParseStatus.MANUALLY_EDITED;
+        parseErrorMessage = null;
+    }
+
     public void markDeleted(DeleteReason reason) {
         deletedAt = OffsetDateTime.now(ZoneOffset.UTC);
         deleteReason = reason;
@@ -156,6 +183,18 @@ public class Receipt {
 
     public Integer getPaperlessDocumentId() {
         return paperlessDocumentId;
+    }
+
+    public OffsetDateTime getImportedAt() {
+        return importedAt;
+    }
+
+    public LocalDate getReceiptDate() {
+        return receiptDate;
+    }
+
+    public LocalTime getReceiptTime() {
+        return receiptTime;
     }
 
     public OffsetDateTime getDeletedAt() {
@@ -176,6 +215,30 @@ public class Receipt {
 
     public String getStoreName() {
         return storeName;
+    }
+
+    public String getStoreBranch() {
+        return storeBranch;
+    }
+
+    public BigDecimal getTotalAmount() {
+        return totalAmount;
+    }
+
+    public String getCurrency() {
+        return currency;
+    }
+
+    public BigDecimal getBonusBalance() {
+        return bonusBalance;
+    }
+
+    public BigDecimal getBonusPoints() {
+        return bonusPoints;
+    }
+
+    public String getBonusType() {
+        return bonusType;
     }
 
     public List<ReceiptItem> getItems() {

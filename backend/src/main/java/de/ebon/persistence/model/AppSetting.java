@@ -48,4 +48,8 @@ public class AppSetting {
     public String getValue() {
         return value;
     }
+
+    public void updateValue(String value) {
+        this.value = value;
+    }
 }

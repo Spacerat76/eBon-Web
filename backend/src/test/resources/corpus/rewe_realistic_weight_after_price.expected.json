@@ -12,9 +12,9 @@
     {
       "positionIndex": 0,
       "description": "SERVICE ARTIKEL",
-      "quantity": null,
-      "unit": null,
-      "unitPrice": null,
+      "quantity": 0.095,
+      "unit": "kg",
+      "unitPrice": 31.89,
       "totalPrice": 3.03,
       "discountAmount": null
     },

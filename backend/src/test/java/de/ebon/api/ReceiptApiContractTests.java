@@ -1,0 +1,297 @@
+package de.ebon.api;
+
+import de.ebon.persistence.model.AiCategorizationLog;
+import de.ebon.persistence.model.AiCategorizationRejectionReason;
+import de.ebon.persistence.model.Category;
+import de.ebon.persistence.model.CategorySource;
+import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.Receipt;
+import de.ebon.persistence.model.ReceiptItem;
+import de.ebon.persistence.repository.AiCategorizationLogRepository;
+import de.ebon.persistence.repository.CategoryRepository;
+import de.ebon.persistence.repository.ReceiptItemRepository;
+import de.ebon.persistence.repository.ReceiptRepository;
+import de.ebon.support.PostgresIntegrationTestSupport;
+import java.math.BigDecimal;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.TestPropertySource;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@TestPropertySource(properties = {
+        "app.security.api-token=test-token",
+        "app.sync.scheduler.enabled=false"
+})
+class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
+
+    private final HttpClient httpClient = HttpClient.newHttpClient();
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @LocalServerPort
+    private int port;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private ReceiptRepository receiptRepository;
+
+    @Autowired
+    private ReceiptItemRepository receiptItemRepository;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
+
+    @Autowired
+    private AiCategorizationLogRepository aiLogRepository;
+
+    @BeforeEach
+    void resetDatabase() {
+        jdbcTemplate.execute("truncate ai_categorization_log, receipt_item, receipt restart identity cascade");
+        jdbcTemplate.update("update app_settings set value = '0.900' where key = 'ai_categorization_min_confidence'");
+        upsertSetting("paperless_api_token", "paperless-secret");
+        upsertSetting("openrouter_api_key", "openrouter-secret");
+    }
+
+    @Test
+    void receiptDetailsExposeRejectedLowConfidenceAndUnknownCategorySuggestions() throws Exception {
+        Category drogerie = category("Drogerie");
+        Receipt receipt = receipt("dm", "Mehrdeutiger Artikel", "Unbekannte Spezialposition");
+        ReceiptItem lowConfidence = items(receipt).getFirst();
+        ReceiptItem unknownCategory = items(receipt).get(1);
+        aiLogRepository.save(new AiCategorizationLog(
+                lowConfidence,
+                "prompt",
+                "response",
+                drogerie,
+                "Drogerie",
+                null,
+                new BigDecimal("0.820"),
+                AiCategorizationRejectionReason.LOW_CONFIDENCE,
+                "fake-model"));
+        aiLogRepository.save(new AiCategorizationLog(
+                unknownCategory,
+                "prompt",
+                "response",
+                null,
+                "Nicht vorhandene Kategorie",
+                null,
+                new BigDecimal("0.990"),
+                AiCategorizationRejectionReason.UNKNOWN_CATEGORY,
+                "fake-model"));
+
+        HttpResponse<String> response = sendGet("/api/receipts/" + receipt.getId());
+        JsonNode items = objectMapper.readTree(response.body()).get("items");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        JsonNode lowConfidenceSuggestion = items.get(0).get("aiSuggestion");
+        assertThat(lowConfidenceSuggestion.get("categoryId").asLong()).isEqualTo(drogerie.getId());
+        assertThat(lowConfidenceSuggestion.get("categoryName").asText()).isEqualTo("Drogerie");
+        assertThat(new BigDecimal(lowConfidenceSuggestion.get("confidence").asText())).isEqualByComparingTo("0.820");
+        assertThat(lowConfidenceSuggestion.get("rejectionReason").asText()).isEqualTo("LOW_CONFIDENCE");
+
+        JsonNode unknownSuggestion = items.get(1).get("aiSuggestion");
+        assertThat(unknownSuggestion.get("categoryId").toString()).isEqualTo("null");
+        assertThat(unknownSuggestion.get("categoryName").asText()).isEqualTo("Nicht vorhandene Kategorie");
+        assertThat(unknownSuggestion.get("rejectionReason").asText()).isEqualTo("UNKNOWN_CATEGORY");
+    }
+
+    @Test
+    void receiptDetailsDoNotExposeAiSuggestionForCategorizedItems() throws Exception {
+        Category drogerie = category("Drogerie");
+        Receipt receipt = receipt("dm", "Shampoo");
+        ReceiptItem item = items(receipt).getFirst();
+        item.assignCategory(drogerie, CategorySource.AI);
+        receiptItemRepository.saveAndFlush(item);
+        aiLogRepository.save(new AiCategorizationLog(
+                item,
+                "prompt",
+                "response",
+                drogerie,
+                "Drogerie",
+                null,
+                new BigDecimal("0.700"),
+                AiCategorizationRejectionReason.LOW_CONFIDENCE,
+                "fake-model"));
+
+        HttpResponse<String> response = sendGet("/api/receipts/" + receipt.getId());
+        JsonNode itemBody = objectMapper.readTree(response.body()).get("items").get(0);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(itemBody.get("categoryId").asLong()).isEqualTo(drogerie.getId());
+        assertThat(itemBody.get("categorySource").asText()).isEqualTo("AI");
+        assertThat(itemBody.get("aiSuggestion").toString()).isEqualTo("null");
+    }
+
+    @Test
+    void patchItemWithExplicitNullCategoryClearsCategoryAsManualDecision() throws Exception {
+        Category lebensmittel = category("Lebensmittel");
+        Receipt receipt = receipt("REWE", "Bio Milch");
+        ReceiptItem item = items(receipt).getFirst();
+        item.assignCategory(lebensmittel, CategorySource.RULE);
+        receiptItemRepository.saveAndFlush(item);
+
+        HttpResponse<String> response = sendPatch(
+                "/api/receipt-items/" + item.getId(),
+                """
+                        { "categoryId": null }
+                        """);
+        JsonNode body = objectMapper.readTree(response.body());
+        ReceiptItem reloaded = receiptItemRepository.findById(item.getId()).orElseThrow();
+        Receipt reloadedReceipt = receiptRepository.findById(receipt.getId()).orElseThrow();
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(body.get("categoryId").toString()).isEqualTo("null");
+        assertThat(body.get("categorySource").toString()).isEqualTo("null");
+        assertThat(body.get("isManuallyEdited").asBoolean()).isTrue();
+        assertThat(reloaded.getCategory()).isNull();
+        assertThat(reloaded.getCategorySource()).isNull();
+        assertThat(reloaded.isManuallyEdited()).isTrue();
+        assertThat(reloadedReceipt.getParseStatus()).isEqualTo(ParseStatus.MANUALLY_EDITED);
+    }
+
+    @Test
+    void reparseReceiptReplacesExistingItemsWithoutPositionIndexConflict() throws Exception {
+        Receipt receipt = new Receipt(
+                300001,
+                """
+                        REWE Markt
+                        Am Reuschenberger Markt 1
+                        27.05.2026 12:37
+                        ALTE POSITION 0,50
+                        ZWEITE POSITION 0,50
+                        SUMME EUR 1,00
+                        """);
+        receipt.setStoreName("REWE");
+        receipt.addItem(new ReceiptItem(0, "Vorherige Position A", new BigDecimal("0.50")));
+        receipt.addItem(new ReceiptItem(1, "Vorherige Position B", new BigDecimal("0.50")));
+        receiptRepository.saveAndFlush(receipt);
+
+        HttpResponse<String> response = sendPost(
+                "/api/receipts/" + receipt.getId() + "/reparse?overwriteManualEdits=false");
+        JsonNode body = objectMapper.readTree(response.body());
+        java.util.List<ReceiptItem> reparsedItems = items(receipt);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(body.get("storeBranch").asText()).isEqualTo("Am Reuschenberger Markt 1");
+        assertThat(body.get("items")).hasSize(2);
+        assertThat(reparsedItems)
+                .extracting(ReceiptItem::getDescription)
+                .containsExactly("ALTE POSITION", "ZWEITE POSITION");
+    }
+
+    @Test
+    void settingsMaskSecretsAndDoNotPersistMaskPlaceholder() throws Exception {
+        HttpResponse<String> getResponse = sendGet("/api/settings");
+        JsonNode settings = objectMapper.readTree(getResponse.body());
+
+        assertThat(getResponse.statusCode()).isEqualTo(200);
+        assertThat(settings.get("paperlessApiToken").asText()).isEqualTo("********");
+        assertThat(settings.get("openRouterApiKey").asText()).isEqualTo("********");
+        assertThat(new BigDecimal(settings.get("aiCategorizationMinConfidence").asText())).isEqualByComparingTo("0.900");
+
+        HttpResponse<String> putResponse = sendPut(
+                "/api/settings",
+                """
+                        {
+                          "paperlessApiToken": "********",
+                          "openRouterApiKey": "********",
+                          "aiCategorizationMinConfidence": 0.875
+                        }
+                        """);
+
+        assertThat(putResponse.statusCode()).isEqualTo(200);
+        assertThat(jdbcTemplate.queryForObject(
+                "select value from app_settings where key = 'paperless_api_token'",
+                String.class)).isEqualTo("paperless-secret");
+        assertThat(jdbcTemplate.queryForObject(
+                "select value from app_settings where key = 'openrouter_api_key'",
+                String.class)).isEqualTo("openrouter-secret");
+        assertThat(jdbcTemplate.queryForObject(
+                "select value from app_settings where key = 'ai_categorization_min_confidence'",
+                String.class)).isEqualTo("0.875");
+    }
+
+    @Test
+    void settingsRejectInvalidAiCategorizationConfidence() throws Exception {
+        HttpResponse<String> response = sendPut(
+                "/api/settings",
+                """
+                        { "aiCategorizationMinConfidence": 1.500 }
+                        """);
+        JsonNode body = objectMapper.readTree(response.body());
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(body.get("status").asInt()).isEqualTo(400);
+    }
+
+    private Receipt receipt(String storeName, String... descriptions) {
+        Receipt receipt = new Receipt(200000 + Math.abs(String.join("|", descriptions).hashCode()), "raw text");
+        receipt.setStoreName(storeName);
+        for (int index = 0; index < descriptions.length; index++) {
+            receipt.addItem(new ReceiptItem(index, descriptions[index], new BigDecimal("1.00")));
+        }
+        return receiptRepository.saveAndFlush(receipt);
+    }
+
+    private Category category(String name) {
+        return categoryRepository.findByName(name).orElseThrow();
+    }
+
+    private void upsertSetting(String key, String value) {
+        jdbcTemplate.update("""
+                insert into app_settings (key, value, description)
+                values (?, ?, ?)
+                on conflict (key) do update set value = excluded.value
+                """, key, value, "test setting");
+    }
+
+    private java.util.List<ReceiptItem> items(Receipt receipt) {
+        return receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId());
+    }
+
+    private HttpResponse<String> sendGet(String path) throws Exception {
+        return send(HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + path))
+                .GET());
+    }
+
+    private HttpResponse<String> sendPatch(String path, String body) throws Exception {
+        return send(HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + path))
+                .header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(body)));
+    }
+
+    private HttpResponse<String> sendPost(String path) throws Exception {
+        return send(HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + path))
+                .POST(HttpRequest.BodyPublishers.noBody()));
+    }
+
+    private HttpResponse<String> sendPut(String path, String body) throws Exception {
+        return send(HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:" + port + path))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(body)));
+    }
+
+    private HttpResponse<String> send(HttpRequest.Builder builder) throws Exception {
+        return httpClient.send(
+                builder.header("Authorization", "Bearer test-token").build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+}

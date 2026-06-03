@@ -51,6 +51,24 @@ public class Category {
         active = true;
     }
 
+    public void update(String name, String colorHex, String icon, Integer sortOrder, Boolean active) {
+        if (name != null) {
+            this.name = name;
+        }
+        if (colorHex != null) {
+            this.colorHex = colorHex;
+        }
+        if (icon != null) {
+            this.icon = icon;
+        }
+        if (sortOrder != null) {
+            this.sortOrder = sortOrder;
+        }
+        if (active != null) {
+            this.active = active;
+        }
+    }
+
     public Long getId() {
         return id;
     }

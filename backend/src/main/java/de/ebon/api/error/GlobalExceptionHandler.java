@@ -1,11 +1,17 @@
 package de.ebon.api.error;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.persistence.EntityNotFoundException;
+import jakarta.validation.ConstraintViolationException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestControllerAdvice
@@ -37,6 +43,32 @@ public class GlobalExceptionHandler {
         return build(status, message, request);
     }
 
+    @ExceptionHandler({
+            ConstraintViolationException.class,
+            HandlerMethodValidationException.class,
+            MethodArgumentTypeMismatchException.class,
+            HttpMessageNotReadableException.class
+    })
+    public ResponseEntity<ApiError> handleRequestValidation(
+            Exception exception,
+            HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "Validierungsfehler im Request.", request);
+    }
+
+    @ExceptionHandler(EntityNotFoundException.class)
+    public ResponseEntity<ApiError> handleNotFound(
+            EntityNotFoundException exception,
+            HttpServletRequest request) {
+        return build(HttpStatus.NOT_FOUND, exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleConflict(
+            DataIntegrityViolationException exception,
+            HttpServletRequest request) {
+        return build(HttpStatus.CONFLICT, "Datenkonflikt beim Speichern.", request);
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiError> handleBadRequest(
             IllegalArgumentException exception,
@@ -55,4 +87,3 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(status).body(apiErrorFactory.create(status, message, request));
     }
 }
-

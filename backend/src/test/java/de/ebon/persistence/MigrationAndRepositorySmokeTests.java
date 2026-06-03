@@ -112,7 +112,12 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         receipt.addItem(new ReceiptItem(8, "XXL MISCHBEUT.", new BigDecimal("6.99")));
         receipt.addItem(new ReceiptItem(9, "CLASSIC ROLLE", new BigDecimal("3.98")));
         receipt.addItem(new ReceiptItem(10, "COUNTRY MIX", new BigDecimal("2.99")));
-        receipt.addItem(new ReceiptItem(11, "Unklare Sonderposition", new BigDecimal("2.49")));
+        receipt.addItem(new ReceiptItem(11, "CC SRITE ZERO", new BigDecimal("16.90")));
+        receipt.addItem(new ReceiptItem(12, "L CC grat.", new BigDecimal("-16.90")));
+        receipt.addItem(new ReceiptItem(13, "FOLIENSTIFT", new BigDecimal("3.29")));
+        receipt.addItem(new ReceiptItem(14, "Kulturtasche transparent", new BigDecimal("2.45")));
+        receipt.addItem(new ReceiptItem(15, "HIGH PROT. TORT.", new BigDecimal("3.58")));
+        receipt.addItem(new ReceiptItem(16, "Unklare Sonderposition", new BigDecimal("2.49")));
         receiptRepository.saveAndFlush(receipt);
 
         categorizationService.categorizeReceipt(receipt.getId());
@@ -140,8 +145,18 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         assertThat(items.get(9).getCategorySource()).isEqualTo(CategorySource.RULE);
         assertThat(items.get(10).getCategory().getName()).isEqualTo("Salat, Obst & Gemüse");
         assertThat(items.get(10).getCategorySource()).isEqualTo(CategorySource.RULE);
-        assertThat(items.get(11).getCategory()).isNull();
-        assertThat(items.get(11).getCategorySource()).isNull();
+        assertThat(items.get(11).getCategory().getName()).isEqualTo("Getraenke");
+        assertThat(items.get(11).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(12).getCategory().getName()).isEqualTo("Pfand und Rabatte");
+        assertThat(items.get(12).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(13).getCategory().getName()).isEqualTo("Freizeit");
+        assertThat(items.get(13).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(14).getCategory().getName()).isEqualTo("Koerperpflege");
+        assertThat(items.get(14).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(15).getCategory().getName()).isEqualTo("Brot und Backwaren");
+        assertThat(items.get(15).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(16).getCategory()).isNull();
+        assertThat(items.get(16).getCategorySource()).isNull();
     }
 
     @Test

@@ -1,6 +1,8 @@
 package de.ebon.parser;
 
+import de.ebon.config.ReceiptParserProperties;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -8,6 +10,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -21,11 +24,17 @@ public class RuleBasedReceiptParser {
     private static final Pattern DATE_DOTTED = Pattern.compile("\\b(?<day>\\d{1,2})\\.(?<month>\\d{1,2})\\.(?<year>\\d{2,4})\\b");
     private static final Pattern DATE_ISO = Pattern.compile("\\b(?<date>\\d{4}-\\d{2}-\\d{2})\\b");
     private static final Pattern TIME = Pattern.compile("\\b(?<hour>\\d{1,2}):(?<minute>\\d{2})(?::(?<second>\\d{2}))?\\b");
+    private static final Pattern DM_HEADER_BRANCH = Pattern.compile(
+            "^\\s*\\d{1,2}\\.\\d{1,2}\\.\\d{2,4}\\s+\\d{1,2}:\\d{2}\\s+(?<branch>[A-Z0-9]{3,6}/\\d+)\\b.*$",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern QUANTITY_PRICE = Pattern.compile(
-            "(?<quantity>\\d+(?:,\\d+)?)\\s*(?<unit>kg|g|l|ml|stk|stck|stueck)?\\s*(?:x|\\*)\\s*(?<unitPrice>\\d+(?:,\\d+)?)",
+            "(?<quantity>\\d+(?:,\\d+)?)\\s*(?<unit>kg|g|l|ml|stk|stck|stueck)?\\s*(?:x|\\*)\\s*(?<unitPrice>\\d+,\\d+)",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern QUANTITY_DETAIL_LINE = Pattern.compile(
-            "^\\s*(?<quantity>\\d+(?:,\\d+)?)\\s*(?<unit>kg|g|l|ml|stk|stck|stueck)?\\s*(?:x|\\*)\\s*(?<unitPrice>\\d+(?:,\\d+)?)\\s*(?:EUR(?:/\\w+)?)?\\s*$",
+            "^\\s*(?<quantity>\\d+(?:,\\d+)?)\\s*(?<unit>kg|g|l|ml|stk|stck|stueck)?\\s*(?:x|\\*)\\s*(?<unitPrice>\\d+,\\d+)\\s*(?:EUR(?:/\\w+)?)?\\s*$",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern HANDEINGABE_QUANTITY_LINE = Pattern.compile(
+            "^.*\\bHandeingabe\\s+E-Bon\\s+(?<quantity>\\d+(?:,\\d+)?)\\s*(?<unit>kg|g|l|ml|stk|stck|stueck)\\s*$",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern BONUS_POINTS = Pattern.compile(
             "(?<points>\\d{1,3}(?:\\.\\d{3})*|\\d+(?:,\\d+)?)\\s*(?:°P|Punkte|Punkt)",
@@ -38,6 +47,16 @@ public class RuleBasedReceiptParser {
             Pattern.CASE_INSENSITIVE);
 
     private final ReceiptParseValidator validator = new ReceiptParseValidator();
+    private final ReceiptParserProperties parserProperties;
+
+    public RuleBasedReceiptParser() {
+        this(new ReceiptParserProperties());
+    }
+
+    @Autowired
+    public RuleBasedReceiptParser(ReceiptParserProperties parserProperties) {
+        this.parserProperties = parserProperties == null ? new ReceiptParserProperties() : parserProperties;
+    }
 
     public ReceiptParseResult parse(String rawText) {
         List<String> lines = rawText == null
@@ -126,13 +145,60 @@ public class RuleBasedReceiptParser {
     }
 
     private String parseStoreBranch(List<String> lines) {
-        for (String line : lines) {
-            String upper = line.toUpperCase(Locale.ROOT);
-            if (upper.contains("FILIALE") || upper.contains("STRASSE") || upper.contains("STR.") || upper.contains("PLATZ")) {
-                return line;
+        String dmBranch = parseDmBranchCode(lines);
+        if (dmBranch != null) {
+            return dmBranch;
+        }
+
+        for (String line : headerLines(lines)) {
+            String normalized = cleanupBranchLine(line);
+            if (isBranchLine(normalized)) {
+                return normalized;
             }
         }
         return null;
+    }
+
+    private List<String> headerLines(List<String> lines) {
+        List<String> header = new ArrayList<>();
+        for (String line : lines) {
+            String upper = line.toUpperCase(Locale.ROOT);
+            if (upper.equals("EUR") || AMOUNT_AT_END.matcher(line).find()) {
+                break;
+            }
+            header.add(line);
+            if (header.size() >= 12) {
+                break;
+            }
+        }
+        return header;
+    }
+
+    private String parseDmBranchCode(List<String> lines) {
+        if (!lines.stream().map(line -> line.toUpperCase(Locale.ROOT)).anyMatch(upper -> upper.contains("DM.DE")
+                || upper.contains("PAYBACK")
+                || upper.contains("KARTENZAHLUNG")
+                || upper.contains("DM-RABATTE")
+                || upper.contains("ÖFFNUNGSZEITEN AUF DM.DE")
+                || upper.contains("OEFFNUNGSZEITEN AUF DM.DE"))) {
+            return null;
+        }
+
+        for (String line : lines) {
+            Matcher matcher = DM_HEADER_BRANCH.matcher(line);
+            if (matcher.find()) {
+                String branchCode = matcher.group("branch").toUpperCase(Locale.ROOT);
+                return parserProperties.resolveDmBranch(branchCode)
+                        .orElse("Filiale " + branchCode);
+            }
+        }
+        return null;
+    }
+
+    private String cleanupBranchLine(String line) {
+        return line.replace("*", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private BigDecimal parseTotal(List<String> lines) {
@@ -341,6 +407,13 @@ public class RuleBasedReceiptParser {
                 continue;
             }
 
+            String pipeTableDescription = parsePipeTableDescriptionLine(line);
+            if (pipeTableDescription != null) {
+                pendingDescriptionLines.clear();
+                pendingDescriptionLines.add(pipeTableDescription);
+                continue;
+            }
+
             QuantityDetails quantityDetails = parseQuantityDetailLine(line);
             if (quantityDetails != null) {
                 if (!items.isEmpty() && pendingDescriptionLines.isEmpty()) {
@@ -454,9 +527,23 @@ public class RuleBasedReceiptParser {
         }
 
         List<String> descriptionParts = new ArrayList<>(pendingDescriptionLines);
+        boolean hasDescriptionFromPreviousTableRow = !pendingDescriptionLines.isEmpty()
+                && !cells.isEmpty()
+                && isQuantityOnlyCell(cells.getFirst());
+        BigDecimal quantity = null;
+        String unit = null;
+        BigDecimal unitPrice = null;
+        if (hasDescriptionFromPreviousTableRow) {
+            quantity = GermanNumberParser.parse(cells.getFirst());
+            unit = "Stk";
+            unitPrice = firstAmountBefore(cells, amountCellIndex).orElse(totalPrice);
+        }
         for (int i = 0; i < amountCellIndex; i++) {
             String cell = cells.get(i);
-            if (isQuantityOnlyCell(cell) || isAmountOnlyCell(cell) || isPznLine(cell)) {
+            if (isQuantityOnlyCell(cell)
+                    || isAmountOnlyCell(cell)
+                    || isPznLine(cell)
+                    || hasDescriptionFromPreviousTableRow) {
                 continue;
             }
             descriptionParts.add(cell);
@@ -473,11 +560,44 @@ public class RuleBasedReceiptParser {
         return new ParsedReceiptItem(
                 positionIndex,
                 description,
-                null,
-                null,
-                null,
+                quantity,
+                unit,
+                unitPrice,
                 totalPrice,
                 discountAmount);
+    }
+
+    private java.util.Optional<BigDecimal> firstAmountBefore(List<String> cells, int amountCellIndex) {
+        for (int i = 0; i < amountCellIndex; i++) {
+            Matcher matcher = AMOUNT_AT_END.matcher(cells.get(i));
+            if (matcher.find()) {
+                return java.util.Optional.of(GermanNumberParser.parse(matcher.group("amount")));
+            }
+        }
+        return java.util.Optional.empty();
+    }
+
+    private String parsePipeTableDescriptionLine(String line) {
+        if (!line.trim().startsWith("|") || isPipeTableNoiseLine(line) || isTaxTableLine(line)) {
+            return null;
+        }
+
+        List<String> cells = pipeTableCells(line);
+        if (cells.isEmpty() || cells.stream().anyMatch(cell -> AMOUNT_AT_END.matcher(cell).find())) {
+            return null;
+        }
+
+        String description = cleanupDescription(String.join(" ", cells.stream()
+                .filter(cell -> !isQuantityOnlyCell(cell))
+                .filter(cell -> !isPznLine(cell))
+                .toList()));
+        if (description.isBlank()
+                || isMetadataLine(description)
+                || isTotalLine(description)
+                || isPaymentDetailLine(description)) {
+            return null;
+        }
+        return description;
     }
 
     private ParsedReceiptItem parsePharmacyItemLine(String description, BigDecimal totalPrice, int positionIndex) {
@@ -533,6 +653,14 @@ public class RuleBasedReceiptParser {
     }
 
     private QuantityDetails parseQuantityDetailLine(String line) {
+        Matcher handeingabeMatcher = HANDEINGABE_QUANTITY_LINE.matcher(line);
+        if (handeingabeMatcher.matches()) {
+            return new QuantityDetails(
+                    GermanNumberParser.parse(handeingabeMatcher.group("quantity")),
+                    normalizeUnit(handeingabeMatcher.group("unit")),
+                    null);
+        }
+
         Matcher matcher = QUANTITY_DETAIL_LINE.matcher(line);
         if (!matcher.matches()) {
             return null;
@@ -551,9 +679,19 @@ public class RuleBasedReceiptParser {
                 item.description(),
                 item.quantity() == null ? quantityDetails.quantity() : item.quantity(),
                 item.unit() == null ? quantityDetails.unit() : item.unit(),
-                item.unitPrice() == null ? quantityDetails.unitPrice() : item.unitPrice(),
+                item.unitPrice() == null ? unitPriceFor(item, quantityDetails) : item.unitPrice(),
                 item.totalPrice(),
                 item.discountAmount()));
+    }
+
+    private BigDecimal unitPriceFor(ParsedReceiptItem item, QuantityDetails quantityDetails) {
+        if (quantityDetails.unitPrice() != null) {
+            return quantityDetails.unitPrice();
+        }
+        if (quantityDetails.quantity() == null || quantityDetails.quantity().signum() == 0 || item.totalPrice() == null) {
+            return null;
+        }
+        return item.totalPrice().divide(quantityDetails.quantity(), 2, RoundingMode.HALF_UP);
     }
 
     private String cleanupDescription(String description) {
@@ -610,15 +748,24 @@ public class RuleBasedReceiptParser {
                 || upper.contains("BON")
                 || upper.contains("BELEG")
                 || upper.contains("TEL.")
+                || upper.contains("TEL:")
+                || upper.startsWith("TEL ")
                 || upper.startsWith("FAX")
                 || upper.contains("UID")
+                || upper.contains("STEUER.NR")
+                || upper.contains("STEUER-NR")
                 || upper.contains("WWW.")
                 || upper.equals("EUR")
                 || upper.contains("ARTIKELPREIS")
+                || upper.startsWith("DM-RABATTE AUF RABATTFÄHIGE ARTIKEL")
+                || upper.startsWith("DM-RABATTE AUF RABATTFAEHIGE ARTIKEL")
+                || upper.startsWith("PARTNER-RABATTE AUF RABATTFÄHIGE ARTIKEL")
+                || upper.startsWith("PARTNER-RABATTE AUF RABATTFAEHIGE ARTIKEL")
                 || upper.startsWith("PRIVATREZEPT")
                 || upper.startsWith("POSITIONEN:")
                 || upper.startsWith("PZN:")
                 || isPznLine(line)
+                || line.matches("^\\.?[A-Z]\\d{6,}$")
                 || upper.contains("ACHTUNG KUHL")
                 || upper.contains("ACHTUNG KÜHL")
                 || isTaxMarkerLine(line)
@@ -660,10 +807,32 @@ public class RuleBasedReceiptParser {
 
     private boolean isBranchLine(String line) {
         String upper = line.toUpperCase(Locale.ROOT);
+        if (isKnownStoreLine(line) || isMetadataLineWithoutBranch(line) || isDateOrTimeLine(line)) {
+            return false;
+        }
         return upper.contains("FILIALE")
                 || upper.contains("STRASSE")
                 || upper.contains("STR.")
-                || upper.contains("PLATZ");
+                || upper.contains("PLATZ")
+                || upper.contains("MARKT")
+                || upper.contains("WEG")
+                || upper.contains("ALLEE")
+                || upper.contains("RING")
+                || upper.contains("GASSE");
+    }
+
+    private boolean isMetadataLineWithoutBranch(String line) {
+        String upper = line.toUpperCase(Locale.ROOT);
+        return upper.contains("TEL.")
+                || upper.contains("TEL:")
+                || upper.startsWith("TEL ")
+                || upper.contains("UID")
+                || upper.startsWith("FAX")
+                || upper.contains("STEUER-NR")
+                || upper.contains("STEUER.NR")
+                || upper.contains("BON")
+                || upper.contains("BELEG")
+                || upper.contains("KASSE");
     }
 
     private boolean isTotalLine(String line) {
@@ -729,7 +898,7 @@ public class RuleBasedReceiptParser {
     }
 
     private boolean isPostalAddressLine(String line) {
-        return line.matches("^\\s*\\d{5}\\s+.*");
+        return cleanupBranchLine(line).matches("^\\d{5}\\s+\\S.*");
     }
 
     private boolean isPipeTableNoiseLine(String line) {

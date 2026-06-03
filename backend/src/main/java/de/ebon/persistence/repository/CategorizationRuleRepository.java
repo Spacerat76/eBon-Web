@@ -8,5 +8,7 @@ public interface CategorizationRuleRepository extends JpaRepository<Categorizati
 
     List<CategorizationRule> findByActiveTrueOrderByPriorityAscIdAsc();
 
+    List<CategorizationRule> findAllByOrderByPriorityAscIdAsc();
+
     boolean existsByCategory_Id(Long categoryId);
 }

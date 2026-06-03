@@ -76,6 +76,7 @@ public class CategorizationService {
                 .orElseThrow(() -> new EntityNotFoundException("Bon-Position nicht gefunden."));
         Category category = activeCategory(categoryId);
         item.assignCategory(category, CategorySource.MANUAL);
+        item.getReceipt().markManuallyEdited();
     }
 
     @Transactional
@@ -83,6 +84,7 @@ public class CategorizationService {
         ReceiptItem item = receiptItemRepository.findById(receiptItemId)
                 .orElseThrow(() -> new EntityNotFoundException("Bon-Position nicht gefunden."));
         item.manuallyClearCategory();
+        item.getReceipt().markManuallyEdited();
     }
 
     @Transactional
