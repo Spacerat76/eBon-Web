@@ -4,6 +4,7 @@ import de.ebon.persistence.model.AiCategorizationLog;
 import de.ebon.persistence.model.AiCategorizationRejectionReason;
 import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.CategorySource;
+import de.ebon.persistence.model.DeleteReason;
 import de.ebon.persistence.model.ParseStatus;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
@@ -13,6 +14,8 @@ import de.ebon.persistence.repository.ReceiptItemRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
 import de.ebon.support.PostgresIntegrationTestSupport;
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -164,6 +167,78 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
     }
 
     @Test
+    void patchItemRejectsCategorySourceWithoutCategoryId() throws Exception {
+        Receipt receipt = receipt("REWE", "Bio Milch");
+        ReceiptItem item = items(receipt).getFirst();
+
+        HttpResponse<String> response = sendPatch(
+                "/api/receipt-items/" + item.getId(),
+                """
+                        { "categorySource": "AI" }
+                        """);
+        JsonNode body = objectMapper.readTree(response.body());
+
+        assertThat(response.statusCode()).isEqualTo(400);
+        assertThat(body.get("status").asInt()).isEqualTo(400);
+        assertThat(body.get("message").asText()).contains("categorySource");
+    }
+
+    @Test
+    void listReceiptsHidesDeletedReceiptsByDefault() throws Exception {
+        Receipt active = receiptWithDate("Aktiv", LocalDate.of(2026, 5, 1), false);
+        receiptWithDate("Gelöscht", LocalDate.of(2026, 5, 2), true);
+
+        HttpResponse<String> response = sendGet("/api/receipts");
+        JsonNode body = objectMapper.readTree(response.body());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(body.get("totalElements").asLong()).isEqualTo(1);
+        assertThat(body.get("content").size()).isEqualTo(1);
+        assertThat(body.get("content").get(0).get("storeName").asText()).isEqualTo(active.getStoreName());
+    }
+
+    @Test
+    void listReceiptsIncludesDeletedReceiptsWhenRequested() throws Exception {
+        receiptWithDate("Aktiv", LocalDate.of(2026, 5, 1), false);
+        Receipt deleted = receiptWithDate("Gelöscht", LocalDate.of(2026, 5, 2), true);
+
+        HttpResponse<String> response = sendGet("/api/receipts?includeDeleted=true");
+        JsonNode body = objectMapper.readTree(response.body());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(body.get("totalElements").asLong()).isEqualTo(2);
+        assertThat(body.get("content").size()).isEqualTo(2);
+        assertThat(body.get("content").get(0).get("storeName").asText()).isEqualTo(deleted.getStoreName());
+        boolean hasDeletedEntry = false;
+        for (JsonNode node : body.get("content")) {
+            if (!node.get("deletedAt").isNull()) {
+                hasDeletedEntry = true;
+                break;
+            }
+        }
+        assertThat(hasDeletedEntry).isTrue();
+    }
+
+    @Test
+    void listReceiptsAppliesFiltersAndSafeSorting() throws Exception {
+        receiptWithParseStatus("REWE Mitte", LocalDate.of(2026, 5, 1), ParseStatus.PARSED, false);
+        receiptWithParseStatus("dm-drogerie markt", LocalDate.of(2026, 5, 2), ParseStatus.PARSE_ERROR, false);
+        receiptWithParseStatus("REWE Süd", LocalDate.of(2026, 6, 1), ParseStatus.PARSED, true);
+
+        HttpResponse<String> response = sendGet(
+                "/api/receipts?status=PARSED&dateFrom=2026-05-01&dateTo=2026-05-31&store=rewe&sortBy=invalid&sortDir=desc&size=100");
+        JsonNode body = objectMapper.readTree(response.body());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(body.get("sortBy").asText()).isEqualTo("receiptDate");
+        assertThat(body.get("sortDir").asText()).isEqualTo("desc");
+        assertThat(body.get("size").asInt()).isEqualTo(100);
+        assertThat(body.get("totalElements").asInt()).isEqualTo(1);
+        assertThat(body.get("content").size()).isEqualTo(1);
+        assertThat(body.get("content").get(0).get("storeName").asText()).isEqualTo("REWE Mitte");
+    }
+
+    @Test
     void reparseReceiptReplacesExistingItemsWithoutPositionIndexConflict() throws Exception {
         Receipt receipt = new Receipt(
                 300001,
@@ -243,6 +318,50 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         receipt.setStoreName(storeName);
         for (int index = 0; index < descriptions.length; index++) {
             receipt.addItem(new ReceiptItem(index, descriptions[index], new BigDecimal("1.00")));
+        }
+        return receiptRepository.saveAndFlush(receipt);
+    }
+
+    private Receipt receiptWithDate(String storeName, LocalDate date, boolean deleted) {
+        Receipt receipt = new Receipt(400000 + Math.abs(storeName.hashCode()) + date.getDayOfMonth(), "raw text");
+        receipt.setStoreName(storeName);
+        receiptRepository.saveAndFlush(receipt);
+        receipt.updateManualValues(
+                date,
+                LocalTime.of(12, 0),
+                storeName,
+                null,
+                new BigDecimal("1.00"),
+                "EUR",
+                null,
+                null,
+                null);
+        if (deleted) {
+            receipt.markDeleted(DeleteReason.USER_DELETED);
+        }
+        return receiptRepository.saveAndFlush(receipt);
+    }
+
+    private Receipt receiptWithParseStatus(
+            String storeName,
+            LocalDate date,
+            ParseStatus parseStatus,
+            boolean deleted) {
+        Receipt receipt = new Receipt(500000 + Math.abs(storeName.hashCode()) + date.getDayOfMonth(), "raw text");
+        receipt.applyParseResult(
+                parseStatus,
+                null,
+                date,
+                LocalTime.of(12, 0),
+                storeName,
+                null,
+                new BigDecimal("1.00"),
+                "EUR",
+                null,
+                null,
+                null);
+        if (deleted) {
+            receipt.markDeleted(DeleteReason.USER_DELETED);
         }
         return receiptRepository.saveAndFlush(receipt);
     }

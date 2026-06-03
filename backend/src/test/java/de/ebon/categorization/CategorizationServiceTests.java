@@ -166,6 +166,30 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
     }
 
     @Test
+    void invalidStoredAiConfidenceFallsBackToDefaultThreshold() {
+        jdbcTemplate.update("update app_settings set value = 'abc' where key = 'ai_categorization_min_confidence'");
+        aiClient.available = true;
+        Receipt receipt = receipt("dm", "Grenzfall Artikel");
+        Long itemId = firstItem(receipt).getId();
+        aiClient.suggest(itemId, "Drogerie", new BigDecimal("0.850"));
+
+        categorizationService.categorizeReceipt(receipt.getId());
+
+        ReceiptItem item = firstItem(receipt);
+        assertThat(item.getCategory()).isNull();
+        assertThat(item.getCategorySource()).isNull();
+        assertThat(aiClient.lastRequest.minConfidence()).isEqualByComparingTo("0.900");
+        assertThat(aiLogRepository.findAll()).singleElement()
+                .satisfies(log -> {
+                    assertThat(log.getReceiptItem().getId()).isEqualTo(itemId);
+                    assertThat(log.getSuggestedCategory().getName()).isEqualTo("Drogerie");
+                    assertThat(log.getAssignedCategory()).isNull();
+                    assertThat(log.getAiConfidence()).isEqualByComparingTo("0.850");
+                    assertThat(log.getRejectionReason()).isEqualTo(AiCategorizationRejectionReason.LOW_CONFIDENCE);
+                });
+    }
+
+    @Test
     void lowConfidenceAiCategoryKeepsItemUncategorizedAndWritesLogWithoutAssignment() {
         aiClient.available = true;
         Receipt receipt = receipt("dm", "Mehrdeutiger Artikel");
