@@ -17,6 +17,17 @@ import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+/**
+ * Smoke test for the developer-local receipt corpus in ../rewe and ../dm.
+ *
+ * The test is disabled by default because it depends on external local folders
+ * that are not part of the repository and may be large or missing on other
+ * machines. Enable it explicitly with:
+ *
+ * <pre>
+ * mvn -Debon.localReceiptCorpus.enabled=true -Dtest=LocalReceiptCorpusSmokeTests test
+ * </pre>
+ */
 @EnabledIfSystemProperty(named = "ebon.localReceiptCorpus.enabled", matches = "true")
 class LocalReceiptCorpusSmokeTests {
 
