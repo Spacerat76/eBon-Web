@@ -525,17 +525,22 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 ### F-10: Dashboard
 
 - **F-10.1:** Das Dashboard zeigt auf einen Blick:
-  - Gesamtausgaben im aktuellen Monat (vs. Vormonat)
+  - Gesamtausgaben im aktuellen Monat, Gesamtausgaben im Vormonat und Gesamtausgaben im aktuellen Jahr
   - Übersicht des neu gesammelten Bonusguthabens und der neu gesammelten Punkte (Summe nach Typ)
-  - Ausgaben nach Kategorie im aktuellen Monat (Tortendiagramm)
-  - Letzte 5 importierte Bons
+  - Ausgaben nach Kategorie (Tortendiagramm)
+  - Letzte 5 Bons als Schnellnavigation zu den zuletzt datierten, nicht gelöschten Bons
   - Anzahl der Positionen ohne Kategorie (mit Link zur Kategorisierung)
   - Status des letzten Syncs (Zeitpunkt, Anzahl neue Bons, ggf. Fehler, Anzahl TAG_REMOVED)
+- **F-10.2:** „Letzte Bons" sortiert standardmäßig nach `receipt_date DESC`, `receipt_time DESC`, `imported_at DESC` und dient als schnelle Einstiegsliste, nicht als vollständige Historie.
+- **F-10.3:** Die Bonus-Anzeige bezieht sich ausschließlich auf neu im gewählten Zeitraum gesammelte Bonusguthaben/Punkte, nicht auf aktuelle Bonuskonto-/Punktestände.
+- **F-10.4:** Kategorie- und Bonus-Diagramme auf dem Dashboard unterstützen Schnellfilter für aktueller Monat, letztes Quartal, letztes Jahr sowie einen benutzerdefinierten Zeitraum von/bis.
+- **F-10.5:** Die KPI bzw. Anzeige „Ohne Kategorie" ist anklickbar und navigiert zu einer Liste/Suche, die nur Positionen mit `category_id = NULL` und `category_source = NULL` zeigt.
 
 ### F-11: Einstellungen
 
 - **F-11.1:** Über eine Einstellungsseite kann der Nutzer konfigurieren:
   - Paperless-NGX URL und API-Token (mit Verbindungstest)
+  - optionale Paperless-Web-URL oder Dokument-URL-Vorlage für klickbare Links zu Paperless-Dokumenten
   - OpenRouter API-Key und Modell-Auswahl (mit Verbindungstest)
   - Mindest-Konfidenz für automatische KI-Kategorisierung (`ai_categorization_min_confidence`, Standard `0.900`, Wertebereich `0.000` bis `1.000`)
   - Sync-Intervall (Minuten)
@@ -543,6 +548,9 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 - **F-11.2:** Sensible Felder (API-Keys) werden bei der Anzeige maskiert. Maskierte Platzhalterwerte dürfen beim Speichern nicht als neue Secrets persistiert werden. Klartext-Secrets werden ausschließlich beim initialen Setzen oder expliziten Ersetzen übertragen.
 - **F-11.3:** Einstellungen werden in `app_settings` gespeichert (nicht in Umgebungsvariablen überschreibbar via UI, aber initial aus Umgebungsvariablen befüllt).
 - **F-11.4:** Secrets in `app_settings` müssen in Logs, Fehlerantworten, Backup-Metadaten und UI-Responses maskiert werden. Für lokale Single-User-Deployments ist Speicherung im Klartext in der Datenbank zulässig, aber die Implementierung muss zentral über einen `SecretValue`/Maskierungsmechanismus erfolgen, damit spätere Verschlüsselung möglich bleibt.
+- **F-11.5:** Einstellungen enthalten einen administrativen Bereich „Datenwartung" mit:
+  - Re-Parse aller Bons, standardmäßig ohne Überschreiben manueller Änderungen.
+  - Reset aller importierten Bon-Daten für ein vollständiges erneutes Einlesen aus Paperless-NGX. Der Reset löscht `receipt`, `receipt_item` und zugehörige KI-/Sync-Detaildaten, behält aber Kategorien, Kategorisierungsregeln, App-Einstellungen und Flyway-Migrationen. Die Aktion ist destruktiv und verlangt eine deutliche Bestätigung.
 
 ### F-12: Test-Suite
 
@@ -838,6 +846,11 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 5. Nutzer klickt „Speichern" → `PUT /api/settings`.
 6. Backend persistiert Änderungen in `app_settings`.
 
+**Datenwartung in den Einstellungen:**
+- Nutzer kann „Alle Bons erneut parsen" auslösen. Frontend sendet `POST /api/receipts/reparse` mit `overwriteManualEdits=false`, außer der Nutzer bestätigt explizit das Überschreiben manueller Änderungen.
+- Nutzer kann „Importierte Bon-Daten zurücksetzen" auslösen. Vor dem Absenden muss ein eindeutiger Bestätigungstext eingegeben werden. Frontend sendet `POST /api/admin/data-reset/imported-receipts` mit `{ "confirmation": "DELETE_IMPORTED_RECEIPTS" }`.
+- Backend führt den Reset transaktional aus und löscht nur importierte Bon-Daten sowie zugehörige Parser-/KI-/Sync-Detaildaten. Kategorien, Regeln, App-Einstellungen, Flyway-Historie und Backups bleiben erhalten.
+
 ---
 
 ## 8. API-Spezifikation (Backend)
@@ -903,6 +916,7 @@ Fehlerresponse-Format:
 | GET | `/api/receipts/{id}` | Bon-Details inkl. Positionen |
 | PUT | `/api/receipts/{id}` | Bon-Metadaten und Positionen aktualisieren |
 | POST | `/api/receipts/{id}/reparse` | Bon erneut parsen |
+| POST | `/api/receipts/reparse` | Alle Bons erneut parsen, optional mit `overwriteManualEdits=false` |
 | DELETE | `/api/receipts/{id}` | Bon und Positionen löschen |
 
 Query-Parameter für `GET /api/receipts`:
@@ -911,6 +925,7 @@ Query-Parameter für `GET /api/receipts`:
 - `dateFrom` (ISO 8601 Date), `dateTo` (ISO 8601 Date)
 - `store` (partial match)
 - `includeDeleted` (default `false`; nur für administrative Ansichten)
+- `uncategorizedOnly` (default `false`; zeigt nur Bons mit mindestens einer Position, bei der `category_id = NULL` und `category_source = NULL`)
 
 #### Receipt Items
 
@@ -947,7 +962,7 @@ Query-Parameter für `GET /api/receipts`:
 |---|---|---|
 | GET | `/api/search` | Suche über Bons und Positionen |
 
-Query-Parameter: `q`, `store`, `dateFrom`, `dateTo`, `categoryIds` (kommagetrennt), `amountMin`, `amountMax`, `page`, `size`, `sortBy`, `sortDir`.
+Query-Parameter: `q`, `store`, `dateFrom`, `dateTo`, `categoryIds` (kommagetrennt), `uncategorizedOnly`, `amountMin`, `amountMax`, `page`, `size`, `sortBy`, `sortDir`.
 
 #### Reports
 
@@ -980,6 +995,17 @@ Gemeinsame Query-Parameter: `dateFrom`, `dateTo`, `categoryIds`, `store`, `group
 | PUT | `/api/settings` | Einstellungen speichern |
 | POST | `/api/settings/test-connection` | Verbindung zu Paperless oder OpenRouter testen |
 
+#### Datenwartung
+
+| Methode | Pfad | Beschreibung |
+|---|---|---|
+| POST | `/api/admin/data-reset/imported-receipts` | Importierte Bon-Daten löschen, Kategorien/Regeln/Einstellungen behalten |
+
+Body für `/api/admin/data-reset/imported-receipts`:
+```json
+{ "confirmation": "DELETE_IMPORTED_RECEIPTS" }
+```
+
 Body für `/api/settings/test-connection`:
 ```json
 { "target": "PAPERLESS" }
@@ -1000,6 +1026,7 @@ Response `DashboardDTO`:
 {
   "currentMonthTotal": 312.45,
   "previousMonthTotal": 287.12,
+  "currentYearTotal": 2480.95,
   "currentMonthByCategory": [
     { "categoryId": 1, "categoryName": "Lebensmittel", "total": 198.30 }
   ],
@@ -1036,6 +1063,7 @@ Die Implementierung muss explizite Request-/Response-DTOs verwenden. JPA-Entitie
 {
   "id": 1,
   "paperlessDocumentId": 42,
+  "paperlessDocumentUrl": "http://paperless.example/documents/42/details",
   "importedAt": "2026-05-26T10:00:00Z",
   "receiptDate": "2026-05-26",
   "receiptTime": "10:00:00",
@@ -1059,6 +1087,7 @@ Validierung:
 
 - `receiptDate`: ISO-8601-Date oder `null`
 - `receiptTime`: ISO-8601-Time oder `null`
+- `paperlessDocumentUrl`: optionaler, klickbarer Link zur Paperless-Weboberfläche; wird aus Paperless-Web-URL oder Dokument-URL-Vorlage gebaut und enthält keine Secrets
 - `storeName`: maximal 255 Zeichen
 - `totalAmount`: `>= 0`, maximal 2 Nachkommastellen
 - `currency`: ISO-4217-Code, Standard `EUR`
@@ -1135,6 +1164,8 @@ Validierung:
 ```json
 {
   "paperlessBaseUrl": "http://paperless:8000",
+  "paperlessPublicBaseUrl": "http://paperless.local:8000",
+  "paperlessDocumentUrlTemplate": "http://paperless.local:8000/documents/{paperlessDocumentId}/details",
   "paperlessApiToken": "********",
   "paperlessEbonTag": "eBON",
   "openRouterApiKey": "********",
@@ -1164,15 +1195,17 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 
 #### 9.2.1 Dashboard
 
-- KPI-Cards: Ausgaben aktueller Monat, Delta zu Vormonat (Pfeil + Prozent), Anzahl Bons, unkategorisierte Positionen, neu gesammeltes Bonusguthaben.
-- Tortendiagramm: Ausgaben nach Kategorie (aktueller Monat).
-- Bonus-Karte: Neu gesammelte Punkte/Guthaben nach Bonustyp.
-- Tabelle: Letzte 5 Bons mit Datum, Geschäft, Betrag, Status-Badge, Bonus-Info.
+- KPI-Cards: Ausgaben aktueller Monat, Ausgaben Vormonat, Ausgaben aktuelles Jahr, Delta zu Vormonat (Pfeil + Prozent), Anzahl Bons, unkategorisierte Positionen, neu gesammeltes Bonusguthaben.
+- Tortendiagramm: Ausgaben nach Kategorie mit Zeitraumwahl: aktueller Monat, letztes Quartal, letztes Jahr, benutzerdefiniert von/bis.
+- Bonus-Karte: Neu gesammelte Punkte/Guthaben nach Bonustyp mit derselben Zeitraumwahl; die Anzeige meint neu gesammelte Werte im Zeitraum, nicht den aktuellen Bonuskonto-/Punktestand.
+- Tabelle: Letzte 5 Bons mit Datum, Geschäft, Betrag, Status-Badge, Bonus-Info. Diese Tabelle ist eine Schnellnavigation zu den neuesten Bons.
+- Klick auf „Ohne Kategorie" öffnet die Bon-/Suchliste mit Filter auf Positionen ohne Kategorie (`category_id = NULL`, `category_source = NULL`).
 - Sync-Status-Banner (grün/gelb/rot) inkl. TAG_REMOVED-Zähler.
 
 #### 9.2.2 Bon-Liste
 
 - Tabelle mit Spalten: Datum, Geschäft, Betrag, Anzahl Positionen, Status, Import-Datum.
+- Import-Datum zeigt Datum und Uhrzeit lesbar an; wenn die Spalte schmal ist, steht die Uhrzeit in einer zweiten Zeile unter dem Datum.
 - Filter: Status, Geschäft (Freitext), Zeitraum (Datepicker).
 - Sortierung per Klick auf Spaltenköpfe.
 - Klick auf Zeile → Bon-Detailansicht.
@@ -1181,8 +1214,9 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 #### 9.2.3 Bon-Detailansicht
 
 - Header: Geschäft, Datum/Uhrzeit, Gesamtbetrag, Bonus-Info (Typ + in diesem Einkauf gesammeltes Guthaben/Punkte), Parse-Status-Badge, Buttons „Bearbeiten" / „Erneut parsen" / „Löschen".
+- Paperless-Dokument-ID wird als Link zur Paperless-Weboberfläche angezeigt, wenn `paperlessDocumentUrl` vorhanden ist; andernfalls bleibt sie als reine ID sichtbar.
 - Positionstabelle: Beschreibung, Menge, Einheit, Einzelpreis, Gesamtpreis, Rabatt, Kategorie (Chip mit Farbe), Quelle-Badge.
-- Im Editiermodus: Inline-Editierung aller Felder, Dropdown für Kategorie, Buttons „Position löschen" / „Position hinzufügen".
+- Im Editiermodus: Inline-Editierung aller Felder, Dropdown für Kategorie, Buttons „Position löschen" / „Position hinzufügen". Speichern/Abbrechen bleibt beim Scrollen sichtbar und klickbar (z.B. Sticky Action-Bar), damit lange Bons nicht nach oben zurückscrollen müssen.
 - Rohtextansicht (ausklappbar): `raw_text` in Monospace-Font.
 
 #### 9.2.4 Suche
@@ -1202,6 +1236,7 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 
 - Formular mit Feldern gemäß F-11.1.
 - „Verbindung testen"-Buttons direkt neben Paperless-NGX und OpenRouter URL-Feldern.
+- Bereich „Datenwartung" mit Re-Parse aller Bons und Reset aller importierten Bon-Daten. Der Reset benötigt eine deutliche Bestätigung und darf Kategorien, Regeln und Einstellungen nicht löschen.
 
 #### 9.2.7 Einstellungen – Kategorien
 
@@ -1228,6 +1263,8 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 - Datumsformatierung: `DD.MM.YYYY` (deutsch).
 - Ladeanimationen bei allen asynchronen API-Calls (Skeleton Loader oder Spinner).
 - Toast-Notifications für Erfolg und Fehler (autoclose nach 5 Sekunden).
+- Der aktive Navigationspunkt/Breadcrumb entspricht immer der aktuellen Route, z.B. „Bons" in Bon-Liste und Bon-Detail statt „Dashboard".
+- Das eBon-Web-Logo wird als eigenständige Wort-/Bildmarke gestaltet und ersetzt provisorische Platzhalter.
 
 ---
 
@@ -1244,6 +1281,7 @@ Alle Umgebungsvariablen werden beim Start des Containers gelesen. Sie befüllen 
 | `DB_PASSWORD` | Ja | – | Datenbankpasswort |
 | `APP_API_TOKEN` | Ja | – | Sicherheitstoken für API-Zugriff |
 | `PAPERLESS_BASE_URL` | Ja | – | Basis-URL der Paperless-NGX-Instanz (z.B. `http://paperless:8000`) |
+| `PAPERLESS_PUBLIC_BASE_URL` | Nein | Wert von `PAPERLESS_BASE_URL` | Vom Browser erreichbare Paperless-Web-URL für klickbare Dokumentlinks |
 | `PAPERLESS_API_TOKEN` | Ja | – | Paperless-NGX API-Token |
 | `PAPERLESS_EBON_TAG` | Nein | `eBON` | Tag-Name in Paperless-NGX |
 | `OPENROUTER_API_KEY` | Nein | – | OpenRouter API-Key (optional, falls KI-Fallback gewünscht) |

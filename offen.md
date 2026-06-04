@@ -1,14 +1,21 @@
-Weitere Requirements / offene Punkte:
-- Bei den Bons wird die Paperless-ID angezeigt, dort sollte auch die Möglichkeit bestehen, die ID anzuklicken, um direkt zum entsprechenden Dokument in Paperless zu gelangen.
-- Wenn man auf dem Dashborad auf "Ohne Kategorie" klickt, dann sollte eine Liste der Bons aufgehen in denen die Position ohne Karegorie ist.
-- Unter Settings sollte ein Reparsing aller Bons möglich sein
-- unter Settings sollte es eine Funktion geben alle BONs mit den Positionen zu löschen, für ein komplettes neueinlesen der Daten aus Paperless
-- Auf dem Dashboard steht die Summe aus dem aktuellen Monat, hier sollte auch der Vormonat stehen und die Summe des ganzen Jahres
-- Im Tortendiagram auf der Startseite sollte man den aktuellen Monat, das letzte Quartal und das letzte Jahr auswählen können, sowie einen Zeitraum von - bis
-- Im Bonus auf der Startseite sollte man den aktuellen Monat, das letzte Quartal und das letzte Jahr auswählen können, sowie einen Zeitraum von - bis
-- Wofür ist die Anzeige "Letzte Bons" auf dem Dashboard?
-- Worauf bezieht sich der "Bonus" oben rechts?
-- Wenn man auf einen Bon in der Bon-Liste Klickt, dann steht oben "EBON-WEB  Dashboard" nicht "EBON-WEB Bons"
-- In der Liste der Bons sieht man bei der Spalte "Import" nur das Datum, die Zeit ist abgeschnitten. Die Zeit sollte in der zweiten Zeile unter dem Datum stehen
-- Das Logo oben rechts für eBon-Web, ist nicht schön, hier muss ein neues Logo rein
-- Wenn ich eine Position editiert habe, dann muss ich nach oben scrollen um den speicher button zu klicken, Der sollte auch beim Scrollen sichtbar und klickbar bleiben
+# Offene Punkte - beantwortet und eingeordnet
+
+Stand: 2026-06-04
+
+Diese Punkte sind in `ebon-specification.md` und den Phasen-Prompts 9, 10 und 12 eingearbeitet. Wenn Phase 9 bereits umgesetzt wurde, gelten die Phase-9-Punkte als kleine Nacharbeit vor oder während Phase 10.
+
+| Punkt | Antwort / neue Anforderung | Zielphase |
+|---|---|---|
+| Paperless-ID anklickbar machen | Die Paperless-Dokument-ID soll als Link angezeigt werden, wenn `paperlessDocumentUrl` vorhanden ist. Der Link wird serverseitig oder aus einer konfigurierbaren Paperless-Web-URL/Dokument-URL-Vorlage erzeugt und enthält keine Secrets. | 9/10 |
+| Klick auf „Ohne Kategorie" im Dashboard | Öffnet Bon-/Suchliste mit Filter `uncategorizedOnly=true`. Gemeint sind nur Positionen mit `category_id = NULL` und `category_source = NULL`, keine persistierte Pseudo-Kategorie. | 10 |
+| Re-Parse aller Bons in Settings | Bereich „Datenwartung" in Einstellungen. Standard: `overwriteManualEdits=false`, damit manuelle Änderungen nicht still überschrieben werden. | 10 |
+| Alle importierten Bons/Positionen löschen | Destruktiver Reset für komplettes Neueinlesen aus Paperless-NGX. Löscht importierte Bon-Daten und zugehörige Detaildaten, behält Kategorien, Regeln, Einstellungen und Flyway-Migrationen. Nur mit deutlicher Bestätigung, z.B. `DELETE_IMPORTED_RECEIPTS`. | 10 |
+| Dashboard-Summe: aktueller Monat, Vormonat, Jahr | Dashboard zeigt alle drei Werte. Der Monatsvergleich bleibt als Delta/Trend möglich. | 10 |
+| Zeitraumwahl im Kategorie-Tortendiagramm | Unterstützt aktueller Monat, letztes Quartal, letztes Jahr und benutzerdefiniert von/bis. | 10 |
+| Zeitraumwahl im Bonusbereich | Unterstützt dieselben Zeitraumfilter wie das Kategorie-Diagramm. | 10 |
+| Bedeutung „Letzte Bons" | Das ist eine Schnellnavigation zu den zuletzt datierten, nicht gelöschten Bons, nicht die vollständige Historie. Sortierung: `receipt_date DESC`, `receipt_time DESC`, `imported_at DESC`. | 10 |
+| Bedeutung „Bonus" oben rechts | Gemeint ist neu im gewählten Zeitraum gesammeltes Bonusguthaben/Punkte, nicht der aktuelle Kontostand eines Bonusprogramms. | 10 |
+| Header zeigt bei Bon-Detail „Dashboard" | Navigationspunkt/Breadcrumb muss zur Route passen: Bon-Liste und Bon-Detail zeigen „Bons". | 9/12 |
+| Bon-Liste: Import-Zeit abgeschnitten | Import-Datum zeigt Datum und Uhrzeit lesbar; bei schmaler Spalte steht die Uhrzeit in einer zweiten Zeile. | 9 |
+| eBon-Web-Logo | Provisorisches Logo durch stimmige Wort-/Bildmarke ersetzen. Keine Secrets, keine echten Belegdaten im Asset. | 12 |
+| Speichern nach Positionseditierung | Speichern/Abbrechen bleibt beim Scrollen sichtbar, z.B. über Sticky Action-Bar. | 9 |
