@@ -1579,6 +1579,8 @@ Diese Spezifikation ist so umzusetzen, dass ein KI-Agent das Projekt schrittweis
 
 ### 16.2 Implementierungsphasen
 
+Die Frontend-, Backup- und Hardening-Arbeiten sind bewusst feiner aufgeteilt als in der ersten Grobplanung. Dadurch kann ein KI-Agent mit begrenztem Nutzungskontingent nach jedem Teilabschnitt stoppen, bauen und die Ergebnisse manuell pruefen.
+
 | Phase | Ziel | Mindestnachweis |
 |---|---|---|
 | 1 | Devcontainer, `.env.example`, Docker-Grundstruktur | Devcontainer öffnet, `java -version`, `mvn -version`, `node --version` funktionieren |
@@ -1588,9 +1590,11 @@ Diese Spezifikation ist so umzusetzen, dass ein KI-Agent das Projekt schrittweis
 | 5 | Parser mit Corpus-Tests und KI-Fallback-Mock | Parser-Corpus grün, ungültiges KI-JSON führt zu `PARSE_ERROR` |
 | 6 | Kategorisierung mit Regeln, Batch-KI-Mock und manueller Überschreibung | Tests für Priorität, Bulk-Apply, fehlenden API-Key |
 | 7 | REST-API-DTOs, Validierung, Fehlerbehandlung | Controller-/Contract-Tests |
-| 8 | React-Frontend mit Dashboard, Bons, Suche, Reports, Einstellungen | `npm run build`, zentrale UI-Flows manuell oder per E2E geprüft |
-| 9 | Backup/Restore, Dry-Run, Runbook | Restore-Dry-Run-Test, transaktionaler Restore-Test |
-| 10 | Hardening, Logging, README, finale Docker-Verifikation | `docker compose up --build`, Smoke-Test |
+| 8 | Frontend-Shell mit React/Vite/TypeScript, Tailwind CSS, shadcn/ui, Grundlayout, Basis-Routing, Dashboard-Grundlage und API-Client | `npm run build`, API-Client-Typen an Backend-DTOs ausgerichtet |
+| 9 | Bons-UI mit Bon-Liste, Bon-Detailansicht, Rohtextansicht, Editiermodus, Kategorie-/Status-Badges, Re-Parse und Soft-Delete-Darstellung | `npm run build`, Bon-Flows manuell oder per UI-Test geprüft |
+| 10 | Suche, Reports, Einstellungen, Kategorien-/Regelverwaltung, CSV-Export und Frontend-Secret-Handling | `npm run build`, relevante Such-/Report-/Settings-Flows geprüft |
+| 11 | Backup/Restore, Dry-Run, transaktionaler Restore, Schreibsperre, Restore-Runbook und Backup-UI | `mvn verify`, `npm run build`, Restore-Dry-Run-Test, transaktionaler Restore-Test |
+| 12 | Echte Integration, Docker-Gesamtsystem, Logging, Secret-Masking, README, Smoke-Test und finale Verifikation | `docker compose up --build`, Smoke-Test |
 
 ### 16.3 Agenten-Regeln
 

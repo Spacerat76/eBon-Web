@@ -6,9 +6,11 @@ Setze Phase 8 aus ebon-specification.md Abschnitt 16 um.
 Ziel:
 - React/Vite/TypeScript Frontend unter frontend/ anlegen
 - Tailwind CSS und shadcn/ui vorbereiten
+- Devcontainer-Portweiterleitung fuer Vite auf 5173 ergaenzen
 - Grundlayout mit Sidebar/Desktop und mobiler Navigation anlegen
 - Dashboard als erste nutzbare Seite vorbereiten
 - API-Client mit Bearer Token-Unterstuetzung anlegen
+- Vite-Proxy fuer `/api` auf das lokale Backend konfigurieren, damit in der Entwicklung kein Backend-CORS noetig ist
 - Basis-Routing anlegen
 - Build muss erfolgreich sein
 
@@ -19,7 +21,9 @@ Bitte:
 - Keine Marketing-Landingpage bauen.
 - UI auf Deutsch.
 - Keine echten Secrets im Frontend hartcodieren.
+- Keine API-Tokens in den Code schreiben; Token nur lokal ueber UI, lokale Env-Konfiguration oder nicht versionierte Entwicklungseinstellungen verwenden.
 - API-Typen an DTOs aus Abschnitt 8.4 ausrichten.
+- API-Client soll relative `/api`-URLs verwenden und sich im Dev-Server auf den Vite-Proxy stuetzen.
 
 Pruefkommandos:
 - cd frontend && npm run build
@@ -30,9 +34,9 @@ Stoppe nach dieser Phase.
 Am Ende bitte zusammenfassen:
 - Frontend-Struktur
 - Start-/Build-Kommandos
+- wie Port 5173 im Devcontainer geoeffnet ist und wie der Vite-Proxy `/api` weiterleitet
 - geaenderte Dateien
 - ausgefuehrte Pruefkommandos
 - wie ich die UI oeffne
 - offene Punkte
 ```
-

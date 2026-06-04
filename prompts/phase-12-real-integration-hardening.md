@@ -7,6 +7,7 @@ Ziel:
 - Gesamtsystem per docker compose lauffaehig machen
 - Echte Paperless-Konfiguration ueber .env unterstuetzen
 - Optional echte OpenRouter-Konfiguration ueber .env unterstuetzen
+- Frontend-Dev-Setup final pruefen: Devcontainer-Port 5173, Vite-Proxy fuer `/api`, keine unnoetige Backend-CORS-Abhaengigkeit
 - Logging, Fehlerbehandlung und Secret-Masking final pruefen
 - README finalisieren
 - Smoke-Test-Anleitung dokumentieren
@@ -19,6 +20,7 @@ Bitte:
 - Keine echten Tokens in Dateien schreiben.
 - Keine echten Bons als Fixtures einchecken, ausser anonymisiert.
 - Swagger/OpenAPI muss geschuetzt oder deaktivierbar sein.
+- Frontend darf keine Secrets hartcodieren; API-Tokens nur ueber lokale UI/Env-Konfiguration oder nicht versionierte Entwicklungseinstellungen verwenden.
 - Pruefe, dass Standardlisten/Reports geloeschte Bons ausblenden.
 
 Pruefkommandos:
@@ -37,4 +39,3 @@ Am Ende bitte zusammenfassen:
 - bekannte Restrisiken
 - offene Punkte
 ```
-
