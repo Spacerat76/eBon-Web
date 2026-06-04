@@ -28,7 +28,7 @@ The Devcontainer starts a local PostgreSQL database and forwards these ports:
 
 The example environment file uses `DB_HOST=db` so the backend talks to the Compose database service inside the Devcontainer. If you run the backend directly on the host, change `DB_HOST` to `localhost`.
 
-The Devcontainer sets `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` so Testcontainers can connect back to Ryuk and PostgreSQL containers through Docker Desktop when tests run inside the container.
+The Devcontainer mounts the host Docker socket and sets `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` so Testcontainers can start PostgreSQL/Ryuk sibling containers through Docker Desktop when tests run inside the container.
 
 ## Verify the Devcontainer
 

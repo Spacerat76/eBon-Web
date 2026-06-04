@@ -1409,9 +1409,10 @@ services:
       TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
     volumes:
       - ..:/workspace:cached
+      - /var/run/docker.sock:/var/run/docker.sock
       - devcontainer_backend_target:/workspace/backend/target
       - devcontainer_frontend_node_modules:/workspace/frontend/node_modules
-    command: bash -lc "mkdir -p /workspace/backend/target /workspace/frontend/node_modules && chown -R vscode:vscode /workspace/backend/target /workspace/frontend/node_modules && sleep infinity"
+    command: bash /workspace/.devcontainer/init-devcontainer.sh
     depends_on:
       db:
         condition: service_healthy
@@ -1438,7 +1439,31 @@ volumes:
   devcontainer_frontend_node_modules:
 ```
 
-Die dedizierten Volumes fuer `backend/target` und `frontend/node_modules` halten Devcontainer-Artefakte von Host-Artefakten getrennt. Maven nutzt im Devcontainer weiterhin den Standardpfad `backend/target`; der Pfad ist lediglich ein Container-Volume statt Teil des Windows-Bind-Mounts. `EBON_DEVCONTAINER=true` aktiviert ein Maven-Clean-Profil, das bei `mvn clean` den Inhalt des gemounteten `target`-Verzeichnisses loescht, aber nicht den Mountpoint selbst.
+Die dedizierten Volumes fuer `backend/target` und `frontend/node_modules` halten Devcontainer-Artefakte von Host-Artefakten getrennt. Maven nutzt im Devcontainer weiterhin den Standardpfad `backend/target`; der Pfad ist lediglich ein Container-Volume statt Teil des Windows-Bind-Mounts. `EBON_DEVCONTAINER=true` aktiviert ein Maven-Clean-Profil, das bei `mvn clean` den Inhalt des gemounteten `target`-Verzeichnisses loescht, aber nicht den Mountpoint selbst. Der Docker-Socket-Mount erlaubt Testcontainers, sibling containers ueber Docker Desktop zu starten; `.devcontainer/init-devcontainer.sh` nimmt den `vscode`-User in die passende Socket-Gruppe auf.
+
+#### `.devcontainer/init-devcontainer.sh`
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ -S /var/run/docker.sock ]; then
+  docker_gid="$(stat -c '%g' /var/run/docker.sock)"
+  docker_group="$(getent group "${docker_gid}" | cut -d: -f1 || true)"
+
+  if [ -z "${docker_group}" ]; then
+    docker_group="docker-host"
+    groupadd -g "${docker_gid}" "${docker_group}"
+  fi
+
+  usermod -aG "${docker_group}" vscode
+fi
+
+mkdir -p /workspace/backend/target /workspace/frontend/node_modules
+chown -R vscode:vscode /workspace/backend/target /workspace/frontend/node_modules
+
+exec sleep infinity
+```
 
 #### `.devcontainer/Dockerfile`
 
