@@ -43,9 +43,11 @@ Follow the phases in `ebon-specification.md` section 16:
 5. Parser with corpus tests and AI fallback mocks.
 6. Categorization with rules and mocked AI.
 7. REST DTOs and validation.
-8. React frontend.
-9. Backup/restore and runbook.
-10. Hardening and final Docker verification.
+8. Frontend shell with React/Vite/TypeScript, base routing, dashboard foundation, and API client.
+9. Receipts UI with receipt list, receipt detail view, raw text view, edit mode, category/status badges, re-parse, and soft-delete display.
+10. Search, reports, settings, category/rule management, CSV export, and frontend secret handling.
+11. Backup/restore with dry-run, transactional restore, write lock, restore runbook, and backup UI.
+12. Real integration, Docker full-system verification, logging, secret masking, README, smoke test, and final hardening.
 
 ## Domain-Specific Guardrails
 
@@ -54,6 +56,10 @@ Follow the phases in `ebon-specification.md` section 16:
 - Parser output is valid only if it meets the `PARSED` definition and sum validation from the specification.
 - AI parsing must use the fixed JSON schema from F-02 and reject invalid JSON.
 - AI categorization is optional. If no `OPENROUTER_API_KEY` exists, items remain uncategorized.
+- Uncategorized items are represented as `category_id = NULL` and `category_source = NULL`; do not create or persist a fake "Ohne Kategorie" category.
+- Bonus fields store only points or balance newly earned in the receipt, never the current loyalty-account balance.
+- Paperless document links must be built from a browser-reachable public URL or URL template and must never contain API tokens or other secrets.
+- Data-maintenance reset operations must be explicit, transactional, and limited to imported receipt data and related detail/log data; categories, categorization rules, settings, backups, and Flyway history must remain intact.
 - Category deletion is physical only when unreferenced; otherwise deactivate.
 - Secrets returned through settings or backup must be masked or marked for reconfiguration.
 
@@ -66,4 +72,3 @@ Use the local project skills in `.codex/skills/` when relevant:
 - `ebon-parser`: receipt parsing, corpus fixtures, AI parsing fallback.
 - `ebon-frontend`: React UI and frontend quality.
 - `ebon-qa`: verification, test strategy, final checks.
-

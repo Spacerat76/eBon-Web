@@ -18,6 +18,12 @@ A receipt is `PARSED` only if all are true:
 
 Optional fields such as `receipt_time` and `store_branch` may be missing.
 
+Bonus fields must describe only what was newly earned in this receipt:
+
+- `bonus_balance`: newly earned monetary loyalty balance for this purchase, not the current account balance.
+- `bonus_points`: newly earned loyalty points for this purchase, not the current points balance.
+- `bonus_type`: loyalty program name such as Payback, DeutschlandCard, or Bonusclub.
+
 ## Normalization Rules
 
 - Parse German numbers: `1,99` -> `1.99`, `1.234,56` -> `1234.56`.
@@ -61,4 +67,3 @@ cd backend
 mvn test
 mvn verify
 ```
-

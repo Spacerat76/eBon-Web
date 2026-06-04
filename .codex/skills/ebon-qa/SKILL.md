@@ -57,7 +57,10 @@ docker compose up --build
 - Are manually edited receipt items protected from unintended overwrite?
 - Is `TAG_REMOVED` safe against partial Paperless failures?
 - Are category deactivate/delete semantics correct?
+- Are uncategorized items represented as `category_id = NULL` and `category_source = NULL`, without a fake category or source badge?
+- Are Paperless document links built from a public URL/template and free of tokens or secrets?
+- Do dashboard labels and filters make "Letzte Bons", "Bonus", and "Ohne Kategorie" unambiguous?
+- Are data-maintenance reset operations transactional, explicitly confirmed, and limited to imported receipt data while keeping categories, rules, settings, backups, and Flyway history?
 - Are backup/restore paths transactional and lock writes?
 - Are all new secrets masked?
 - Are tests focused on behavior rather than implementation trivia?
-
