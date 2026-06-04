@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/devcontainers/java:dev-25-jdk-bookworm
 
-ARG MAVEN_VERSION=3.9.9
-ARG NODE_VERSION=22.22.2
+ARG MAVEN_VERSION=3.9.16
+ARG NODE_VERSION=24.16.0
 
 RUN rm -f /etc/apt/sources.list.d/yarn.list /etc/apt/sources.list.d/*yarn*.list
 

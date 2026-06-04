@@ -85,21 +85,22 @@ Die React-SPA wird von nginx als statische Dateien ausgeliefert. nginx proxied `
 
 ## 3. Technologie-Stack
 
-| Komponente | Technologie | Version (Minimum) |
+| Komponente | Technologie | Zielversion |
 |---|---|---|
 | Backend Framework | Spring Boot | 4.0.x |
 | Sprache Backend | Java | 25 (LTS) |
-| Build-Tool | Maven | 3.9.x |
+| Build-Tool | Maven | 3.9.16 |
 | Persistenz | Spring Data JPA + Hibernate | via Spring Boot |
 | Datenbank | PostgreSQL | 18.x |
 | DB-Migration | Flyway | via Spring Boot |
 | HTTP-Client (Backend) | Spring RestClient | via Spring Boot |
-| Frontend Framework | React | 19.2.x |
-| Frontend Build | Vite | 8.x |
-| Frontend Sprache | TypeScript | 5.7+ |
-| UI-Komponenten | shadcn/ui + Tailwind CSS | v4.0 / aktuell |
+| Frontend Framework | React / React DOM | 19.2.7 |
+| Frontend Build | Vite + `@vitejs/plugin-react` | 8.0.16 / 6.0.2 |
+| Frontend Sprache | TypeScript | 6.0.3 |
+| UI-Komponenten | shadcn/ui + Tailwind CSS | aktuell / 4.3.0 |
 | HTTP-Client (Frontend) | Axios (oder native `fetch`) | v1.7+ / aktuell |
-| Charts | Recharts | aktuell (kompatibel mit React 19) |
+| Icons | lucide-react | 1.17.0 |
+| Charts | Recharts | 3.8.1 |
 | Webserver (Frontend) | nginx | alpine |
 | Container | Docker + Docker Compose | 26+ / 2.27+ |
 | Entwicklungsumgebung | Devcontainer / VS Code Remote Containers | aktuell |
@@ -120,8 +121,8 @@ Die Anwendung wird in einer reproduzierbaren Devcontainer-Umgebung entwickelt. D
 Der Devcontainer stellt bereit:
 
 - Java 25 JDK
-- Maven 3.9.x
-- Node.js 22 LTS oder neuer
+- Maven 3.9.16
+- Node.js 24.16.0 LTS oder neuer
 - Docker CLI
 - PostgreSQL Client (`psql`)
 - Git, curl, jq
@@ -1419,7 +1420,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - devcontainer_db_data:/var/lib/postgresql/data
+      - devcontainer_db_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ebon -d ebon"]
       interval: 10s
@@ -1433,21 +1434,44 @@ volumes:
 #### `.devcontainer/Dockerfile`
 
 ```dockerfile
-FROM mcr.microsoft.com/devcontainers/java:25
+FROM mcr.microsoft.com/devcontainers/java:dev-25-jdk-bookworm
+
+ARG MAVEN_VERSION=3.9.16
+ARG NODE_VERSION=24.16.0
+
+RUN rm -f /etc/apt/sources.list.d/yarn.list /etc/apt/sources.list.d/*yarn*.list
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl jq postgresql-client ca-certificates \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        docker.io \
+        git \
+        jq \
+        postgresql-client \
+        tar \
+        xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
-ARG NODE_VERSION=22
-RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash - \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g npm@latest \
-    && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL "https://archive.apache.org/dist/maven/maven-3/${MAVEN_VERSION}/binaries/apache-maven-${MAVEN_VERSION}-bin.tar.gz" \
+        -o /tmp/apache-maven.tar.gz \
+    && mkdir -p /opt/maven \
+    && tar -xzf /tmp/apache-maven.tar.gz -C /opt/maven --strip-components=1 \
+    && ln -s /opt/maven/bin/mvn /usr/local/bin/mvn \
+    && rm /tmp/apache-maven.tar.gz
+
+RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+        -o /tmp/node.tar.xz \
+    && mkdir -p /opt/node \
+    && tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1 \
+    && ln -s /opt/node/bin/node /usr/local/bin/node \
+    && ln -s /opt/node/bin/npm /usr/local/bin/npm \
+    && ln -s /opt/node/bin/npx /usr/local/bin/npx \
+    && ln -s /opt/node/bin/corepack /usr/local/bin/corepack \
+    && rm /tmp/node.tar.xz
 ```
 
-Falls das Basisimage `mcr.microsoft.com/devcontainers/java:25` nicht verfügbar ist, darf auf `mcr.microsoft.com/devcontainers/java:21` ausgewichen werden, sofern die Abweichung in `README.md` dokumentiert wird.
+Falls das Basisimage `mcr.microsoft.com/devcontainers/java:dev-25-jdk-bookworm` nicht verfügbar ist, darf nicht still auf eine aeltere Java-Version ausgewichen werden. Der Agent muss den Konflikt dokumentieren und vor einer Abweichung eine explizite Entscheidung einholen.
 
 ---
 

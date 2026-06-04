@@ -4,8 +4,9 @@
 Setze Phase 8 aus ebon-specification.md Abschnitt 16 um.
 
 Ziel:
-- React/Vite/TypeScript Frontend unter frontend/ anlegen
-- Tailwind CSS und shadcn/ui vorbereiten
+- React/Vite/TypeScript Frontend unter frontend/ mit aktuellen Zielversionen anlegen: React/React DOM 19.2.7, Vite 8.0.16, `@vitejs/plugin-react` 6.0.2, TypeScript 6.0.3
+- Tailwind CSS 4.3.0 und shadcn/ui vorbereiten
+- Recharts 3.8.1 und lucide-react 1.17.0 fuer Dashboard/Icons installieren
 - Devcontainer-Portweiterleitung fuer Vite auf 5173 ergaenzen
 - Grundlayout mit Sidebar/Desktop und mobiler Navigation anlegen
 - Dashboard als erste nutzbare Seite vorbereiten
