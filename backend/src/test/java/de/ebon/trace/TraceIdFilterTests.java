@@ -17,6 +17,7 @@ import static org.mockito.Mockito.verify;
 
 class TraceIdFilterTests {
 
+    // Verifies caller-provided trace IDs flow into MDC, response headers, and are cleaned up afterward.
     @Test
     void usesProvidedTraceIdAndCleansUpMdcAfterRequest() throws ServletException, IOException {
         TraceIdFilter filter = new TraceIdFilter();
@@ -38,6 +39,7 @@ class TraceIdFilterTests {
         verify(chain).doFilter(any(), any());
     }
 
+    // Verifies requests without a trace header still receive a generated trace ID for log/error correlation.
     @Test
     void generatesTraceIdWhenHeaderIsMissing() throws ServletException, IOException {
         TraceIdFilter filter = new TraceIdFilter();

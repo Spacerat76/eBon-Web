@@ -25,6 +25,7 @@ class OpenApiProtectionConfigurationTests extends PostgresIntegrationTestSupport
     @LocalServerPort
     private int port;
 
+    // Verifies production-style configuration can protect the OpenAPI JSON document.
     @Test
     void openApiDocsCanBeProtectedByConfiguration() throws Exception {
         HttpResponse<String> response = sendGet("/v3/api-docs", null);
@@ -32,6 +33,7 @@ class OpenApiProtectionConfigurationTests extends PostgresIntegrationTestSupport
         assertThat(response.statusCode()).isEqualTo(401);
     }
 
+    // Verifies production-style configuration can protect Swagger UI as well as the JSON document.
     @Test
     void swaggerUiCanBeProtectedByConfiguration() throws Exception {
         HttpResponse<String> response = sendGet("/swagger-ui.html", null);
@@ -39,6 +41,7 @@ class OpenApiProtectionConfigurationTests extends PostgresIntegrationTestSupport
         assertThat(response.statusCode()).isEqualTo(401);
     }
 
+    // Verifies protected OpenAPI resources still work for callers with the app bearer token.
     @Test
     void protectedOpenApiDocsAcceptBearerToken() throws Exception {
         HttpResponse<String> response = sendGet("/v3/api-docs", "test-token");

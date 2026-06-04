@@ -13,6 +13,7 @@ class ReceiptParseApplierTests {
 
     private final ReceiptParseApplier applier = new ReceiptParseApplier();
 
+    // Verifies parsed values are truncated before persistence so long OCR text cannot violate column limits.
     @Test
     void limitsParsedTextFieldsToDatabaseColumnLengths() {
         Receipt receipt = new Receipt(123, "raw text");

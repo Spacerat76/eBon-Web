@@ -2,7 +2,7 @@
 
 eBon-Web is a single-user expense tracker for electronic receipts imported from Paperless-NGX.
 
-The project is built incrementally from `ebon-specification.md`. The current state includes the reproducible development environment, Docker database foundation, and the Spring Boot backend. The frontend is intentionally not scaffolded yet.
+The project is built incrementally from `ebon-specification.md`. The current state includes the reproducible development environment, Docker database foundation, and the Spring Boot backend with sync, parsing, categorization, DTOs, OpenAPI, and tests. The frontend is intentionally not scaffolded yet.
 
 ## Prerequisites
 
@@ -10,6 +10,8 @@ The project is built incrementally from `ebon-specification.md`. The current sta
 - VS Code with the Dev Containers extension, or another Devcontainer-compatible IDE
 
 You do not need Java, Maven, Node.js, or PostgreSQL installed on the host. The Devcontainer provides them.
+
+If you run the backend directly on the host instead of inside the Devcontainer, use Java 25. The backend Maven build targets Java 25 and will fail on older host JDKs with `Releaseversion 25 nicht unterstützt`.
 
 ## First Setup
 
@@ -24,6 +26,10 @@ The Devcontainer starts a local PostgreSQL database and forwards these ports:
 - `8080` backend API
 
 Frontend port `5173` is intentionally not forwarded yet because no frontend service exists.
+
+The example environment file uses `DB_HOST=db` so the backend talks to the Compose database service inside the Devcontainer. If you run the backend directly on the host, change `DB_HOST` to `localhost`.
+
+The Devcontainer sets `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` so Testcontainers can connect back to Ryuk and PostgreSQL containers through Docker Desktop when tests run inside the container.
 
 ## Verify the Devcontainer
 
@@ -45,7 +51,7 @@ docker compose -f .devcontainer/docker-compose.devcontainer.yml config
 
 ## Current Docker Compose Scope
 
-The root `docker-compose.yml` currently starts only PostgreSQL. Backend and frontend services will be added in later phases after their projects exist.
+The root `docker-compose.yml` currently starts only PostgreSQL. The backend is run separately from the Devcontainer, and a frontend service will be added once the frontend project exists.
 
 Start the development database with:
 
@@ -53,9 +59,9 @@ Start the development database with:
 docker compose up db
 ```
 
-## Backend Skeleton
+## Backend
 
-Phase 2 adds a Spring Boot backend under `backend/`.
+The Spring Boot backend lives under `backend/`.
 
 Run the backend from the Devcontainer:
 
@@ -70,6 +76,8 @@ The backend now uses PostgreSQL and runs Flyway migrations automatically at star
 ```bash
 docker compose up db
 ```
+
+`PAPERLESS_BASE_URL` defaults to `http://localhost:8000` in the backend configuration. If your Paperless-NGX instance is reachable elsewhere, override it in `.env` before starting the backend. For example, a LAN-hosted instance may use `http://paperless:8001`.
 
 Smoke checks:
 
@@ -116,11 +124,9 @@ mvn clean spring-boot:run
 
 ## Version Notes
 
-The Devcontainer uses the documented fallback Java 21 LTS image `mcr.microsoft.com/devcontainers/java:1-21-bookworm`, Maven 3.9.x, Node.js 22, Docker CLI, and PostgreSQL 18.
+The Devcontainer uses the target Java 25 image `mcr.microsoft.com/devcontainers/java:dev-25-jdk-bookworm`, Maven 3.9.x, Node.js 22, Docker CLI, and PostgreSQL 18. The backend Maven build is configured for Java 25 as well, so the container and build target now match.
 
 PostgreSQL 18 volumes are mounted at `/var/lib/postgresql` rather than `/var/lib/postgresql/data`, matching the official image layout for PostgreSQL 18+.
-
-Deviation from target versions: `ebon-specification.md` targets Java 25, but the Java 25 Devcontainer image was not available as `mcr.microsoft.com/devcontainers/java:1-25-bookworm`. Per the specification's fallback rule, local development uses Java 21 LTS until a Java 25 Devcontainer image is available.
 
 The Devcontainer intentionally installs Maven, Node.js, and Docker CLI in `.devcontainer/Dockerfile` instead of using Devcontainer Features from `ghcr.io`. This avoids failures in environments where the Feature registry cannot resolve `ghcr.io/devcontainers/features/*`.
 

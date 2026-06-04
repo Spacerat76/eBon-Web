@@ -52,6 +52,7 @@ class SettingsServiceTests {
         });
     }
 
+    // Verifies the settings API contract: secrets must be masked and invalid persisted values must not break defaults.
     @Test
     void getSettingsMasksSecretsAndFallsBackForInvalidStoredValues() {
         settings.put("paperless_api_token", new AppSetting("paperless_api_token", "stored-paperless-secret", "secret"));
@@ -71,6 +72,7 @@ class SettingsServiceTests {
         assertThat(dto.currency()).isEqualTo("EUR");
     }
 
+    // Verifies that masked placeholders are never written back as real secrets while editable settings are persisted.
     @Test
     void updateIgnoresMaskedSecretsAndPersistsNewConfidenceAndInterval() {
         settings.put("paperless_api_token", new AppSetting("paperless_api_token", "stored-paperless-secret", "secret"));
@@ -106,6 +108,7 @@ class SettingsServiceTests {
                         org.assertj.core.groups.Tuple.tuple("sync_interval_minutes", "15"));
     }
 
+    // Verifies the current Phase 10 placeholder behavior for Paperless connection checks without doing a real call.
     @Test
     void testConnectionForPaperlessReflectsConfiguredUrlPresence() {
         SettingsConnectionTestResponse response = settingsService.testConnection(
@@ -116,6 +119,7 @@ class SettingsServiceTests {
         assertThat(response.message()).contains("Phase 10");
     }
 
+    // Verifies the current Phase 10 placeholder behavior for OpenRouter connection checks without doing a real call.
     @Test
     void testConnectionForOpenRouterIsAlwaysPrepared() {
         SettingsConnectionTestResponse response = settingsService.testConnection(

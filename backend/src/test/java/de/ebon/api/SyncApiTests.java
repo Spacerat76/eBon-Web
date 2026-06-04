@@ -45,6 +45,7 @@ class SyncApiTests extends PostgresIntegrationTestSupport {
         jdbcTemplate.execute("truncate sync_log_entry, sync_log, receipt_item, receipt restart identity cascade");
     }
 
+    // Verifies sync status is protected because it exposes integration state and timing.
     @Test
     void syncStatusRequiresAuthentication() throws Exception {
         HttpResponse<String> response = sendGet("/api/sync/status", null);
@@ -52,6 +53,7 @@ class SyncApiTests extends PostgresIntegrationTestSupport {
         assertThat(response.statusCode()).isEqualTo(401);
     }
 
+    // Verifies trigger, status, and log endpoints work together through the authenticated HTTP API.
     @Test
     void triggerStatusAndLogAreAvailableWithBearerToken() throws Exception {
         HttpResponse<String> triggerResponse = sendPost("/api/sync/trigger", "test-token");

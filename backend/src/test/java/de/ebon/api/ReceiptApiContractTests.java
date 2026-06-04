@@ -69,6 +69,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         upsertSetting("openrouter_api_key", "openrouter-secret");
     }
 
+    // Verifies that rejected AI suggestions are exposed in a UI-friendly DTO instead of raw AI JSON.
     @Test
     void receiptDetailsExposeRejectedLowConfidenceAndUnknownCategorySuggestions() throws Exception {
         Category drogerie = category("Drogerie");
@@ -112,6 +113,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(unknownSuggestion.get("rejectionReason").asText()).isEqualTo("UNKNOWN_CATEGORY");
     }
 
+    // Verifies that accepted categories suppress stale AI suggestions so the UI shows only actionable hints.
     @Test
     void receiptDetailsDoNotExposeAiSuggestionForCategorizedItems() throws Exception {
         Category drogerie = category("Drogerie");
@@ -139,6 +141,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(itemBody.get("aiSuggestion").toString()).isEqualTo("null");
     }
 
+    // Verifies that clearing a category is recorded as a manual user decision and protected from later bulk rules.
     @Test
     void patchItemWithExplicitNullCategoryClearsCategoryAsManualDecision() throws Exception {
         Category lebensmittel = category("Lebensmittel");
@@ -166,6 +169,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(reloadedReceipt.getParseStatus()).isEqualTo(ParseStatus.MANUALLY_EDITED);
     }
 
+    // Verifies DTO validation: categorySource is only valid together with a concrete categoryId.
     @Test
     void patchItemRejectsCategorySourceWithoutCategoryId() throws Exception {
         Receipt receipt = receipt("REWE", "Bio Milch");
@@ -183,6 +187,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(body.get("message").asText()).contains("categorySource");
     }
 
+    // Verifies that normal receipt lists do not show soft-deleted receipts unless requested.
     @Test
     void listReceiptsHidesDeletedReceiptsByDefault() throws Exception {
         Receipt active = receiptWithDate("Aktiv", LocalDate.of(2026, 5, 1), false);
@@ -197,6 +202,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(body.get("content").get(0).get("storeName").asText()).isEqualTo(active.getStoreName());
     }
 
+    // Verifies the explicit includeDeleted flag for audit/admin-style receipt lists.
     @Test
     void listReceiptsIncludesDeletedReceiptsWhenRequested() throws Exception {
         receiptWithDate("Aktiv", LocalDate.of(2026, 5, 1), false);
@@ -219,6 +225,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(hasDeletedEntry).isTrue();
     }
 
+    // Verifies receipt list filters and fallback sorting through the real HTTP contract.
     @Test
     void listReceiptsAppliesFiltersAndSafeSorting() throws Exception {
         receiptWithParseStatus("REWE Mitte", LocalDate.of(2026, 5, 1), ParseStatus.PARSED, false);
@@ -238,6 +245,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(body.get("content").get(0).get("storeName").asText()).isEqualTo("REWE Mitte");
     }
 
+    // Verifies reparsing replaces old items safely without position-index conflicts in the database.
     @Test
     void reparseReceiptReplacesExistingItemsWithoutPositionIndexConflict() throws Exception {
         Receipt receipt = new Receipt(
@@ -268,6 +276,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
                 .containsExactly("ALTE POSITION", "ZWEITE POSITION");
     }
 
+    // Verifies settings responses mask secrets and updates never persist the mask placeholder as a secret.
     @Test
     void settingsMaskSecretsAndDoNotPersistMaskPlaceholder() throws Exception {
         HttpResponse<String> getResponse = sendGet("/api/settings");
@@ -300,6 +309,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
                 String.class)).isEqualTo("0.875");
     }
 
+    // Verifies API validation for the configurable AI categorization confidence range.
     @Test
     void settingsRejectInvalidAiCategorizationConfidence() throws Exception {
         HttpResponse<String> response = sendPut(

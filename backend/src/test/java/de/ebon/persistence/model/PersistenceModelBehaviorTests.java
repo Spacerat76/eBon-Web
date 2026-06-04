@@ -11,6 +11,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PersistenceModelBehaviorTests {
 
+    // Verifies category updates preserve existing values for null fields and support explicit activation changes.
     @Test
     void categoryUpdateSupportsNullPreserveAndExplicitReplacement() {
         Category category = new Category("Lebensmittel", "#ffffff", "cart", 1);
@@ -35,6 +36,7 @@ class PersistenceModelBehaviorTests {
         assertThat(category.isActive()).isFalse();
     }
 
+    // Verifies categorization rule updates preserve null fields and support deactivation.
     @Test
     void categorizationRuleUpdateSupportsNullPreserveAndDeactivate() {
         CategorizationRule rule = new CategorizationRule(
@@ -69,6 +71,7 @@ class PersistenceModelBehaviorTests {
         assertThat(rule.isActive()).isFalse();
     }
 
+    // Verifies receipt parsing/manual updates keep currency defaults and mark manual edits correctly.
     @Test
     void receiptApplyAndUpdateUseCurrencyFallbackAndManualEditFlags() {
         Receipt receipt = new Receipt(1, "raw");
@@ -107,6 +110,7 @@ class PersistenceModelBehaviorTests {
         assertThat(receipt.getParseStatus()).isEqualTo(ParseStatus.MANUALLY_EDITED);
     }
 
+    // Verifies receipt lifecycle defaults initialize timestamps without overwriting preset values.
     @Test
     void receiptPrePersistInitializesAndKeepsExistingTimestamps() throws Exception {
         Receipt fresh = new Receipt(2, "raw");
@@ -124,6 +128,7 @@ class PersistenceModelBehaviorTests {
         assertThat(getField(preset, "updatedAt")).isEqualTo(updatedAt);
     }
 
+    // Verifies receipt items enforce category invariants and preserve manual values unless explicitly replaced.
     @Test
     void receiptItemSupportsManualCategoryAndParsedValueUpdates() {
         Category category = new Category("Lebensmittel", null, null, 1);
@@ -185,6 +190,7 @@ class PersistenceModelBehaviorTests {
         assertThat(item.getDiscountAmount()).isEqualByComparingTo("0.10");
     }
 
+    // Verifies parse-rule lifecycle defaults initialize timestamps without overwriting preset values.
     @Test
     void parseRulePrePersistInitializesCreatedAtAndKeepsPresetValues() throws Exception {
         ParseRule fresh = new ParseRule("REWE", ParseRuleType.DATE_PATTERN, "\\d+", "date", RuleSource.MANUAL);

@@ -50,6 +50,7 @@ class PaperlessSyncServiceTests extends PostgresIntegrationTestSupport {
         jdbcTemplate.execute("truncate sync_log_entry, sync_log, receipt_item, receipt restart identity cascade");
     }
 
+    // Verifies new Paperless documents are imported once and repeated syncs remain idempotent.
     @Test
     void importsNewDocumentsAndKeepsSyncIdempotent() {
         paperlessClient.respondWith(List.of(
@@ -72,6 +73,7 @@ class PaperlessSyncServiceTests extends PostgresIntegrationTestSupport {
                 });
     }
 
+    // Verifies TAG_REMOVED soft deletes happen only after a successful complete Paperless fetch.
     @Test
     void marksMissingDocumentsAsTagRemovedOnlyAfterSuccessfulFetch() {
         paperlessClient.respondWith(List.of(
@@ -93,6 +95,7 @@ class PaperlessSyncServiceTests extends PostgresIntegrationTestSupport {
                 });
     }
 
+    // Verifies empty or failed Paperless responses never remove local receipts.
     @Test
     void doesNotRemoveReceiptsWhenPaperlessResultIsEmptyOrFails() {
         paperlessClient.respondWith(List.of(document(3001, "active")));
@@ -113,6 +116,7 @@ class PaperlessSyncServiceTests extends PostgresIntegrationTestSupport {
                 .satisfies(syncLog -> assertThat(syncLog.getStatus()).isEqualTo(SyncStatus.FAILED));
     }
 
+    // Verifies the sync lock rejects concurrent runs so two imports cannot race each other.
     @Test
     void rejectsParallelSyncRuns() throws Exception {
         paperlessClient.blockWith(List.of(document(4001, "blocked")));

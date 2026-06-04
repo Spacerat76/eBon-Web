@@ -89,6 +89,7 @@ class ReceiptApiServiceTests {
                 realReceiptParseApplier);
     }
 
+    // Verifies defensive pagination defaults so oversized or invalid list requests stay predictable for the UI.
     @Test
     void listReceiptsFallsBackToDefaultSortAndClampsPageSize() {
         Receipt receipt = receipt(1L, 1001, "REWE", false, "Bio Milch");
@@ -118,6 +119,7 @@ class ReceiptApiServiceTests {
         assertThat(pageable.getSort().getOrderFor("id").getDirection().name()).isEqualTo("DESC");
     }
 
+    // Verifies that missing and soft-deleted receipts are hidden behind the same not-found contract.
     @Test
     void getReceiptRejectsMissingOrDeletedReceipts() {
         when(receiptRepository.findById(1L)).thenReturn(Optional.empty());
@@ -134,6 +136,7 @@ class ReceiptApiServiceTests {
                 .hasMessage("Bon nicht gefunden.");
     }
 
+    // Verifies the "Ohne Kategorie" contract and manual category assignment path used by the UI.
     @Test
     void updateItemSupportsClearingAndAssigningCategories() {
         Category drogerie = category(11L, "Drogerie");
@@ -180,6 +183,7 @@ class ReceiptApiServiceTests {
         verify(categorizationService).manuallyCategorizeItem(any(), eq(drogerie.getId()));
     }
 
+    // Verifies that receipt updates cannot mutate foreign items and that new uncategorized items remain explicit.
     @Test
     void updateReceiptRejectsForeignItemUpdatesAndSupportsAddingItems() {
         Receipt target = receipt(20L, 3001, "REWE", false, "Bio Milch");
@@ -236,6 +240,7 @@ class ReceiptApiServiceTests {
         verify(categorizationService, never()).manuallyCategorizeItem(anyLong(), anyLong());
     }
 
+    // Verifies that newly added items with a category go through the manual override service, not direct field edits.
     @Test
     void addItemWithCategoryDelegatesToManualCategorization() {
         Receipt receipt = receipt(30L, 4001, "REWE", false, "Bio Milch");
@@ -276,6 +281,7 @@ class ReceiptApiServiceTests {
         verify(categorizationService).manuallyCategorizeItem(anyLong(), eq(drogerie.getId()));
     }
 
+    // Verifies reparse safety: manual edits block accidental overwrite unless the caller explicitly allows it.
     @Test
     void reparseReceiptRejectsManualEditsUnlessOverwriteAndThenRecategorizes() {
         Receipt receipt = receipt(40L, 5001, "REWE", false, "Manuell geaenderter Bon");
@@ -317,6 +323,7 @@ class ReceiptApiServiceTests {
         verify(categorizationService).categorizeReceipt(receipt.getId());
     }
 
+    // Verifies user deletes are soft deletes so imported receipt data is not physically lost.
     @Test
     void deleteReceiptMarksReceiptAsDeleted() {
         Receipt receipt = receipt(50L, 6001, "REWE", false, "Bio Milch");

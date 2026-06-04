@@ -43,6 +43,7 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
     @Autowired
     private CategorizationService categorizationService;
 
+    // Verifies Flyway creates required schema objects, reference data, settings, and guarded category seeds.
     @Test
     void flywayCreatesSchemaAndReferenceData() {
         Integer successfulMigrations = jdbcTemplate.queryForObject(
@@ -97,6 +98,7 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
                 .satisfies(setting -> assertThat(setting.getValue()).isEqualTo("0.900"));
     }
 
+    // Verifies seeded categorization rules cover confirmed real-item cases and leave unknown items uncategorized.
     @Test
     void seededRulesKeepUnknownStoreItemsUncategorized() {
         Receipt receipt = new Receipt(4242, "raw paperless text");
@@ -159,6 +161,7 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         assertThat(items.get(16).getCategorySource()).isNull();
     }
 
+    // Verifies repository persistence keeps receipt items and implements TAG_REMOVED as a soft delete.
     @Test
     void receiptRepositoryPersistsItemsAndSupportsSoftDelete() {
         Category category = categoryRepository.findByName("Sonstiges").orElseThrow();
@@ -187,6 +190,7 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
                 .doesNotContain(saved.getId());
     }
 
+    // Verifies categories can be deactivated so referenced categories are not unsafely hard-deleted.
     @Test
     void categoryCanBeDeactivatedInsteadOfHardDeleted() {
         Category category = categoryRepository.findByName("Lebensmittel").orElseThrow();

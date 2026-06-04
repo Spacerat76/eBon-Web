@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    environment:
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
     volumes:
       - ..:/workspace:cached
     command: sleep infinity

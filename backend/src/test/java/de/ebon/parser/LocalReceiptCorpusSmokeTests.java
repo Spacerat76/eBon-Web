@@ -38,6 +38,7 @@ class LocalReceiptCorpusSmokeTests {
             rawText -> Optional.empty(),
             new AiReceiptJsonParser(new ObjectMapper()));
 
+    // Verifies the opt-in local corpus test has real developer-local fixtures to inspect.
     @Test
     void localReceiptCorpusIsAvailable() throws IOException {
         assertThat(localReceipts().count())
@@ -45,6 +46,7 @@ class LocalReceiptCorpusSmokeTests {
                 .isPositive();
     }
 
+    // Verifies every developer-local receipt still parses successfully after parser changes.
     @ParameterizedTest(name = "{0}")
     @MethodSource("localReceiptFiles")
     void parsesLocalReceiptCorpus(String label, Path receiptPath) throws IOException {

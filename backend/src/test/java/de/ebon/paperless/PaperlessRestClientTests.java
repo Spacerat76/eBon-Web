@@ -18,6 +18,7 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 class PaperlessRestClientTests {
 
+    // Verifies Paperless pagination and token authentication without calling a real Paperless instance.
     @Test
     void fetchesAllPagesWithTokenAuthentication() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://paperless");
@@ -62,6 +63,7 @@ class PaperlessRestClientTests {
         server.verify();
     }
 
+    // Verifies transient Paperless server errors are retried before surfacing a client exception.
     @Test
     void retriesServerErrorsBeforeFailing() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://paperless");
@@ -78,6 +80,7 @@ class PaperlessRestClientTests {
         server.verify();
     }
 
+    // Verifies date-only Paperless created values are accepted because Paperless may return either date shape.
     @Test
     void acceptsPaperlessDateOnlyCreatedField() {
         RestClient.Builder builder = RestClient.builder().baseUrl("http://paperless");

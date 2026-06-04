@@ -12,6 +12,7 @@ class RuleBasedReceiptParserEdgeTests {
 
     private final RuleBasedReceiptParser parser = new RuleBasedReceiptParser();
 
+    // Verifies REWE markdown-table OCR output is parsed into real items, including quantity rows.
     @Test
     void parsesMarkdownTableItemsFromReweReceipts() {
         ReceiptParseResult result = parser.parse("""
@@ -38,6 +39,7 @@ class RuleBasedReceiptParserEdgeTests {
         assertThat(result.receipt().items().get(2).unitPrice()).isEqualByComparingTo("2.49");
     }
 
+    // Verifies decorative REWE header lines still yield the normalized store name and branch address.
     @Test
     void parsesStarDecoratedReweMarketAddressAsBranch() {
         ReceiptParseResult result = parser.parse("""
@@ -61,6 +63,7 @@ class RuleBasedReceiptParserEdgeTests {
                 .isEqualTo("GEFLUEGELSALAT");
     }
 
+    // Verifies REWE phone/tax headers are ignored and weight rows enrich the preceding item.
     @Test
     void ignoresReweTelAndTaxNumberHeadersAndParsesHandeingabeQuantity() {
         ReceiptParseResult result = parser.parse("""
@@ -90,6 +93,7 @@ class RuleBasedReceiptParserEdgeTests {
         assertThat(result.receipt().items().getFirst().unitPrice()).isEqualByComparingTo("19.89");
     }
 
+    // Verifies dm receipts expose the branch code even when the address exists only as an image.
     @Test
     void parsesDmHeaderStoreCodeAsBranchIdentifier() {
         ReceiptParseResult result = parser.parse("""
@@ -109,6 +113,7 @@ class RuleBasedReceiptParserEdgeTests {
         assertThat(result.receipt().storeBranch()).isEqualTo("Filiale D2C9/1");
     }
 
+    // Verifies configurable dm branch mappings replace branch-code fallbacks with real addresses.
     @Test
     void mapsDmHeaderStoreCodeToConfiguredBranch() {
         ReceiptParserProperties properties = new ReceiptParserProperties();
@@ -130,6 +135,7 @@ class RuleBasedReceiptParserEdgeTests {
         assertThat(result.receipt().storeBranch()).isEqualTo("Am Reuschenberger Markt 3, 41466 Neuss");
     }
 
+    // Verifies REWE cashback and cash payout lines are not counted as purchased items.
     @Test
     void ignoresReweCashbackAndAuszahlungAsItems() {
         ReceiptParseResult result = parser.parse("""
@@ -149,6 +155,7 @@ class RuleBasedReceiptParserEdgeTests {
         assertThat(result.receipt().items()).hasSize(2);
     }
 
+    // Verifies dm gift cards are treated as payment tender while coupon discounts remain receipt items.
     @Test
     void treatsDmGiftCardPaymentAsTenderAndKeepsDiscountAsItem() {
         ReceiptParseResult result = parser.parse("""
@@ -172,6 +179,7 @@ class RuleBasedReceiptParserEdgeTests {
                 .containsExactly(new BigDecimal("38.20"), new BigDecimal("-0.25"));
     }
 
+    // Verifies dm discount section headings do not get merged into coupon item descriptions.
     @Test
     void ignoresDmDiscountHeadingsBeforeCouponItems() {
         ReceiptParseResult result = parser.parse("""
@@ -196,6 +204,7 @@ class RuleBasedReceiptParserEdgeTests {
                         "Coupon 20% WELEDA Baby");
     }
 
+    // Verifies pharmacy markdown tables keep only the medicine name and derive quantity/unit price from the price row.
     @Test
     void parsesApothekeMarkdownTableReceipt() {
         ReceiptParseResult result = parser.parse("""
@@ -233,6 +242,7 @@ class RuleBasedReceiptParserEdgeTests {
                 });
     }
 
+    // Verifies pharmacy receipts with a following-line total parse all medicines without header leakage.
     @Test
     void parsesApothekeEndsummeOnFollowingLine() {
         ReceiptParseResult result = parser.parse("""

@@ -44,6 +44,7 @@ class CategoryApiServiceTests {
         when(receiptItemRepository.countByCategory_Id(anyLong())).thenReturn(0L);
     }
 
+    // Verifies the category list contract for normal UI lists and admin views that include inactive categories.
     @Test
     void listUsesActiveCategoriesByDefaultAndIncludesInactiveWhenRequested() {
         Category active = category(1L, "Aktiv", true, 10);
@@ -60,6 +61,7 @@ class CategoryApiServiceTests {
         verify(categoryRepository).findAllByOrderBySortOrderAscNameAsc();
     }
 
+    // Verifies create normalization so user-entered category names are stored cleanly and can start inactive.
     @Test
     void createTrimsNameAndCanCreateInactiveCategory() {
         when(categoryRepository.findByNameIgnoreCase("Neue Kategorie")).thenReturn(Optional.empty());

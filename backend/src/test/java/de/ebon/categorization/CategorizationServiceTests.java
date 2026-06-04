@@ -70,6 +70,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         jdbcTemplate.update("update app_settings set value = '0.900' where key = 'ai_categorization_min_confidence'");
     }
 
+    // Verifies rule priority semantics: the lowest numeric priority must win for deterministic categorization.
     @Test
     void ruleWithLowestPriorityWins() {
         Category sonstiges = category("Sonstiges");
@@ -94,6 +95,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         assertThat(firstItem(receipt).getCategorySource()).isEqualTo(CategorySource.RULE);
     }
 
+    // Verifies store-name and regex rules so branch/store context can categorize otherwise ambiguous items.
     @Test
     void storeNameAndRegexRulesAreSupported() {
         Category drogerie = category("Drogerie");
@@ -111,6 +113,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         assertThat(firstItem(receipt).getCategorySource()).isEqualTo(CategorySource.RULE);
     }
 
+    // Verifies AI categorization is optional and disabled cleanly when no OpenRouter API key is configured.
     @Test
     void withoutOpenRouterApiKeyItemsStayUncategorizedAndAiIsNotCalled() {
         aiClient.available = false;
@@ -124,6 +127,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         assertThat(aiLogRepository.count()).isZero();
     }
 
+    // Verifies accepted AI suggestions set categorySource=AI and create an auditable structured log entry.
     @Test
     void knownAiCategorySetsCategorySourceAiAndWritesLog() {
         aiClient.available = true;
@@ -149,6 +153,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
                 });
     }
 
+    // Verifies the persisted confidence setting controls which AI suggestions are accepted.
     @Test
     void configuredAiConfidenceThresholdControlsAcceptedAiCategories() {
         jdbcTemplate.update("update app_settings set value = '0.750' where key = 'ai_categorization_min_confidence'");
@@ -165,6 +170,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         assertThat(aiClient.lastRequest.minConfidence()).isEqualByComparingTo("0.750");
     }
 
+    // Verifies invalid stored confidence values fall back to the safe default instead of accepting weak AI matches.
     @Test
     void invalidStoredAiConfidenceFallsBackToDefaultThreshold() {
         jdbcTemplate.update("update app_settings set value = 'abc' where key = 'ai_categorization_min_confidence'");
@@ -189,6 +195,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
                 });
     }
 
+    // Verifies low-confidence AI suggestions remain visible as suggestions without assigning a category.
     @Test
     void lowConfidenceAiCategoryKeepsItemUncategorizedAndWritesLogWithoutAssignment() {
         aiClient.available = true;
@@ -212,6 +219,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
                 });
     }
 
+    // Verifies AI suggestions for unknown category names stay unassigned and remain explainable to the UI.
     @Test
     void unknownAiCategoryKeepsItemUncategorizedAndWritesLogWithoutCategory() {
         aiClient.available = true;
@@ -235,6 +243,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
                 });
     }
 
+    // Verifies invalid or missing AI responses do not assign categories and still write a rejection log.
     @Test
     void invalidAiResponseKeepsItemUncategorizedAndWritesSuggestionLog() {
         aiClient.available = true;
@@ -256,6 +265,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
                 });
     }
 
+    // Verifies bulk rule application may update AI or empty items but must not overwrite manual decisions.
     @Test
     void manualOverrideIsProtectedFromBulkApplyWhileAiAndUncategorizedItemsCanBeUpdated() {
         Category sonstiges = category("Sonstiges");
@@ -285,6 +295,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         assertThat(reloaded.get(2).isManuallyEdited()).isTrue();
     }
 
+    // Verifies manually clearing a category is sticky so later automatic rules cannot silently recategorize it.
     @Test
     void manuallyClearedCategoryStaysUncategorizedAndIsProtectedFromRules() {
         Category lebensmittel = category("Lebensmittel");
@@ -309,6 +320,7 @@ class CategorizationServiceTests extends PostgresIntegrationTestSupport {
         assertThat(reloaded.isManuallyEdited()).isTrue();
     }
 
+    // Verifies category deletion follows the spec: hard-delete only when unreferenced, otherwise deactivate.
     @Test
     void categoryDeletePhysicallyDeletesOnlyUnreferencedCategories() {
         Category unused = categoryRepository.saveAndFlush(new Category("Unused", "#111111", "circle", 900));

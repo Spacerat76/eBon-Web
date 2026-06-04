@@ -25,6 +25,7 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
     @LocalServerPort
     private int port;
 
+    // Verifies the public health endpoint remains available without authentication for health checks.
     @Test
     void healthIsPublic() throws Exception {
         HttpResponse<String> response = sendGet("/api/health", null);
@@ -35,6 +36,7 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
         assertThat(body.get("status").asText()).isEqualTo("UP");
     }
 
+    // Verifies protected API endpoints return the structured unauthorized error without a bearer token.
     @Test
     void protectedEndpointRequiresBearerToken() throws Exception {
         HttpResponse<String> response = sendGet("/api/system/ping", null);
@@ -47,6 +49,7 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
         assertThat(body.get("traceId").asText()).isNotBlank();
     }
 
+    // Verifies the single-user bearer token grants access to protected endpoints.
     @Test
     void protectedEndpointAcceptsValidBearerToken() throws Exception {
         HttpResponse<String> response = sendGet("/api/system/ping", "test-token");
@@ -56,6 +59,7 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
         assertThat(body.get("status").asText()).isEqualTo("OK");
     }
 
+    // Verifies local development can load OpenAPI docs without authentication by default.
     @Test
     void openApiDocsArePublicByDefault() throws Exception {
         HttpResponse<String> response = sendGet("/v3/api-docs", null);
@@ -66,6 +70,7 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
         assertThat(body.get("info").get("title").asText()).isEqualTo("eBon Expense Tracker API");
     }
 
+    // Verifies Swagger UI follows the configured local-development redirect and loads unauthenticated by default.
     @Test
     void swaggerUiIsPublicByDefault() throws Exception {
         HttpResponse<String> response = sendGet("/swagger-ui.html", null);

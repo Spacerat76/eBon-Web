@@ -71,6 +71,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
                 false));
     }
 
+    // Verifies item search filters, highlighting, and safe sorting defaults for the main search UI.
     @Test
     void searchSupportsFiltersHighlightsAndSafeFallbackSorting() {
         Category lebensmittel = category("Lebensmittel");
@@ -108,6 +109,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
         });
     }
 
+    // Verifies that blank searches still return stable results and do not invent highlight markers.
     @Test
     void searchWithoutQueryLeavesHighlightsEmptyAndCanSortByTotalPriceAscending() {
         receipt("REWE", LocalDate.now(), null, null, null,
@@ -135,6 +137,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
                 .satisfies(item -> assertThat(item.highlights()).isEmpty());
     }
 
+    // Verifies report grouping keeps uncategorized items visible as "Ohne Kategorie" instead of dropping them.
     @Test
     void reportByCategoryAggregatesUncategorizedItemsAndSortsDescending() {
         Category lebensmittel = category("Lebensmittel");
@@ -153,6 +156,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
                 .containsExactly(new BigDecimal("5.00"), new BigDecimal("3.00"), new BigDecimal("2.00"));
     }
 
+    // Verifies period reports support UI-selected groupings and fall back safely for invalid group names.
     @Test
     void reportByPeriodSupportsInvalidDefaultMonthAndExplicitYearOrWeekGrouping() {
         Category lebensmittel = category("Lebensmittel");
@@ -191,6 +195,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
                                 new BigDecimal("2.00")));
     }
 
+    // Verifies store reports keep receipts with missing store names visible under an explicit fallback label.
     @Test
     void reportByStoreFallsBackToUnknownForMissingStoreNames() {
         Category lebensmittel = category("Lebensmittel");
@@ -212,6 +217,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
                 });
     }
 
+    // Verifies top-item reports clamp unsafe limits and keep blank OCR descriptions visible under a fallback label.
     @Test
     void topItemsFallsBackForBlankDescriptionsAndClampsLimit() {
         receipt("REWE", LocalDate.now(), null, null, null,
@@ -229,6 +235,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
         });
     }
 
+    // Verifies bonus reports aggregate only newly earned values and ignore receipts without a real bonus type.
     @Test
     void bonusReportAggregatesBonusValuesAndIgnoresBlankBonusTypes() {
         receipt("REWE", LocalDate.now(), new BigDecimal("2.50"), new BigDecimal("5.00"), "REWE Bonus",
@@ -247,6 +254,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
         });
     }
 
+    // Verifies dashboard totals, uncategorized counts, recent receipts, and sync status for the first UI screen.
     @Test
     void dashboardUsesCurrentAndPreviousMonthTotalsAndUncategorizedCount() {
         Category lebensmittel = category("Lebensmittel");

@@ -15,6 +15,7 @@ class CategorizationRuleMatcherTests {
 
     private final CategorizationRuleMatcher matcher = new CategorizationRuleMatcher();
 
+    // Verifies description matching handles normal and compacted OCR/product-name variants.
     @Test
     void matchesDescriptionAcrossContainmentAndCompactNormalization() {
         ReceiptItem item = receiptItem("Bonduelle Country Mix mit Karotte & Goldmais", "REWE");
@@ -33,6 +34,7 @@ class CategorizationRuleMatcherTests {
                 .isFalse();
     }
 
+    // Verifies store-name matching is safe for missing receipts and invalid regex patterns.
     @Test
     void matchesStoreNameAndRejectsInvalidRegexOrMissingTargets() {
         ReceiptItem item = receiptItem("dm-drogerie markt", "dm-drogerie markt");

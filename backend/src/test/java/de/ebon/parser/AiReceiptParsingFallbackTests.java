@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class AiReceiptParsingFallbackTests {
 
+    // Verifies the AI fallback can recover a valid receipt when the rule parser cannot parse the raw text.
     @Test
     void validAiJsonIsAcceptedWhenRuleParserCannotParseReceipt() {
         ReceiptParserService parser = parserWithAiResponse("""
@@ -44,6 +45,7 @@ class AiReceiptParsingFallbackTests {
                 .satisfies(item -> assertThat(item.description()).isEqualTo("KI Artikel"));
     }
 
+    // Verifies malformed AI JSON is rejected so external model output cannot silently corrupt parsed data.
     @Test
     void malformedAiJsonIsRejected() {
         ReceiptParserService parser = parserWithAiResponse("{ invalid json");
@@ -54,6 +56,7 @@ class AiReceiptParsingFallbackTests {
         assertThat(result.errorMessage()).contains("KI-JSON");
     }
 
+    // Verifies schema-invalid AI JSON is rejected even when it is syntactically valid.
     @Test
     void aiJsonOutsideSchemaIsRejected() {
         ReceiptParserService parser = parserWithAiResponse("""
@@ -72,6 +75,7 @@ class AiReceiptParsingFallbackTests {
         assertThat(result.errorMessage()).isNotBlank();
     }
 
+    // Verifies item-level schema validation rejects invalid position indices from AI output.
     @Test
     void aiJsonWithInvalidPositionIndexIsRejected() {
         ReceiptParserService parser = parserWithAiResponse("""

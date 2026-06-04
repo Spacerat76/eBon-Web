@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ApiErrorHandlingTests {
 
+    // Verifies API errors carry a stable traceId, timestamp, status, message, and request path.
     @Test
     void factoryUsesProvidedTraceIdOrGeneratesANewOne() {
         Clock clock = Clock.fixed(Instant.parse("2026-06-03T05:00:00Z"), ZoneOffset.UTC);
@@ -47,6 +48,7 @@ class ApiErrorHandlingTests {
         assertThat(generatedTrace.path()).isEqualTo("/api/test-2");
     }
 
+    // Verifies validation errors prefer field-level messages but still produce a useful fallback message.
     @Test
     void validationHandlerUsesFieldErrorAndFallsBackWhenNoFieldErrorExists() throws Exception {
         GlobalExceptionHandler handler = new GlobalExceptionHandler(new ApiErrorFactory(Clock.fixed(
@@ -64,6 +66,7 @@ class ApiErrorHandlingTests {
                 .isEqualTo("Validierungsfehler im Request.");
     }
 
+    // Verifies ResponseStatusException reasons are preserved for user-facing API errors.
     @Test
     void responseStatusHandlerUsesReasonWhenPresentAndStatusPhraseOtherwise() {
         GlobalExceptionHandler handler = new GlobalExceptionHandler(new ApiErrorFactory(Clock.fixed(
@@ -81,6 +84,7 @@ class ApiErrorHandlingTests {
                 request).getBody().message()).isEqualTo("Conflict");
     }
 
+    // Verifies all generic exception handlers return the documented structured error format.
     @Test
     void requestValidationAndFallbackHandlersReturnExpectedApiErrors() throws Exception {
         GlobalExceptionHandler handler = new GlobalExceptionHandler(new ApiErrorFactory(Clock.fixed(

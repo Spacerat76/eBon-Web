@@ -8,6 +8,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class ReceiptParserPropertiesTests {
 
+    // Verifies dm branch mappings resolve both full scanner codes and their stable base code.
     @Test
     void resolveDmBranchUsesExactMatchAndFallbackToBaseCode() {
         ReceiptParserProperties properties = new ReceiptParserProperties();
@@ -21,6 +22,7 @@ class ReceiptParserPropertiesTests {
         assertThat(properties.resolveDmBranch("D482")).contains("Neuss");
     }
 
+    // Verifies unknown or blank dm branch mappings fail closed instead of returning misleading branches.
     @Test
     void resolveDmBranchReturnsEmptyForUnknownBlankAndBlankMappedValues() {
         ReceiptParserProperties properties = new ReceiptParserProperties();
@@ -34,6 +36,7 @@ class ReceiptParserPropertiesTests {
         assertThat(properties.resolveDmBranch("D482")).isEmpty();
     }
 
+    // Verifies null configuration is normalized to an empty mapping for safe property binding.
     @Test
     void setDmBranchMappingsAcceptsNullAsEmptyMap() {
         ReceiptParserProperties properties = new ReceiptParserProperties();

@@ -68,6 +68,7 @@ class CategorizationRuleManagementServiceTests extends PostgresIntegrationTestSu
         receiptRepository.flush();
     }
 
+    // Verifies rule creation defaults and optional bulk-apply behavior for user-confirmed categorization rules.
     @Test
     void createDefaultsPriorityDeactivatesAndAppliesToExistingWhenRequested() {
         Category category = category("Lebensmittel");
@@ -90,6 +91,7 @@ class CategorizationRuleManagementServiceTests extends PostgresIntegrationTestSu
         assertThat(ruleRepository.findById(rule.id())).isPresent();
     }
 
+    // Verifies rule updates preserve explicit priority, activation, and apply-to-existing behavior.
     @Test
     void updateHonorsExplicitPriorityActivationAndApplyToExisting() {
         Category category = category("Koerperpflege");
@@ -118,6 +120,7 @@ class CategorizationRuleManagementServiceTests extends PostgresIntegrationTestSu
         verify(categorizationService).applyRuleToExistingItems(rule.getId());
     }
 
+    // Verifies rule previews count only eligible non-manual items and can infer the first active category.
     @Test
     void previewUsesFirstActiveCategoryWhenCategoryIdIsMissingAndSkipsManualItems() {
         Category active = category("Brot und Backwaren");
@@ -139,6 +142,7 @@ class CategorizationRuleManagementServiceTests extends PostgresIntegrationTestSu
         assertThat(count).isEqualTo(2);
     }
 
+    // Verifies previewing with an explicit category and rejecting rule creation against inactive categories.
     @Test
     void previewWithExplicitCategoryAndCreateOnInactiveCategoryFails() {
         Category category = category("Getraenke");
@@ -167,6 +171,7 @@ class CategorizationRuleManagementServiceTests extends PostgresIntegrationTestSu
         assertThat(item.getDescription()).isEqualTo("Cola Zero");
     }
 
+    // Verifies existing rules can be applied and deleted through the management service.
     @Test
     void deleteAndApplyRequireExistingRule() {
         Category category = category("Haushalt");
@@ -184,6 +189,7 @@ class CategorizationRuleManagementServiceTests extends PostgresIntegrationTestSu
         assertThat(ruleRepository.findById(rule.getId())).isEmpty();
     }
 
+    // Verifies missing rules or missing active categories fail explicitly instead of creating ambiguous previews.
     @Test
     void missingRuleAndMissingActiveCategoryFailAsExpected() {
         assertThatThrownBy(() -> ruleManagementService.update(999999L, new CategorizationRuleRequest(

@@ -17,6 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class OpenRouterAiCategorizationClientTests {
 
+    // Verifies the AI client remains disabled unless an API key is configured.
     @Test
     void availabilityDependsOnApiKeyPresence() {
         AiCategorizationProperties properties = new AiCategorizationProperties();
@@ -30,6 +31,7 @@ class OpenRouterAiCategorizationClientTests {
         assertThat(client.isAvailable()).isTrue();
     }
 
+    // Verifies prompts include available categories, the confidence threshold, and null-safe item context.
     @Test
     void buildPromptUsesCategoriesAndConfidenceAndNullSafeItemData() throws Exception {
         OpenRouterAiCategorizationClient client = client();
@@ -48,6 +50,7 @@ class OpenRouterAiCategorizationClientTests {
         assertThat(prompt).contains("itemId=2; Geschaeft=; Artikel=");
     }
 
+    // Verifies AI JSON parsing accepts supported shapes and rejects malformed responses without throwing.
     @Test
     void parseSuggestionsSupportsArrayObjectWrapperAndFallbackFields() throws Exception {
         OpenRouterAiCategorizationClient client = client();
@@ -91,6 +94,7 @@ class OpenRouterAiCategorizationClientTests {
         assertThat(invalidSuggestions).isEmpty();
     }
 
+    // Verifies helper behavior that protects retry decisions and response extraction from null or bad API data.
     @Test
     void extractContentAndHelperMethodsHandleNullsAndStatusCodes() throws Exception {
         OpenRouterAiCategorizationClient client = client();

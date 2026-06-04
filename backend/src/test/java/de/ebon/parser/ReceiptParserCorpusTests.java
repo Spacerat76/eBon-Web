@@ -27,6 +27,7 @@ class ReceiptParserCorpusTests {
             new AiReceiptJsonParser(new ObjectMapper()));
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    // Verifies every committed corpus fixture matches its expected parsed receipt contract.
     @ParameterizedTest(name = "{0}")
     @MethodSource("corpusFixtures")
     void parsesCorpusFixtures(String fixtureName, Path textPath, Path expectedPath) throws Exception {
@@ -46,6 +47,7 @@ class ReceiptParserCorpusTests {
         assertReceiptMatches(expected, result.receipt());
     }
 
+    // Verifies sum validation rejects materially inconsistent receipts while preserving partial parser output.
     @Test
     void sumMismatchBecomesParseErrorButKeepsPartialParse() {
         String rawText = """

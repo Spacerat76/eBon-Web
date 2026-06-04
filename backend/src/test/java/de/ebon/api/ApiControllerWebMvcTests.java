@@ -15,7 +15,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.LocalDate;
 import java.util.List;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -55,11 +54,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
     @Autowired
     private CategoryApiService categoryApiService;
 
-    @BeforeEach
-    void resetMocks() {
-        // no-op; mocks are stateful only by stubbing in each test
-    }
-
+    // Verifies controller parsing of comma-separated category IDs and forwarding of sort values to the service layer.
     @Test
     void searchParsesCategoryIdsAndForwardsUnknownSortValues() throws Exception {
         when(queryApiService.search(any(), any(), any(), any(), anyList(), any(), any(), anyInt(), anyInt(), anyString(), anyString()))
@@ -94,6 +89,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
                 eq("desc"));
     }
 
+    // Verifies blank category filters are treated as no filter instead of failing or creating bogus IDs.
     @Test
     void searchTreatsBlankCategoryIdsAsEmptyList() throws Exception {
         when(queryApiService.search(any(), any(), any(), any(), anyList(), any(), any(), anyInt(), anyInt(), anyString(), anyString()))
@@ -116,6 +112,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
                 eq("desc"));
     }
 
+    // Verifies CSV export escaping and category filter parsing for report downloads.
     @Test
     void reportsExportEscapesCsvAndParsesCategoryIds() throws Exception {
         when(queryApiService.reportByCategory(any(), any(), anyList(), any()))
@@ -136,6 +133,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
         verify(queryApiService).reportByCategory(eq(null), eq(null), eq(List.of(4L, 5L, 6L)), eq(null));
     }
 
+    // Verifies period export uses an empty category filter when the query parameter is blank.
     @Test
     void reportsByPeriodExportTreatsBlankCategoryIdsAsEmptyList() throws Exception {
         when(queryApiService.reportByPeriod(any(), any(), anyList(), any(), anyString()))
@@ -147,6 +145,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
         verify(queryApiService).reportByPeriod(eq(null), eq(null), eq(List.of()), eq(null), eq("month"));
     }
 
+    // Verifies the user-facing response for categories that can be physically deleted.
     @Test
     void categoriesDeleteReturnsHardDeleteMessage() throws Exception {
         when(categoryApiService.deleteOrDeactivate(7L)).thenReturn(CategoryDeletionResult.HARD_DELETED);
@@ -157,6 +156,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
         assertThat(response.body()).isEqualTo("{\"message\":\"Kategorie geloescht.\"}");
     }
 
+    // Verifies the user-facing response for categories that must be deactivated because they are referenced.
     @Test
     void categoriesDeleteReturnsDeactivateMessage() throws Exception {
         when(categoryApiService.deleteOrDeactivate(8L)).thenReturn(CategoryDeletionResult.DEACTIVATED);
@@ -167,6 +167,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
         assertThat(response.body()).isEqualTo("{\"message\":\"Kategorie ist referenziert und wurde deaktiviert.\"}");
     }
 
+    // Verifies the includeInactive query flag reaches the category service unchanged.
     @Test
     void categoriesListForwardsIncludeInactiveFlag() throws Exception {
         when(categoryApiService.list(true)).thenReturn(List.of(new CategoryDto(1L, "Test", "#ffffff", "icon", true, 1, 0)));
