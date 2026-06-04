@@ -66,9 +66,9 @@ class SyncApiTests extends PostgresIntegrationTestSupport {
         JsonNode logBody = objectMapper.readTree(logResponse.body());
 
         assertThat(triggerResponse.statusCode()).isEqualTo(202);
-        assertThat(triggerBody.get("message").asText()).isEqualTo("Sync gestartet");
+        assertThat(triggerBody.get("message").asString()).isEqualTo("Sync gestartet");
         assertThat(statusResponse.statusCode()).isEqualTo(200);
-        assertThat(statusBody.get("lastSyncStatus").asText()).isEqualTo("SUCCESS");
+        assertThat(statusBody.get("lastSyncStatus").asString()).isEqualTo("SUCCESS");
         assertThat(statusBody.get("isSyncing").asBoolean()).isFalse();
         assertThat(logResponse.statusCode()).isEqualTo(200);
         assertThat(logBody.get("content").size()).isEqualTo(1);

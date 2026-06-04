@@ -33,7 +33,7 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(response.headers().firstValue("X-Trace-Id")).isPresent();
-        assertThat(body.get("status").asText()).isEqualTo("UP");
+        assertThat(body.get("status").asString()).isEqualTo("UP");
     }
 
     // Verifies protected API endpoints return the structured unauthorized error without a bearer token.
@@ -44,9 +44,9 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
 
         assertThat(response.statusCode()).isEqualTo(401);
         assertThat(body.get("status").asInt()).isEqualTo(401);
-        assertThat(body.get("error").asText()).isEqualTo("Unauthorized");
-        assertThat(body.get("path").asText()).isEqualTo("/api/system/ping");
-        assertThat(body.get("traceId").asText()).isNotBlank();
+        assertThat(body.get("error").asString()).isEqualTo("Unauthorized");
+        assertThat(body.get("path").asString()).isEqualTo("/api/system/ping");
+        assertThat(body.get("traceId").asString()).isNotBlank();
     }
 
     // Verifies the single-user bearer token grants access to protected endpoints.
@@ -56,7 +56,7 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
         JsonNode body = objectMapper.readTree(response.body());
 
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(body.get("status").asText()).isEqualTo("OK");
+        assertThat(body.get("status").asString()).isEqualTo("OK");
     }
 
     // Verifies local development can load OpenAPI docs without authentication by default.
@@ -66,8 +66,8 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
         JsonNode body = objectMapper.readTree(response.body());
 
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(body.get("openapi").asText()).isNotBlank();
-        assertThat(body.get("info").get("title").asText()).isEqualTo("eBon Expense Tracker API");
+        assertThat(body.get("openapi").asString()).isNotBlank();
+        assertThat(body.get("info").get("title").asString()).isEqualTo("eBon Expense Tracker API");
     }
 
     // Verifies Swagger UI follows the configured local-development redirect and loads unauthenticated by default.

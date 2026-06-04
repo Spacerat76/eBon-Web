@@ -96,12 +96,12 @@ class AiReceiptJsonParser {
         if (isMissingOrNull(value)) {
             return null;
         }
-        return value.asText();
+        return value.asString();
     }
 
     private int requiredInt(JsonNode node, String field) {
         JsonNode value = required(node, field);
-        return Integer.parseInt(value.asText());
+        return Integer.parseInt(value.asString());
     }
 
     private BigDecimal requiredDecimal(JsonNode node, String field) {
@@ -117,7 +117,7 @@ class AiReceiptJsonParser {
         if (isMissingOrNull(value)) {
             return null;
         }
-        return new BigDecimal(value.asText());
+        return new BigDecimal(value.asString());
     }
 
     private boolean isMissingOrNull(JsonNode value) {

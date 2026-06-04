@@ -103,14 +103,14 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(response.statusCode()).isEqualTo(200);
         JsonNode lowConfidenceSuggestion = items.get(0).get("aiSuggestion");
         assertThat(lowConfidenceSuggestion.get("categoryId").asLong()).isEqualTo(drogerie.getId());
-        assertThat(lowConfidenceSuggestion.get("categoryName").asText()).isEqualTo("Drogerie");
-        assertThat(new BigDecimal(lowConfidenceSuggestion.get("confidence").asText())).isEqualByComparingTo("0.820");
-        assertThat(lowConfidenceSuggestion.get("rejectionReason").asText()).isEqualTo("LOW_CONFIDENCE");
+        assertThat(lowConfidenceSuggestion.get("categoryName").asString()).isEqualTo("Drogerie");
+        assertThat(new BigDecimal(lowConfidenceSuggestion.get("confidence").asString())).isEqualByComparingTo("0.820");
+        assertThat(lowConfidenceSuggestion.get("rejectionReason").asString()).isEqualTo("LOW_CONFIDENCE");
 
         JsonNode unknownSuggestion = items.get(1).get("aiSuggestion");
         assertThat(unknownSuggestion.get("categoryId").toString()).isEqualTo("null");
-        assertThat(unknownSuggestion.get("categoryName").asText()).isEqualTo("Nicht vorhandene Kategorie");
-        assertThat(unknownSuggestion.get("rejectionReason").asText()).isEqualTo("UNKNOWN_CATEGORY");
+        assertThat(unknownSuggestion.get("categoryName").asString()).isEqualTo("Nicht vorhandene Kategorie");
+        assertThat(unknownSuggestion.get("rejectionReason").asString()).isEqualTo("UNKNOWN_CATEGORY");
     }
 
     // Verifies that accepted categories suppress stale AI suggestions so the UI shows only actionable hints.
@@ -137,7 +137,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
 
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(itemBody.get("categoryId").asLong()).isEqualTo(drogerie.getId());
-        assertThat(itemBody.get("categorySource").asText()).isEqualTo("AI");
+        assertThat(itemBody.get("categorySource").asString()).isEqualTo("AI");
         assertThat(itemBody.get("aiSuggestion").toString()).isEqualTo("null");
     }
 
@@ -184,7 +184,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
 
         assertThat(response.statusCode()).isEqualTo(400);
         assertThat(body.get("status").asInt()).isEqualTo(400);
-        assertThat(body.get("message").asText()).contains("categorySource");
+        assertThat(body.get("message").asString()).contains("categorySource");
     }
 
     // Verifies that normal receipt lists do not show soft-deleted receipts unless requested.
@@ -199,7 +199,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(body.get("totalElements").asLong()).isEqualTo(1);
         assertThat(body.get("content").size()).isEqualTo(1);
-        assertThat(body.get("content").get(0).get("storeName").asText()).isEqualTo(active.getStoreName());
+        assertThat(body.get("content").get(0).get("storeName").asString()).isEqualTo(active.getStoreName());
     }
 
     // Verifies the explicit includeDeleted flag for audit/admin-style receipt lists.
@@ -214,7 +214,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(body.get("totalElements").asLong()).isEqualTo(2);
         assertThat(body.get("content").size()).isEqualTo(2);
-        assertThat(body.get("content").get(0).get("storeName").asText()).isEqualTo(deleted.getStoreName());
+        assertThat(body.get("content").get(0).get("storeName").asString()).isEqualTo(deleted.getStoreName());
         boolean hasDeletedEntry = false;
         for (JsonNode node : body.get("content")) {
             if (!node.get("deletedAt").isNull()) {
@@ -237,12 +237,12 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         JsonNode body = objectMapper.readTree(response.body());
 
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(body.get("sortBy").asText()).isEqualTo("receiptDate");
-        assertThat(body.get("sortDir").asText()).isEqualTo("desc");
+        assertThat(body.get("sortBy").asString()).isEqualTo("receiptDate");
+        assertThat(body.get("sortDir").asString()).isEqualTo("desc");
         assertThat(body.get("size").asInt()).isEqualTo(100);
         assertThat(body.get("totalElements").asInt()).isEqualTo(1);
         assertThat(body.get("content").size()).isEqualTo(1);
-        assertThat(body.get("content").get(0).get("storeName").asText()).isEqualTo("REWE Mitte");
+        assertThat(body.get("content").get(0).get("storeName").asString()).isEqualTo("REWE Mitte");
     }
 
     // Verifies reparsing replaces old items safely without position-index conflicts in the database.
@@ -269,7 +269,7 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         java.util.List<ReceiptItem> reparsedItems = items(receipt);
 
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(body.get("storeBranch").asText()).isEqualTo("Am Reuschenberger Markt 1");
+        assertThat(body.get("storeBranch").asString()).isEqualTo("Am Reuschenberger Markt 1");
         assertThat(body.get("items")).hasSize(2);
         assertThat(reparsedItems)
                 .extracting(ReceiptItem::getDescription)
@@ -283,9 +283,9 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         JsonNode settings = objectMapper.readTree(getResponse.body());
 
         assertThat(getResponse.statusCode()).isEqualTo(200);
-        assertThat(settings.get("paperlessApiToken").asText()).isEqualTo("********");
-        assertThat(settings.get("openRouterApiKey").asText()).isEqualTo("********");
-        assertThat(new BigDecimal(settings.get("aiCategorizationMinConfidence").asText())).isEqualByComparingTo("0.900");
+        assertThat(settings.get("paperlessApiToken").asString()).isEqualTo("********");
+        assertThat(settings.get("openRouterApiKey").asString()).isEqualTo("********");
+        assertThat(new BigDecimal(settings.get("aiCategorizationMinConfidence").asString())).isEqualByComparingTo("0.900");
 
         HttpResponse<String> putResponse = sendPut(
                 "/api/settings",

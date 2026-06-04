@@ -169,7 +169,7 @@ class OpenRouterAiCategorizationClient implements AiCategorizationClient {
         if (value == null || "null".equals(value.toString())) {
             return null;
         }
-        return value.asText();
+        return value.asString();
     }
 
     private boolean isRetryable(RestClientException exception) {

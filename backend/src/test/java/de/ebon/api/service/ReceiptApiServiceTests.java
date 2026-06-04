@@ -35,6 +35,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -93,7 +94,7 @@ class ReceiptApiServiceTests {
     @Test
     void listReceiptsFallsBackToDefaultSortAndClampsPageSize() {
         Receipt receipt = receipt(1L, 1001, "REWE", false, "Bio Milch");
-        when(receiptRepository.findAll(any(org.springframework.data.jpa.domain.Specification.class), any(Pageable.class)))
+        when(receiptRepository.findAll(anyReceiptSpecification(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(receipt)));
 
         PageResponse<?> result = service.listReceipts(
@@ -108,7 +109,7 @@ class ReceiptApiServiceTests {
                 false);
 
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(receiptRepository).findAll(any(org.springframework.data.jpa.domain.Specification.class), pageableCaptor.capture());
+        verify(receiptRepository).findAll(anyReceiptSpecification(), pageableCaptor.capture());
         Pageable pageable = pageableCaptor.getValue();
 
         assertThat(result.sortBy()).isEqualTo("receiptDate");
@@ -356,5 +357,9 @@ class ReceiptApiServiceTests {
         Category category = new Category(name, "#123456", "tag", 10);
         ReflectionTestUtils.setField(category, "id", id);
         return category;
+    }
+
+    private Specification<Receipt> anyReceiptSpecification() {
+        return org.mockito.ArgumentMatchers.<Specification<Receipt>>any();
     }
 }

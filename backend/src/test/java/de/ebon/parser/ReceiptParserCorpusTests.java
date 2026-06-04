@@ -39,7 +39,7 @@ class ReceiptParserCorpusTests {
                 .as("fixture %s parse status, error=%s, receipt=%s", fixtureName, result.errorMessage(), result.receipt())
                 .isEqualTo(expectedStatus);
         if (expectedStatus == ParseStatus.PARSE_ERROR) {
-            assertThat(result.errorMessage()).contains(expected.get("expectedErrorContains").asText());
+            assertThat(result.errorMessage()).contains(expected.get("expectedErrorContains").asString());
         } else {
             assertThat(result.errorMessage()).isNull();
         }
@@ -88,7 +88,7 @@ class ReceiptParserCorpusTests {
         if (expectedParseStatus == null || isJsonNull(expectedParseStatus)) {
             return ParseStatus.PARSED;
         }
-        return ParseStatus.valueOf(expectedParseStatus.asText());
+        return ParseStatus.valueOf(expectedParseStatus.asString());
     }
 
     private void assertReceiptMatches(JsonNode expected, ParsedReceipt actual) {
@@ -131,12 +131,12 @@ class ReceiptParserCorpusTests {
 
     private String nullableText(JsonNode node, String field) {
         JsonNode value = node.get(field);
-        return value == null || isJsonNull(value) ? null : value.asText();
+        return value == null || isJsonNull(value) ? null : value.asString();
     }
 
     private BigDecimal nullableDecimal(JsonNode node, String field) {
         JsonNode value = node.get(field);
-        return value == null || isJsonNull(value) ? null : new BigDecimal(value.asText());
+        return value == null || isJsonNull(value) ? null : new BigDecimal(value.asString());
     }
 
     private LocalTime nullableTime(JsonNode node, String field) {
