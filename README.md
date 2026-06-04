@@ -28,7 +28,7 @@ The Devcontainer starts a local PostgreSQL database and forwards these ports:
 
 The example environment file uses `DB_HOST=db` so the backend talks to the Compose database service inside the Devcontainer. If you run the backend directly on the host, change `DB_HOST` to `localhost`.
 
-The Devcontainer mounts the host Docker socket and sets `TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` so Testcontainers can start PostgreSQL/Ryuk sibling containers through Docker Desktop when tests run inside the container.
+See [Devcontainer Mounts and Docker Access](#devcontainer-mounts-and-docker-access) for the project-specific Docker and build-output setup.
 
 ## Verify the Devcontainer
 
@@ -48,9 +48,47 @@ docker compose config
 docker compose -f .devcontainer/docker-compose.devcontainer.yml config
 ```
 
+## Devcontainer Mounts and Docker Access
+
+The Devcontainer is the default development environment. It deliberately keeps the standard project paths while isolating build artifacts that commonly cause ownership or platform issues between Windows, Docker Desktop, and Linux containers.
+
+The repository itself is bind-mounted into the container:
+
+```text
+..:/workspace:cached
+```
+
+Build-output paths that are written frequently are mounted as named Docker volumes inside the Devcontainer:
+
+```text
+devcontainer_backend_target:/workspace/backend/target
+devcontainer_frontend_node_modules:/workspace/frontend/node_modules
+```
+
+This means:
+
+- Maven still uses the normal `backend/target` directory.
+- npm still uses the normal `frontend/node_modules` directory.
+- Host builds and Devcontainer builds do not fight over file ownership in those directories.
+- There is no custom Maven target path to remember.
+
+Inside the Devcontainer, `EBON_DEVCONTAINER=true` activates a Maven clean profile that clears the mounted `backend/target` contents without trying to delete the mountpoint itself. This is why `mvn clean verify` can run both on the host and in the Devcontainer.
+
+The Devcontainer also mounts the host Docker socket:
+
+```text
+/var/run/docker.sock:/var/run/docker.sock
+```
+
+This lets Testcontainers start PostgreSQL and Ryuk as sibling containers through Docker Desktop. It is not Docker-in-Docker. The startup script `.devcontainer/init-devcontainer.sh` adds the `vscode` user to the socket group and fixes ownership of the mounted build volumes.
+
+`TESTCONTAINERS_HOST_OVERRIDE=host.docker.internal` is set so tests running inside the Devcontainer can connect back to Testcontainers-managed services exposed through Docker Desktop. Docker Desktop must be running before integration tests are executed.
+
+After changing Devcontainer mounts or Docker access settings, rebuild the container with `Dev Containers: Rebuild Container`.
+
 ## Current Docker Compose Scope
 
-The root `docker-compose.yml` currently starts only PostgreSQL. The backend is run separately from the Devcontainer, and a frontend service will be added once the frontend project exists.
+The root `docker-compose.yml` currently starts only PostgreSQL. Backend and frontend development servers are run separately from Devcontainer terminals.
 
 Start the development database with:
 
@@ -111,7 +149,7 @@ Some dm eBons contain the branch address only as an image. The parser extracts t
 app.parser.dm-branch-mappings.D482=Example Street 1, 12345 Example City
 ```
 
-If Maven fails with `Operation not permitted` while writing `backend/target`, remove the generated build directory once inside the Devcontainer and start again:
+If a container was opened before the named `backend/target` volume existed and Maven still fails with `Operation not permitted`, rebuild the Devcontainer first. If the stale generated directory still exists inside the container, remove it once and rerun Maven:
 
 ```bash
 sudo rm -rf backend/target
@@ -119,9 +157,7 @@ cd backend
 mvn clean spring-boot:run
 ```
 
-`backend/target` contains generated Maven output only and must not be committed.
-
-Inside the Devcontainer, `/workspace/backend/target` is mounted as a dedicated Docker volume. Maven still uses the standard `backend/target` path, but Devcontainer build artifacts are isolated from host build artifacts that may have Windows or Docker Desktop ownership metadata. The Devcontainer activates a Maven clean profile through `EBON_DEVCONTAINER=true` so `mvn clean` clears the mounted target contents without trying to delete the mountpoint itself. The same volume-isolation idea applies to `/workspace/frontend/node_modules`, so frontend dependencies installed in the Devcontainer stay separate from host dependencies.
+`backend/target` contains generated Maven output only and must not be committed. The normal Devcontainer behavior is described in [Devcontainer Mounts and Docker Access](#devcontainer-mounts-and-docker-access).
 
 ## Frontend
 
