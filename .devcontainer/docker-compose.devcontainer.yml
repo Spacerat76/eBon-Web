@@ -4,10 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
+      EBON_DEVCONTAINER: "true"
       TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
     volumes:
       - ..:/workspace:cached
-    command: sleep infinity
+      - devcontainer_backend_target:/workspace/backend/target
+      - devcontainer_frontend_node_modules:/workspace/frontend/node_modules
+    command: bash -lc "mkdir -p /workspace/backend/target /workspace/frontend/node_modules && chown -R vscode:vscode /workspace/backend/target /workspace/frontend/node_modules && sleep infinity"
     depends_on:
       db:
         condition: service_healthy
@@ -30,3 +33,5 @@ services:
 
 volumes:
   devcontainer_db_data:
+  devcontainer_backend_target:
+  devcontainer_frontend_node_modules:

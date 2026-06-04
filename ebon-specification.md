@@ -1404,9 +1404,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    environment:
+      EBON_DEVCONTAINER: "true"
+      TESTCONTAINERS_HOST_OVERRIDE: host.docker.internal
     volumes:
       - ..:/workspace:cached
-    command: sleep infinity
+      - devcontainer_backend_target:/workspace/backend/target
+      - devcontainer_frontend_node_modules:/workspace/frontend/node_modules
+    command: bash -lc "mkdir -p /workspace/backend/target /workspace/frontend/node_modules && chown -R vscode:vscode /workspace/backend/target /workspace/frontend/node_modules && sleep infinity"
     depends_on:
       db:
         condition: service_healthy
@@ -1429,7 +1434,11 @@ services:
 
 volumes:
   devcontainer_db_data:
+  devcontainer_backend_target:
+  devcontainer_frontend_node_modules:
 ```
+
+Die dedizierten Volumes fuer `backend/target` und `frontend/node_modules` halten Devcontainer-Artefakte von Host-Artefakten getrennt. Maven nutzt im Devcontainer weiterhin den Standardpfad `backend/target`; der Pfad ist lediglich ein Container-Volume statt Teil des Windows-Bind-Mounts. `EBON_DEVCONTAINER=true` aktiviert ein Maven-Clean-Profil, das bei `mvn clean` den Inhalt des gemounteten `target`-Verzeichnisses loescht, aber nicht den Mountpoint selbst.
 
 #### `.devcontainer/Dockerfile`
 

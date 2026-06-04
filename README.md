@@ -2,7 +2,7 @@
 
 eBon-Web is a single-user expense tracker for electronic receipts imported from Paperless-NGX.
 
-The project is built incrementally from `ebon-specification.md`. The current state includes the reproducible development environment, Docker database foundation, and the Spring Boot backend with sync, parsing, categorization, DTOs, OpenAPI, and tests. The frontend is intentionally not scaffolded yet.
+The project is built incrementally from `ebon-specification.md`. The current state includes the reproducible development environment, Docker database foundation, the Spring Boot backend with sync, parsing, categorization, DTOs, OpenAPI, and tests, plus the React/Vite frontend shell with dashboard foundation and API client.
 
 ## Prerequisites
 
@@ -24,8 +24,7 @@ The Devcontainer starts a local PostgreSQL database and forwards these ports:
 
 - `5432` PostgreSQL
 - `8080` backend API
-
-Frontend port `5173` is intentionally not forwarded yet because no frontend service exists.
+- `5173` frontend Vite dev server
 
 The example environment file uses `DB_HOST=db` so the backend talks to the Compose database service inside the Devcontainer. If you run the backend directly on the host, change `DB_HOST` to `localhost`.
 
@@ -122,11 +121,47 @@ mvn clean spring-boot:run
 
 `backend/target` contains generated Maven output only and must not be committed.
 
+Inside the Devcontainer, `/workspace/backend/target` is mounted as a dedicated Docker volume. Maven still uses the standard `backend/target` path, but Devcontainer build artifacts are isolated from host build artifacts that may have Windows or Docker Desktop ownership metadata. The Devcontainer activates a Maven clean profile through `EBON_DEVCONTAINER=true` so `mvn clean` clears the mounted target contents without trying to delete the mountpoint itself. The same volume-isolation idea applies to `/workspace/frontend/node_modules`, so frontend dependencies installed in the Devcontainer stay separate from host dependencies.
+
+## Frontend
+
+The React frontend lives under `frontend/`.
+
+Run the frontend from the Devcontainer:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the UI at:
+
+```text
+http://localhost:5173
+```
+
+The development server uses a Vite proxy: frontend requests to relative `/api/...` URLs are forwarded to `http://localhost:8080`. Start the backend separately before opening the dashboard:
+
+```bash
+cd backend
+mvn spring-boot:run
+```
+
+The frontend does not contain hardcoded API tokens. Enter your local `APP_API_TOKEN` in the UI header when you want to load protected backend data.
+
+Build the frontend with:
+
+```bash
+cd frontend
+npm run build
+```
+
 ## Version Notes
 
 The Devcontainer uses the target Java 25 image `mcr.microsoft.com/devcontainers/java:dev-25-jdk-bookworm`, Maven 3.9.16, Node.js 24.16.0 LTS, Docker CLI, and PostgreSQL 18. The backend Maven build is configured for Java 25 as well, so the container and build target now match.
 
-The planned frontend stack for Phase 8 is React/React DOM 19.2.7, Vite 8.0.16, `@vitejs/plugin-react` 6.0.2, TypeScript 6.0.3, Tailwind CSS 4.3.0, Recharts 3.8.1, and lucide-react 1.17.0.
+The frontend stack is React/React DOM 19.2.7, Vite 8.0.16, `@vitejs/plugin-react` 6.0.2, TypeScript 6.0.3, Tailwind CSS 4.3.0, Recharts 3.8.1, and lucide-react 1.17.0.
 
 PostgreSQL 18 volumes are mounted at `/var/lib/postgresql` rather than `/var/lib/postgresql/data`, matching the official image layout for PostgreSQL 18+.
 

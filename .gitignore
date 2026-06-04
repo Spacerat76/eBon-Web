@@ -10,3 +10,4 @@ dm/
 .DS_Store
 Thumbs.db
 .idea/
+frontend/.devserver-*.log

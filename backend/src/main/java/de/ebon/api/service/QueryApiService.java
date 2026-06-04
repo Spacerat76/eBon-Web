@@ -187,7 +187,11 @@ public class QueryApiService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         List<ReceiptDto> recentReceipts = receiptRepository.findAll(
                         receiptSpecification(null, null, null),
-                        PageRequest.of(0, 5, Sort.by(Sort.Direction.DESC, "importedAt")))
+                        PageRequest.of(0, 5, Sort.by(
+                                Sort.Order.desc("receiptDate").nullsLast(),
+                                Sort.Order.desc("receiptTime").nullsLast(),
+                                Sort.Order.desc("importedAt").nullsLast(),
+                                Sort.Order.desc("id"))))
                 .map(receipt -> receiptApiService.toReceiptDto(receipt, List.of()))
                 .getContent();
         return new DashboardDto(

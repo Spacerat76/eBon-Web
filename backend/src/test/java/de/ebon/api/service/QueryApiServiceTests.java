@@ -254,7 +254,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
         });
     }
 
-    // Verifies dashboard totals, uncategorized counts, recent receipts, and sync status for the first UI screen.
+    // Verifies dashboard totals, uncategorized counts, sync status, and that the first UI screen shows the latest receipt dates first.
     @Test
     void dashboardUsesCurrentAndPreviousMonthTotalsAndUncategorizedCount() {
         Category lebensmittel = category("Lebensmittel");
@@ -275,7 +275,9 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
         assertThat(dashboard.lastSyncStatus().lastSyncStatus()).isEqualTo(SyncStatus.SUCCESS);
         assertThat(dashboard.lastSyncStatus().isSyncing()).isFalse();
         assertThat(dashboard.recentReceipts()).hasSize(2);
-        assertThat(dashboard.recentReceipts().get(0).storeName()).isEqualTo("DM");
+        assertThat(dashboard.recentReceipts()).extracting(receipt -> receipt.receiptDate())
+                .containsExactly(currentMonth, previousMonth);
+        assertThat(dashboard.recentReceipts().get(0).storeName()).isEqualTo("REWE");
     }
 
     private Receipt receipt(
