@@ -38,6 +38,8 @@ class SettingsServiceTests {
     void setUp() {
         settings.clear();
         paperlessProperties.setBaseUrl("http://paperless.local");
+        paperlessProperties.setPublicBaseUrl("http://paperless.public");
+        paperlessProperties.setDocumentUrlTemplate("");
         paperlessProperties.setApiToken("paperless-secret");
         paperlessProperties.setEbonTag("eBON");
         aiProperties.setOpenrouterApiKey("openrouter-secret");
@@ -63,6 +65,8 @@ class SettingsServiceTests {
         SettingsDto dto = settingsService.getSettings();
 
         assertThat(dto.paperlessBaseUrl()).isEqualTo("http://paperless.local");
+        assertThat(dto.paperlessPublicBaseUrl()).isEqualTo("http://paperless.public");
+        assertThat(dto.paperlessDocumentUrlTemplate()).isEmpty();
         assertThat(dto.paperlessApiToken()).isEqualTo("********");
         assertThat(dto.paperlessEbonTag()).isEqualTo("eBON");
         assertThat(dto.openRouterApiKey()).isEqualTo("********");
@@ -82,6 +86,8 @@ class SettingsServiceTests {
 
         SettingsDto updated = settingsService.update(new SettingsDto(
                 null,
+                "http://paperless.browser",
+                "http://paperless.browser/documents/{paperlessDocumentId}/details",
                 "********",
                 null,
                 "********",
@@ -94,16 +100,21 @@ class SettingsServiceTests {
         assertThat(settings.get("openrouter_api_key").getValue()).isEqualTo("stored-openrouter-secret");
         assertThat(settings.get("ai_categorization_min_confidence").getValue()).isEqualTo("0.875");
         assertThat(settings.get("sync_interval_minutes").getValue()).isEqualTo("15");
+        assertThat(settings.get("paperless_public_base_url").getValue()).isEqualTo("http://paperless.browser");
+        assertThat(settings.get("paperless_document_url_template").getValue())
+                .isEqualTo("http://paperless.browser/documents/{paperlessDocumentId}/details");
         assertThat(updated.paperlessApiToken()).isEqualTo("********");
         assertThat(updated.openRouterApiKey()).isEqualTo("********");
         assertThat(updated.aiCategorizationMinConfidence()).isEqualByComparingTo("0.875");
         assertThat(updated.syncIntervalMinutes()).isEqualTo(15);
 
         ArgumentCaptor<AppSetting> settingCaptor = ArgumentCaptor.forClass(AppSetting.class);
-        verify(appSettingRepository, times(2)).save(settingCaptor.capture());
+        verify(appSettingRepository, times(4)).save(settingCaptor.capture());
         assertThat(settingCaptor.getAllValues())
                 .extracting(AppSetting::getKey, AppSetting::getValue)
                 .containsExactlyInAnyOrder(
+                        org.assertj.core.groups.Tuple.tuple("paperless_public_base_url", "http://paperless.browser"),
+                        org.assertj.core.groups.Tuple.tuple("paperless_document_url_template", "http://paperless.browser/documents/{paperlessDocumentId}/details"),
                         org.assertj.core.groups.Tuple.tuple("ai_categorization_min_confidence", "0.875"),
                         org.assertj.core.groups.Tuple.tuple("sync_interval_minutes", "15"));
     }

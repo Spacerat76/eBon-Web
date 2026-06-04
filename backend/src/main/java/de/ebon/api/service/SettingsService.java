@@ -36,6 +36,8 @@ public class SettingsService {
         String openRouterKey = value("openrouter_api_key", aiProperties.getOpenrouterApiKey());
         return new SettingsDto(
                 value("paperless_base_url", paperlessProperties.getBaseUrl()),
+                value("paperless_public_base_url", defaultPublicBaseUrl()),
+                value("paperless_document_url_template", paperlessProperties.getDocumentUrlTemplate()),
                 mask(paperlessToken),
                 value("paperless_ebon_tag", paperlessProperties.getEbonTag()),
                 mask(openRouterKey),
@@ -48,6 +50,8 @@ public class SettingsService {
     @Transactional
     public SettingsDto update(SettingsDto request) {
         saveIfPresent("paperless_base_url", request.paperlessBaseUrl(), "Paperless-NGX Basis-URL");
+        saveIfPresent("paperless_public_base_url", request.paperlessPublicBaseUrl(), "Browser-erreichbare Paperless-Web-URL");
+        saveIfPresent("paperless_document_url_template", request.paperlessDocumentUrlTemplate(), "Paperless-Dokument-URL-Vorlage");
         saveSecretIfPresent("paperless_api_token", request.paperlessApiToken(), "Paperless-NGX API-Token");
         saveIfPresent("paperless_ebon_tag", request.paperlessEbonTag(), "Paperless-NGX eBon-Tag");
         saveSecretIfPresent("openrouter_api_key", request.openRouterApiKey(), "OpenRouter API-Key");
@@ -81,6 +85,13 @@ public class SettingsService {
         return appSettingRepository.findById(key)
                 .map(AppSetting::getValue)
                 .orElse(fallback);
+    }
+
+    private String defaultPublicBaseUrl() {
+        String publicBaseUrl = paperlessProperties.getPublicBaseUrl();
+        return publicBaseUrl == null || publicBaseUrl.isBlank()
+                ? paperlessProperties.getBaseUrl()
+                : publicBaseUrl;
     }
 
     private int integerValue(String key, int fallback) {

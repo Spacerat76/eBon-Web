@@ -12,6 +12,10 @@ import java.math.BigDecimal;
 public record SettingsDto(
         @Size(max = 2048)
         String paperlessBaseUrl,
+        @Size(max = 2048)
+        String paperlessPublicBaseUrl,
+        @Size(max = 2048)
+        String paperlessDocumentUrlTemplate,
         @Schema(example = "********", description = "Maskiert in Responses; fehlend oder ******** beim Speichern bedeutet unveraendert.")
         @Size(max = 4096)
         String paperlessApiToken,

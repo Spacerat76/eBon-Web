@@ -50,6 +50,22 @@ export function formatDateTime(value: string | null | undefined): string {
   return dateTimeFormatter.format(new Date(value));
 }
 
+export function formatDateTimeParts(value: string | null | undefined): { date: string; time: string } {
+  if (!value) {
+    return { date: "-", time: "" };
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { date: value, time: "" };
+  }
+
+  return {
+    date: dateFormatter.format(date),
+    time: timeFormatter.format(date)
+  };
+}
+
 export function formatTime(value: string | null | undefined): string {
   if (!value) {
     return "-";

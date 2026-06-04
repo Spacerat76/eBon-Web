@@ -28,6 +28,8 @@ app:
     public-access: ${APP_OPENAPI_PUBLIC_ACCESS:true}
   paperless:
     base-url: ${PAPERLESS_BASE_URL:http://localhost:8000}
+    public-base-url: ${PAPERLESS_PUBLIC_BASE_URL:${PAPERLESS_BASE_URL:http://localhost:8000}}
+    document-url-template: ${PAPERLESS_DOCUMENT_URL_TEMPLATE:}
     api-token: ${PAPERLESS_API_TOKEN:change_me_paperless_token}
     ebon-tag: ${PAPERLESS_EBON_TAG:eBON}
   ai:

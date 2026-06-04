@@ -71,10 +71,18 @@ function normalizeHash(hash: string): string {
 }
 
 function routeTitle(route: string): string {
+  if (route === "/receipts" || route.startsWith("/receipts/")) {
+    return "Bons";
+  }
+
   return navigation.find((item) => item.href === `#${route}`)?.label ?? "Dashboard";
 }
 
 function routeIcon(route: string) {
+  if (route === "/receipts" || route.startsWith("/receipts/")) {
+    return ReceiptText;
+  }
+
   return navigation.find((item) => item.href === `#${route}`)?.icon ?? SlidersHorizontal;
 }
 

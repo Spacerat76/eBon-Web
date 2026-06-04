@@ -11,6 +11,10 @@ public class PaperlessProperties {
     @NotBlank
     private String baseUrl = "http://localhost:8000";
 
+    private String publicBaseUrl = "";
+
+    private String documentUrlTemplate = "";
+
     @NotBlank
     private String apiToken = "change_me_paperless_token";
 
@@ -23,6 +27,22 @@ public class PaperlessProperties {
 
     public void setBaseUrl(String baseUrl) {
         this.baseUrl = baseUrl;
+    }
+
+    public String getPublicBaseUrl() {
+        return publicBaseUrl;
+    }
+
+    public void setPublicBaseUrl(String publicBaseUrl) {
+        this.publicBaseUrl = publicBaseUrl;
+    }
+
+    public String getDocumentUrlTemplate() {
+        return documentUrlTemplate;
+    }
+
+    public void setDocumentUrlTemplate(String documentUrlTemplate) {
+        this.documentUrlTemplate = documentUrlTemplate;
     }
 
     public String getApiToken() {

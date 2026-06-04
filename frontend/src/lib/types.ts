@@ -76,6 +76,7 @@ export interface ReceiptItemDTO {
 export interface ReceiptDTO {
   id: number;
   paperlessDocumentId: number | null;
+  paperlessDocumentUrl: string | null;
   importedAt: string;
   receiptDate: string | null;
   receiptTime: string | null;
@@ -128,6 +129,8 @@ export interface DashboardDTO {
 
 export interface SettingsDTO {
   paperlessBaseUrl: string | null;
+  paperlessPublicBaseUrl: string | null;
+  paperlessDocumentUrlTemplate: string | null;
   paperlessApiToken: string | null;
   paperlessEbonTag: string | null;
   openRouterApiKey: string | null;
@@ -151,6 +154,7 @@ export interface ReceiptListParams {
   dateTo?: string;
   store?: string;
   includeDeleted?: boolean;
+  uncategorizedOnly?: boolean;
 }
 
 export interface ReceiptItemUpdateRequest {

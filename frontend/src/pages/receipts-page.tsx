@@ -7,6 +7,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ExternalLink,
   FileText,
   Loader2,
   Pencil,
@@ -28,7 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
-import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent, formatTime } from "@/lib/format";
+import { formatCurrency, formatDate, formatDateTime, formatDateTimeParts, formatNumber, formatPercent, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type {
   CategoryDTO,
@@ -518,6 +519,7 @@ function ReceiptListPanel({
                     <td className="px-3 py-3">
                       <div className="font-medium text-zinc-950 dark:text-zinc-50">{receipt.storeName ?? "Unbekannt"}</div>
                       <div className="text-xs text-zinc-500 dark:text-zinc-400">{receipt.storeBranch ?? "-"}</div>
+                      <PaperlessLink className="mt-1" receipt={receipt} />
                     </td>
                     <td className="px-3 py-3 text-right font-medium">{formatCurrency(receipt.totalAmount)}</td>
                     <td className="px-3 py-3">{formatNumber(receipt.items.length)}</td>
@@ -527,7 +529,9 @@ function ReceiptListPanel({
                         {receipt.deleteReason ? <DeleteReasonBadge reason={receipt.deleteReason} /> : null}
                       </div>
                     </td>
-                    <td className="px-3 py-3">{formatDateTime(receipt.importedAt)}</td>
+                    <td className="px-3 py-3">
+                      <ImportedAtCell value={receipt.importedAt} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -636,6 +640,25 @@ function ReceiptDetailPanel({
 
   return (
     <div className="space-y-4">
+      {editMode ? (
+        <div className="sticky top-[4.75rem] z-20 flex flex-col gap-3 rounded-md border border-zinc-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-sm font-medium text-zinc-950 dark:text-zinc-50">Bearbeitungsmodus</div>
+            <div className="text-xs text-zinc-500 dark:text-zinc-400">Änderungen werden erst beim Speichern übernommen.</div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={saving} onClick={onSave} size="sm">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Speichern
+            </Button>
+            <Button disabled={saving} onClick={onCancelEdit} size="sm" variant="secondary">
+              <X className="h-4 w-4" />
+              Abbrechen
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       <Card>
         <CardHeader className="space-y-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -667,16 +690,7 @@ function ReceiptDetailPanel({
             </div>
             <div className="flex flex-wrap gap-2">
               {editMode ? (
-                <>
-                  <Button disabled={saving} onClick={onSave} size="sm">
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                    Speichern
-                  </Button>
-                  <Button disabled={saving} onClick={onCancelEdit} size="sm" variant="secondary">
-                    <X className="h-4 w-4" />
-                    Abbrechen
-                  </Button>
-                </>
+                <Badge tone="blue">Bearbeitung aktiv</Badge>
               ) : (
                 <>
                   <Button onClick={onEdit} size="sm" variant="secondary">
@@ -778,7 +792,12 @@ function ReceiptMetadata({ receipt }: { receipt: ReceiptDTO }) {
         </div>
       </div>
       <Metric label="Bonus" value={formatBonus(receipt)} />
-      <Metric label="Paperless-ID" value={receipt.paperlessDocumentId?.toString() ?? "-"} />
+      <div>
+        <p className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Paperless-ID</p>
+        <div className="mt-1">
+          <PaperlessLink receipt={receipt} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -1055,6 +1074,37 @@ function Message({ text, tone }: { text: string; tone: "error" | "success" }) {
 
 function EmptyState({ text }: { text: string }) {
   return <div className="m-4 rounded-md border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">{text}</div>;
+}
+
+function ImportedAtCell({ value }: { value: string | null | undefined }) {
+  const parts = formatDateTimeParts(value);
+  return (
+    <div>
+      <div>{parts.date}</div>
+      {parts.time ? <div className="text-xs text-zinc-500 dark:text-zinc-400">{parts.time}</div> : null}
+    </div>
+  );
+}
+
+function PaperlessLink({ className, receipt }: { className?: string; receipt: ReceiptDTO }) {
+  const label = receipt.paperlessDocumentId == null ? "-" : `#${receipt.paperlessDocumentId}`;
+
+  if (!receipt.paperlessDocumentId || !receipt.paperlessDocumentUrl) {
+    return <span className={cn("text-xs text-zinc-500 dark:text-zinc-400", className)}>Paperless {label}</span>;
+  }
+
+  return (
+    <a
+      className={cn("inline-flex items-center gap-1 text-xs font-medium text-sky-700 hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-200", className)}
+      href={receipt.paperlessDocumentUrl}
+      onClick={(event) => event.stopPropagation()}
+      rel="noreferrer"
+      target="_blank"
+    >
+      Paperless {label}
+      <ExternalLink className="h-3 w-3" />
+    </a>
+  );
 }
 
 function toDraft(receipt: ReceiptDTO): ReceiptDraft {

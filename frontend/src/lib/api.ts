@@ -61,7 +61,8 @@ export class ApiClient {
       dateFrom: params.dateFrom || undefined,
       dateTo: params.dateTo || undefined,
       store: params.store || undefined,
-      includeDeleted: params.includeDeleted ? "true" : undefined
+      includeDeleted: params.includeDeleted ? "true" : undefined,
+      uncategorizedOnly: params.uncategorizedOnly ? "true" : undefined
     });
     return this.request(`/receipts?${query}`);
   }

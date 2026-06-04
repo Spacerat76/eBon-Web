@@ -11,6 +11,7 @@ import java.util.List;
 public record ReceiptDto(
         Long id,
         Integer paperlessDocumentId,
+        String paperlessDocumentUrl,
         OffsetDateTime importedAt,
         LocalDate receiptDate,
         LocalTime receiptTime,

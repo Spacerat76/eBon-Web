@@ -7,6 +7,7 @@ import de.ebon.api.dto.ReceiptItemDto;
 import de.ebon.api.dto.ReceiptItemUpdateRequest;
 import de.ebon.api.dto.ReceiptUpdateRequest;
 import de.ebon.categorization.CategorizationService;
+import de.ebon.config.PaperlessProperties;
 import de.ebon.parser.ParsedReceipt;
 import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
@@ -18,6 +19,7 @@ import de.ebon.persistence.model.ParseStatus;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
+import de.ebon.persistence.repository.AppSettingRepository;
 import de.ebon.persistence.repository.CategoryRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
@@ -46,6 +48,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -66,6 +69,9 @@ class ReceiptApiServiceTests {
     private AiCategorizationLogRepository aiCategorizationLogRepository;
 
     @Mock
+    private AppSettingRepository appSettingRepository;
+
+    @Mock
     private CategorizationService categorizationService;
 
     @Mock
@@ -75,6 +81,7 @@ class ReceiptApiServiceTests {
     private ReceiptParseApplier receiptParseApplier;
 
     private final ReceiptParseApplier realReceiptParseApplier = new ReceiptParseApplier();
+    private final PaperlessProperties paperlessProperties = new PaperlessProperties();
 
     private ReceiptApiService service;
 
@@ -85,9 +92,14 @@ class ReceiptApiServiceTests {
                 receiptItemRepository,
                 categoryRepository,
                 aiCategorizationLogRepository,
+                appSettingRepository,
+                paperlessProperties,
                 categorizationService,
                 receiptParserService,
                 realReceiptParseApplier);
+        paperlessProperties.setPublicBaseUrl("http://paperless.web");
+        paperlessProperties.setDocumentUrlTemplate("");
+        lenient().when(appSettingRepository.findById(anyString())).thenReturn(Optional.empty());
     }
 
     // Verifies defensive pagination defaults so oversized or invalid list requests stay predictable for the UI.
@@ -121,7 +133,25 @@ class ReceiptApiServiceTests {
         assertThat(pageable.getPageNumber()).isZero();
         assertThat(pageable.getPageSize()).isEqualTo(100);
         assertThat(pageable.getSort().getOrderFor("receiptDate").getDirection().name()).isEqualTo("DESC");
+        assertThat(pageable.getSort().getOrderFor("receiptTime").getDirection().name()).isEqualTo("DESC");
+        assertThat(pageable.getSort().getOrderFor("importedAt").getDirection().name()).isEqualTo("DESC");
         assertThat(pageable.getSort().getOrderFor("id").getDirection().name()).isEqualTo("DESC");
+    }
+
+    // Verifies receipt DTOs expose a safe Paperless web link built from the configured public URL.
+    @Test
+    void getReceiptIncludesPaperlessDocumentUrlWithoutSecrets() {
+        Receipt receipt = receipt(2L, 1234, "REWE", false, "Bio Milch");
+        when(receiptRepository.findById(receipt.getId())).thenReturn(Optional.of(receipt));
+        when(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()))
+                .thenReturn(List.of(firstItem(receipt)));
+        when(aiCategorizationLogRepository.findLatestRejectedSuggestion(eq(firstItem(receipt).getId()), any(Pageable.class)))
+                .thenReturn(List.of());
+
+        ReceiptDto dto = service.getReceipt(receipt.getId());
+
+        assertThat(dto.paperlessDocumentUrl()).isEqualTo("http://paperless.web/documents/1234/details");
+        assertThat(dto.paperlessDocumentUrl()).doesNotContain("token", "secret");
     }
 
     // Verifies that missing and soft-deleted receipts are hidden behind the same not-found contract.

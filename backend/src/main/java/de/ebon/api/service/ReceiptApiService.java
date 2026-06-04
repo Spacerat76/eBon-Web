@@ -8,6 +8,7 @@ import de.ebon.api.dto.ReceiptItemDto;
 import de.ebon.api.dto.ReceiptItemUpdateRequest;
 import de.ebon.api.dto.ReceiptUpdateRequest;
 import de.ebon.categorization.CategorizationService;
+import de.ebon.config.PaperlessProperties;
 import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
@@ -18,6 +19,7 @@ import de.ebon.persistence.model.ParseStatus;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
+import de.ebon.persistence.repository.AppSettingRepository;
 import de.ebon.persistence.repository.CategoryRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
@@ -47,6 +49,8 @@ public class ReceiptApiService {
     private final ReceiptItemRepository receiptItemRepository;
     private final CategoryRepository categoryRepository;
     private final AiCategorizationLogRepository aiCategorizationLogRepository;
+    private final AppSettingRepository appSettingRepository;
+    private final PaperlessProperties paperlessProperties;
     private final CategorizationService categorizationService;
     private final ReceiptParserService receiptParserService;
     private final ReceiptParseApplier receiptParseApplier;
@@ -56,6 +60,8 @@ public class ReceiptApiService {
             ReceiptItemRepository receiptItemRepository,
             CategoryRepository categoryRepository,
             AiCategorizationLogRepository aiCategorizationLogRepository,
+            AppSettingRepository appSettingRepository,
+            PaperlessProperties paperlessProperties,
             CategorizationService categorizationService,
             ReceiptParserService receiptParserService,
             ReceiptParseApplier receiptParseApplier) {
@@ -63,6 +69,8 @@ public class ReceiptApiService {
         this.receiptItemRepository = receiptItemRepository;
         this.categoryRepository = categoryRepository;
         this.aiCategorizationLogRepository = aiCategorizationLogRepository;
+        this.appSettingRepository = appSettingRepository;
+        this.paperlessProperties = paperlessProperties;
         this.categorizationService = categorizationService;
         this.receiptParserService = receiptParserService;
         this.receiptParseApplier = receiptParseApplier;
@@ -84,7 +92,7 @@ public class ReceiptApiService {
         Pageable pageable = PageRequest.of(
                 Math.max(page, 0),
                 Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
-                Sort.by(Sort.Direction.fromString(safeSortDir), safeSortBy).and(Sort.by(Sort.Direction.DESC, "id")));
+                receiptSort(safeSortBy, safeSortDir));
         return PageResponse.from(receiptRepository.findAll(
                 receiptSpecification(status, dateFrom, dateTo, store, includeDeleted),
                 pageable).map(receipt -> toReceiptDto(
@@ -305,6 +313,7 @@ public class ReceiptApiService {
         return new ReceiptDto(
                 receipt.getId(),
                 receipt.getPaperlessDocumentId(),
+                paperlessDocumentUrl(receipt.getPaperlessDocumentId()),
                 receipt.getImportedAt(),
                 receipt.getReceiptDate(),
                 receipt.getReceiptTime(),
@@ -373,5 +382,44 @@ public class ReceiptApiService {
 
     private String safeSortDirection(String sortDir) {
         return "asc".equalsIgnoreCase(sortDir) ? "asc" : "desc";
+    }
+
+    private Sort receiptSort(String sortBy, String sortDir) {
+        Sort.Direction direction = Sort.Direction.fromString(sortDir);
+        Sort sort = Sort.by(direction, sortBy);
+        if ("receiptDate".equals(sortBy)) {
+            sort = sort
+                    .and(Sort.by(direction, "receiptTime"))
+                    .and(Sort.by(direction, "importedAt"));
+        }
+        return sort.and(Sort.by(Sort.Direction.DESC, "id"));
+    }
+
+    private String paperlessDocumentUrl(Integer paperlessDocumentId) {
+        if (paperlessDocumentId == null) {
+            return null;
+        }
+
+        String documentId = paperlessDocumentId.toString();
+        String template = setting("paperless_document_url_template", paperlessProperties.getDocumentUrlTemplate());
+        if (template != null && !template.isBlank()) {
+            return template.trim().replace("{paperlessDocumentId}", documentId);
+        }
+
+        String publicBaseUrl = setting("paperless_public_base_url", paperlessProperties.getPublicBaseUrl());
+        if (publicBaseUrl == null || publicBaseUrl.isBlank()) {
+            publicBaseUrl = paperlessProperties.getBaseUrl();
+        }
+        if (publicBaseUrl == null || publicBaseUrl.isBlank()) {
+            return null;
+        }
+
+        return publicBaseUrl.replaceAll("/+$", "") + "/documents/" + documentId + "/details";
+    }
+
+    private String setting(String key, String fallback) {
+        return appSettingRepository.findById(key)
+                .map(setting -> setting.getValue())
+                .orElse(fallback);
     }
 }
