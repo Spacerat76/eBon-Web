@@ -1,0 +1,14 @@
+Weitere Requirements / offene Punkte:
+- Bei den Bons wird die Paperless-ID angezeigt, dort sollte auch die Möglichkeit bestehen, die ID anzuklicken, um direkt zum entsprechenden Dokument in Paperless zu gelangen.
+- Wenn man auf dem Dashborad auf "Ohne Kategorie" klickt, dann sollte eine Liste der Bons aufgehen in denen die Position ohne Karegorie ist.
+- Unter Settings sollte ein Reparsing aller Bons möglich sein
+- unter Settings sollte es eine Funktion geben alle BONs mit den Positionen zu löschen, für ein komplettes neueinlesen der Daten aus Paperless
+- Auf dem Dashboard steht die Summe aus dem aktuellen Monat, hier sollte auch der Vormonat stehen und die Summe des ganzen Jahres
+- Im Tortendiagram auf der Startseite sollte man den aktuellen Monat, das letzte Quartal und das letzte Jahr auswählen können, sowie einen Zeitraum von - bis
+- Im Bonus auf der Startseite sollte man den aktuellen Monat, das letzte Quartal und das letzte Jahr auswählen können, sowie einen Zeitraum von - bis
+- Wofür ist die Anzeige "Letzte Bons" auf dem Dashboard?
+- Worauf bezieht sich der "Bonus" oben rechts?
+- Wenn man auf einen Bon in der Bon-Liste Klickt, dann steht oben "EBON-WEB  Dashboard" nicht "EBON-WEB Bons"
+- In der Liste der Bons sieht man bei der Spalte "Import" nur das Datum, die Zeit ist abgeschnitten. Die Zeit sollte in der zweiten Zeile unter dem Datum stehen
+- Das Logo oben rechts für eBon-Web, ist nicht schön, hier muss ein neues Logo rein
+- Wenn ich eine Position editiert habe, dann muss ich nach oben scrollen um den speicher button zu klicken, Der sollte auch beim Scrollen sichtbar und klickbar bleiben

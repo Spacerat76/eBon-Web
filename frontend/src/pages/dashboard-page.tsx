@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, Loader2, RefreshCw, ReceiptText, Tags, WalletCards } from "lucide-react";
 
+import { ParseStatusBadge } from "@/components/receipt-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
 import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent } from "@/lib/format";
-import type { DashboardDTO, ParseStatus, SyncLogDTO, SyncStatusDTO } from "@/lib/types";
+import type { DashboardDTO, SyncLogDTO, SyncStatusDTO } from "@/lib/types";
 
 const CategoryChart = lazy(() => import("@/components/category-chart").then((module) => ({ default: module.CategoryChart })));
 
@@ -202,7 +203,13 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
                 </thead>
                 <tbody>
                   {dashboard.recentReceipts.map((receipt) => (
-                    <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-900" key={receipt.id}>
+                    <tr
+                      className="cursor-pointer border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-900 dark:hover:bg-zinc-900/60"
+                      key={receipt.id}
+                      onClick={() => {
+                        window.location.hash = `#/receipts/${receipt.id}`;
+                      }}
+                    >
                       <td className="px-3 py-2">{formatDate(receipt.receiptDate)}</td>
                       <td className="px-3 py-2">
                         <div className="font-medium text-zinc-900 dark:text-zinc-100">{receipt.storeName ?? "Unbekannt"}</div>
@@ -343,22 +350,6 @@ function SyncStatusBanner({ loading, status }: { loading: boolean; status: SyncS
       </span>
     </div>
   );
-}
-
-function ParseStatusBadge({ status }: { status: ParseStatus }) {
-  if (status === "PARSED") {
-    return <Badge tone="green">Geparst</Badge>;
-  }
-
-  if (status === "PARSE_ERROR") {
-    return <Badge tone="red">Parse-Fehler</Badge>;
-  }
-
-  if (status === "MANUALLY_EDITED") {
-    return <Badge tone="blue">Bearbeitet</Badge>;
-  }
-
-  return <Badge tone="yellow">Ausstehend</Badge>;
 }
 
 function SyncBadge({ status, syncing = false }: { status: SyncStatusDTO["lastSyncStatus"]; syncing?: boolean }) {

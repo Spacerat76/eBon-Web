@@ -25,5 +25,6 @@ public record ReceiptDto(
         String parseErrorMessage,
         OffsetDateTime deletedAt,
         DeleteReason deleteReason,
+        String rawText,
         List<ReceiptItemDto> items) {
 }

@@ -5,6 +5,7 @@ import { AppShell, type NavigationItem } from "@/components/app-shell";
 import { ApiClient } from "@/lib/api";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { PlaceholderPage } from "@/pages/placeholder-page";
+import { ReceiptsPage } from "@/pages/receipts-page";
 
 const TOKEN_STORAGE_KEY = "ebon.sessionApiToken";
 
@@ -19,6 +20,7 @@ const navigation: NavigationItem[] = [
 export default function App() {
   const [route, setRoute] = useState(() => normalizeHash(window.location.hash));
   const [apiToken, setApiToken] = useState(() => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
+  const selectedReceiptId = receiptIdFromRoute(route);
 
   useEffect(() => {
     const onHashChange = () => setRoute(normalizeHash(window.location.hash));
@@ -47,6 +49,12 @@ export default function App() {
     >
       {route === "/" ? (
         <DashboardPage apiClient={apiClient} hasApiToken={Boolean(apiToken.trim())} />
+      ) : route === "/receipts" || selectedReceiptId !== null ? (
+        <ReceiptsPage
+          apiClient={apiClient}
+          hasApiToken={Boolean(apiToken.trim())}
+          selectedReceiptId={selectedReceiptId}
+        />
       ) : (
         <PlaceholderPage
           icon={routeIcon(route)}
@@ -68,4 +76,9 @@ function routeTitle(route: string): string {
 
 function routeIcon(route: string) {
   return navigation.find((item) => item.href === `#${route}`)?.icon ?? SlidersHorizontal;
+}
+
+function receiptIdFromRoute(route: string): number | null {
+  const match = /^\/receipts\/(\d+)$/.exec(route);
+  return match ? Number(match[1]) : null;
 }

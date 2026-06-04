@@ -119,7 +119,15 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         receipt.addItem(new ReceiptItem(13, "FOLIENSTIFT", new BigDecimal("3.29")));
         receipt.addItem(new ReceiptItem(14, "Kulturtasche transparent", new BigDecimal("2.45")));
         receipt.addItem(new ReceiptItem(15, "HIGH PROT. TORT.", new BigDecimal("3.58")));
-        receipt.addItem(new ReceiptItem(16, "Unklare Sonderposition", new BigDecimal("2.49")));
+        receipt.addItem(new ReceiptItem(16, "JOGHURT SCHOKOL.", new BigDecimal("0.99")));
+        receipt.addItem(new ReceiptItem(17, "CREME LEGERE", new BigDecimal("1.29")));
+        receipt.addItem(new ReceiptItem(18, "HIMBEER M.VANIL.", new BigDecimal("1.49")));
+        receipt.addItem(new ReceiptItem(19, "STREICHGUT UNGES", new BigDecimal("2.19")));
+        receipt.addItem(new ReceiptItem(20, "SUPER GURKEN", new BigDecimal("1.59")));
+        receipt.addItem(new ReceiptItem(21, "ALPEN-MILCHCREME", new BigDecimal("1.79")));
+        receipt.addItem(new ReceiptItem(22, "ALPENMILCH 90G", new BigDecimal("1.39")));
+        receipt.addItem(new ReceiptItem(23, "SAMT ERDBEERE", new BigDecimal("2.49")));
+        receipt.addItem(new ReceiptItem(24, "Unklare Sonderposition", new BigDecimal("2.49")));
         receiptRepository.saveAndFlush(receipt);
 
         categorizationService.categorizeReceipt(receipt.getId());
@@ -157,8 +165,24 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         assertThat(items.get(14).getCategorySource()).isEqualTo(CategorySource.RULE);
         assertThat(items.get(15).getCategory().getName()).isEqualTo("Brot und Backwaren");
         assertThat(items.get(15).getCategorySource()).isEqualTo(CategorySource.RULE);
-        assertThat(items.get(16).getCategory()).isNull();
-        assertThat(items.get(16).getCategorySource()).isNull();
+        assertThat(items.get(16).getCategory().getName()).isEqualTo("Milchprodukte und Eier");
+        assertThat(items.get(16).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(17).getCategory().getName()).isEqualTo("Milchprodukte und Eier");
+        assertThat(items.get(17).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(18).getCategory().getName()).isEqualTo("Milchprodukte und Eier");
+        assertThat(items.get(18).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(19).getCategory().getName()).isEqualTo("Milchprodukte und Eier");
+        assertThat(items.get(19).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(20).getCategory().getName()).isEqualTo("Suesswaren und Snacks");
+        assertThat(items.get(20).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(21).getCategory().getName()).isEqualTo("Suesswaren und Snacks");
+        assertThat(items.get(21).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(22).getCategory().getName()).isEqualTo("Suesswaren und Snacks");
+        assertThat(items.get(22).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(23).getCategory().getName()).isEqualTo("Vorrat und Fertiggerichte");
+        assertThat(items.get(23).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(24).getCategory()).isNull();
+        assertThat(items.get(24).getCategorySource()).isNull();
     }
 
     // Verifies repository persistence keeps receipt items and implements TAG_REMOVED as a soft delete.

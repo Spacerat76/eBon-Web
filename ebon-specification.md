@@ -1050,6 +1050,7 @@ Die Implementierung muss explizite Request-/Response-DTOs verwenden. JPA-Entitie
   "parseErrorMessage": null,
   "deletedAt": null,
   "deleteReason": null,
+  "rawText": "Roher Paperless-Text, nur in Detailantworten befüllt",
   "items": []
 }
 ```
@@ -1063,6 +1064,7 @@ Validierung:
 - `currency`: ISO-4217-Code, Standard `EUR`
 - `bonusBalance`: neu in diesem Einkauf gesammeltes Bonusguthaben oder `null`, nicht aktueller Bonuskonto-/Punktestand
 - `bonusPoints`: neu in diesem Einkauf gesammelte Punkte oder `null`
+- `rawText`: roher Paperless-Text; nur in Detail- und Mutationsantworten (`GET/PUT/POST /api/receipts/{id}`) befüllt, in Listen- und Dashboard-Antworten `null`
 
 ### ReceiptItemDTO
 

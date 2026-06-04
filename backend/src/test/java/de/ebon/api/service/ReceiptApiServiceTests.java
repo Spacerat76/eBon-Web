@@ -96,6 +96,10 @@ class ReceiptApiServiceTests {
         Receipt receipt = receipt(1L, 1001, "REWE", false, "Bio Milch");
         when(receiptRepository.findAll(anyReceiptSpecification(), any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(receipt)));
+        when(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()))
+                .thenReturn(List.of(firstItem(receipt)));
+        when(aiCategorizationLogRepository.findLatestRejectedSuggestion(eq(firstItem(receipt).getId()), any(Pageable.class)))
+                .thenReturn(List.of());
 
         PageResponse<?> result = service.listReceipts(
                 -3,
@@ -239,6 +243,45 @@ class ReceiptApiServiceTests {
         assertThat(created.description()).isEqualTo("Neue Position");
         assertThat(created.categoryId()).isNull();
         verify(categorizationService, never()).manuallyCategorizeItem(anyLong(), anyLong());
+    }
+
+    // Verifies full-object receipt edits: positions omitted from the request are deleted instead of lingering.
+    @Test
+    void updateReceiptDeletesOmittedExistingItems() {
+        Receipt receipt = receipt(25L, 3501, "REWE", false, "Bio Milch");
+        ReceiptItem retainedItem = firstItem(receipt);
+        ReceiptItem removedItem = new ReceiptItem(1, "Alte Position", new BigDecimal("0.99"));
+        ReflectionTestUtils.setField(removedItem, "id", 251L);
+        receipt.addItem(removedItem);
+
+        when(receiptRepository.findById(receipt.getId())).thenReturn(Optional.of(receipt));
+        when(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()))
+                .thenReturn(List.of(retainedItem, removedItem), List.of(retainedItem));
+        when(receiptItemRepository.findById(retainedItem.getId())).thenReturn(Optional.of(retainedItem));
+        when(aiCategorizationLogRepository.findLatestRejectedSuggestion(eq(retainedItem.getId()), any(Pageable.class)))
+                .thenReturn(List.of());
+
+        ReceiptItemUpdateRequest retainedUpdate = new ReceiptItemUpdateRequest();
+        retainedUpdate.setId(retainedItem.getId());
+        retainedUpdate.setPositionIndex(0);
+        retainedUpdate.setDescription("Bio Milch aktualisiert");
+        retainedUpdate.setTotalPrice(new BigDecimal("2.49"));
+
+        ReceiptDto updated = service.updateReceipt(receipt.getId(), new ReceiptUpdateRequest(
+                receipt.getReceiptDate(),
+                receipt.getReceiptTime(),
+                receipt.getStoreName(),
+                receipt.getStoreBranch(),
+                receipt.getTotalAmount(),
+                receipt.getCurrency(),
+                receipt.getBonusBalance(),
+                receipt.getBonusPoints(),
+                receipt.getBonusType(),
+                List.of(retainedUpdate)));
+
+        assertThat(updated.items()).hasSize(1);
+        assertThat(updated.items().getFirst().description()).isEqualTo("Bio Milch aktualisiert");
+        verify(receiptItemRepository).delete(removedItem);
     }
 
     // Verifies that newly added items with a category go through the manual override service, not direct field edits.

@@ -4,7 +4,7 @@ export type SyncStatus = "SUCCESS" | "FAILED" | "RUNNING";
 
 export type CategorySource = "RULE" | "AI" | "MANUAL";
 
-export type DeleteReason = "MANUAL" | "TAG_REMOVED";
+export type DeleteReason = "USER_DELETED" | "TAG_REMOVED";
 
 export type AiCategorizationRejectionReason =
   | "LOW_CONFIDENCE"
@@ -90,6 +90,7 @@ export interface ReceiptDTO {
   parseErrorMessage: string | null;
   deletedAt: string | null;
   deleteReason: DeleteReason | null;
+  rawText: string | null;
   items: ReceiptItemDTO[];
 }
 
@@ -138,4 +139,54 @@ export interface SettingsDTO {
 
 export interface MessageResponse {
   message: string;
+}
+
+export interface ReceiptListParams {
+  page?: number;
+  size?: number;
+  sortBy?: "receiptDate" | "importedAt" | "storeName" | "totalAmount" | "parseStatus";
+  sortDir?: "asc" | "desc";
+  status?: ParseStatus | "";
+  dateFrom?: string;
+  dateTo?: string;
+  store?: string;
+  includeDeleted?: boolean;
+}
+
+export interface ReceiptItemUpdateRequest {
+  id?: number;
+  positionIndex?: number;
+  description?: string;
+  quantity?: number | null;
+  unit?: string | null;
+  unitPrice?: number | null;
+  totalPrice?: number | null;
+  discountAmount?: number | null;
+  categoryId?: number | null;
+  categorySource?: CategorySource | null;
+}
+
+export interface ReceiptItemCreateRequest {
+  positionIndex?: number;
+  description: string;
+  quantity?: number | null;
+  unit?: string | null;
+  unitPrice?: number | null;
+  totalPrice: number;
+  discountAmount?: number | null;
+  categoryId?: number | null;
+  categorySource?: CategorySource | null;
+}
+
+export interface ReceiptUpdateRequest {
+  receiptDate: string | null;
+  receiptTime: string | null;
+  storeName: string | null;
+  storeBranch: string | null;
+  totalAmount: number | null;
+  currency: string | null;
+  bonusBalance: number | null;
+  bonusPoints: number | null;
+  bonusType: string | null;
+  items?: ReceiptItemUpdateRequest[];
 }

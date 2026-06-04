@@ -21,6 +21,11 @@ const dateTimeFormatter = new Intl.DateTimeFormat("de-DE", {
   minute: "2-digit"
 });
 
+const timeFormatter = new Intl.DateTimeFormat("de-DE", {
+  hour: "2-digit",
+  minute: "2-digit"
+});
+
 export function formatCurrency(value: number | null | undefined): string {
   return currencyFormatter.format(value ?? 0);
 }
@@ -43,6 +48,15 @@ export function formatDateTime(value: string | null | undefined): string {
   }
 
   return dateTimeFormatter.format(new Date(value));
+}
+
+export function formatTime(value: string | null | undefined): string {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(`1970-01-01T${value}`);
+  return Number.isNaN(date.getTime()) ? value : timeFormatter.format(date);
 }
 
 export function formatPercent(value: number): string {

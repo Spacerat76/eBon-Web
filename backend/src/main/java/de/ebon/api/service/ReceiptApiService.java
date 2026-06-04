@@ -25,8 +25,10 @@ import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -85,13 +87,16 @@ public class ReceiptApiService {
                 Sort.by(Sort.Direction.fromString(safeSortDir), safeSortBy).and(Sort.by(Sort.Direction.DESC, "id")));
         return PageResponse.from(receiptRepository.findAll(
                 receiptSpecification(status, dateFrom, dateTo, store, includeDeleted),
-                pageable).map(receipt -> toReceiptDto(receipt, List.of())), safeSortBy, safeSortDir);
+                pageable).map(receipt -> toReceiptDto(
+                        receipt,
+                        receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()),
+                        false)), safeSortBy, safeSortDir);
     }
 
     @Transactional(readOnly = true)
     public ReceiptDto getReceipt(Long id) {
         Receipt receipt = activeReceipt(id);
-        return toReceiptDto(receipt, receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(id));
+        return toReceiptDto(receipt, receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(id), true);
     }
 
     @Transactional
@@ -109,13 +114,19 @@ public class ReceiptApiService {
                 request.bonusType());
 
         if (request.items() != null) {
+            List<ReceiptItem> existingItems = receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId());
+            Set<Long> retainedItemIds = new HashSet<>();
             for (ReceiptItemUpdateRequest itemRequest : request.items()) {
                 if (itemRequest.getId() == null) {
                     addItem(receipt, toCreateRequest(itemRequest));
                 } else {
+                    retainedItemIds.add(itemRequest.getId());
                     updateItemOnReceipt(receipt, itemRequest.getId(), itemRequest);
                 }
             }
+            existingItems.stream()
+                    .filter(item -> !retainedItemIds.contains(item.getId()))
+                    .forEach(receiptItemRepository::delete);
         }
 
         receiptRepository.flush();
@@ -287,6 +298,10 @@ public class ReceiptApiService {
     }
 
     public ReceiptDto toReceiptDto(Receipt receipt, List<ReceiptItem> items) {
+        return toReceiptDto(receipt, items, false);
+    }
+
+    public ReceiptDto toReceiptDto(Receipt receipt, List<ReceiptItem> items, boolean includeRawText) {
         return new ReceiptDto(
                 receipt.getId(),
                 receipt.getPaperlessDocumentId(),
@@ -304,6 +319,7 @@ public class ReceiptApiService {
                 receipt.getParseErrorMessage(),
                 receipt.getDeletedAt(),
                 receipt.getDeleteReason(),
+                includeRawText ? receipt.getRawText() : null,
                 items.stream().map(this::toItemDto).toList());
     }
 

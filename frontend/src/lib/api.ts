@@ -1,9 +1,15 @@
 import type {
   ApiErrorResponse,
+  CategoryDTO,
   DashboardDTO,
   MessageResponse,
   PageResponse,
   ReceiptDTO,
+  ReceiptItemCreateRequest,
+  ReceiptItemDTO,
+  ReceiptItemUpdateRequest,
+  ReceiptListParams,
+  ReceiptUpdateRequest,
   SyncLogDTO,
   SyncStatusDTO
 } from "@/lib/types";
@@ -45,8 +51,62 @@ export class ApiClient {
     return this.request(`/sync/log?page=${page}&size=${size}`);
   }
 
-  receipts(page = 0, size = 5): Promise<PageResponse<ReceiptDTO>> {
-    return this.request(`/receipts?page=${page}&size=${size}&sortBy=receiptDate&sortDir=desc`);
+  receipts(params: ReceiptListParams = {}): Promise<PageResponse<ReceiptDTO>> {
+    const query = toQuery({
+      page: params.page ?? 0,
+      size: params.size ?? 20,
+      sortBy: params.sortBy ?? "receiptDate",
+      sortDir: params.sortDir ?? "desc",
+      status: params.status || undefined,
+      dateFrom: params.dateFrom || undefined,
+      dateTo: params.dateTo || undefined,
+      store: params.store || undefined,
+      includeDeleted: params.includeDeleted ? "true" : undefined
+    });
+    return this.request(`/receipts?${query}`);
+  }
+
+  receipt(id: number): Promise<ReceiptDTO> {
+    return this.request(`/receipts/${id}`);
+  }
+
+  updateReceipt(id: number, request: ReceiptUpdateRequest): Promise<ReceiptDTO> {
+    return this.request(`/receipts/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(request)
+    });
+  }
+
+  reparseReceipt(id: number, overwriteManualEdits: boolean): Promise<ReceiptDTO> {
+    return this.request(`/receipts/${id}/reparse?overwriteManualEdits=${overwriteManualEdits ? "true" : "false"}`, {
+      method: "POST"
+    });
+  }
+
+  deleteReceipt(id: number): Promise<void> {
+    return this.request(`/receipts/${id}`, { method: "DELETE" });
+  }
+
+  updateReceiptItem(id: number, request: ReceiptItemUpdateRequest): Promise<ReceiptItemDTO> {
+    return this.request(`/receipt-items/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(request)
+    });
+  }
+
+  addReceiptItem(receiptId: number, request: ReceiptItemCreateRequest): Promise<ReceiptItemDTO> {
+    return this.request(`/receipts/${receiptId}/items`, {
+      method: "POST",
+      body: JSON.stringify(request)
+    });
+  }
+
+  deleteReceiptItem(id: number): Promise<void> {
+    return this.request(`/receipt-items/${id}`, { method: "DELETE" });
+  }
+
+  categories(includeInactive = false): Promise<CategoryDTO[]> {
+    return this.request(`/categories?includeInactive=${includeInactive ? "true" : "false"}`);
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -76,6 +136,16 @@ export class ApiClient {
 
     return response.json() as Promise<T>;
   }
+}
+
+function toQuery(values: Record<string, string | number | undefined>): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined) {
+      params.set(key, String(value));
+    }
+  }
+  return params.toString();
 }
 
 async function toClientError(response: Response): Promise<ApiClientError> {
