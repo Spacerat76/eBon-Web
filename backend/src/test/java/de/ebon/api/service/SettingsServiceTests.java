@@ -26,13 +26,15 @@ import static org.mockito.Mockito.when;
 class SettingsServiceTests {
 
     private final AppSettingRepository appSettingRepository = mock(AppSettingRepository.class);
+    private final SettingsConnectionTester connectionTester = mock(SettingsConnectionTester.class);
     private final PaperlessProperties paperlessProperties = new PaperlessProperties();
     private final AiCategorizationProperties aiProperties = new AiCategorizationProperties();
     private final Map<String, AppSetting> settings = new HashMap<>();
     private final SettingsService settingsService = new SettingsService(
             appSettingRepository,
             paperlessProperties,
-            aiProperties);
+            aiProperties,
+            connectionTester);
 
     @BeforeEach
     void setUp() {
@@ -43,6 +45,7 @@ class SettingsServiceTests {
         paperlessProperties.setApiToken("paperless-secret");
         paperlessProperties.setEbonTag("eBON");
         aiProperties.setOpenrouterApiKey("openrouter-secret");
+        aiProperties.setOpenrouterBaseUrl("https://openrouter.local/api/v1");
         aiProperties.setModel("google/gemini-flash-1.5");
 
         when(appSettingRepository.findById(anyString())).thenAnswer(invocation ->
@@ -70,6 +73,7 @@ class SettingsServiceTests {
         assertThat(dto.paperlessApiToken()).isEqualTo("********");
         assertThat(dto.paperlessEbonTag()).isEqualTo("eBON");
         assertThat(dto.openRouterApiKey()).isEqualTo("********");
+        assertThat(dto.openRouterBaseUrl()).isEqualTo("https://openrouter.local/api/v1");
         assertThat(dto.openRouterModel()).isEqualTo("google/gemini-flash-1.5");
         assertThat(dto.aiCategorizationMinConfidence()).isEqualByComparingTo("0.900");
         assertThat(dto.syncIntervalMinutes()).isEqualTo(60);
@@ -91,6 +95,7 @@ class SettingsServiceTests {
                 "********",
                 null,
                 "********",
+                "https://openrouter.test/api/v1",
                 null,
                 new BigDecimal("0.875"),
                 15,
@@ -100,6 +105,7 @@ class SettingsServiceTests {
         assertThat(settings.get("openrouter_api_key").getValue()).isEqualTo("stored-openrouter-secret");
         assertThat(settings.get("ai_categorization_min_confidence").getValue()).isEqualTo("0.875");
         assertThat(settings.get("sync_interval_minutes").getValue()).isEqualTo("15");
+        assertThat(settings.get("openrouter_base_url").getValue()).isEqualTo("https://openrouter.test/api/v1");
         assertThat(settings.get("paperless_public_base_url").getValue()).isEqualTo("http://paperless.browser");
         assertThat(settings.get("paperless_document_url_template").getValue())
                 .isEqualTo("http://paperless.browser/documents/{paperlessDocumentId}/details");
@@ -109,35 +115,42 @@ class SettingsServiceTests {
         assertThat(updated.syncIntervalMinutes()).isEqualTo(15);
 
         ArgumentCaptor<AppSetting> settingCaptor = ArgumentCaptor.forClass(AppSetting.class);
-        verify(appSettingRepository, times(4)).save(settingCaptor.capture());
+        verify(appSettingRepository, times(5)).save(settingCaptor.capture());
         assertThat(settingCaptor.getAllValues())
                 .extracting(AppSetting::getKey, AppSetting::getValue)
                 .containsExactlyInAnyOrder(
                         org.assertj.core.groups.Tuple.tuple("paperless_public_base_url", "http://paperless.browser"),
                         org.assertj.core.groups.Tuple.tuple("paperless_document_url_template", "http://paperless.browser/documents/{paperlessDocumentId}/details"),
+                        org.assertj.core.groups.Tuple.tuple("openrouter_base_url", "https://openrouter.test/api/v1"),
                         org.assertj.core.groups.Tuple.tuple("ai_categorization_min_confidence", "0.875"),
                         org.assertj.core.groups.Tuple.tuple("sync_interval_minutes", "15"));
     }
 
-    // Verifies the current Phase 10 placeholder behavior for Paperless connection checks without doing a real call.
+    // Verifies Paperless connection checks are delegated to the mockable tester with unmasked settings.
     @Test
     void testConnectionForPaperlessReflectsConfiguredUrlPresence() {
+        when(connectionTester.testPaperless("http://paperless.local", "paperless-secret"))
+                .thenReturn(new SettingsConnectionTestResponse("PAPERLESS", true, "Paperless-NGX ist erreichbar."));
+
         SettingsConnectionTestResponse response = settingsService.testConnection(
                 new SettingsConnectionTestRequest(SettingsConnectionTestRequest.Target.PAPERLESS));
 
         assertThat(response.target()).isEqualTo("PAPERLESS");
         assertThat(response.success()).isTrue();
-        assertThat(response.message()).contains("Phase 10");
+        assertThat(response.message()).contains("erreichbar");
     }
 
-    // Verifies the current Phase 10 placeholder behavior for OpenRouter connection checks without doing a real call.
+    // Verifies OpenRouter connection checks are delegated to the mockable tester with unmasked settings.
     @Test
     void testConnectionForOpenRouterIsAlwaysPrepared() {
+        when(connectionTester.testOpenRouter("https://openrouter.local/api/v1", "openrouter-secret"))
+                .thenReturn(new SettingsConnectionTestResponse("OPENROUTER", true, "OpenRouter ist erreichbar."));
+
         SettingsConnectionTestResponse response = settingsService.testConnection(
                 new SettingsConnectionTestRequest(SettingsConnectionTestRequest.Target.OPENROUTER));
 
         assertThat(response.target()).isEqualTo("OPENROUTER");
         assertThat(response.success()).isTrue();
-        assertThat(response.message()).contains("OpenRouter");
+        assertThat(response.message()).contains("erreichbar");
     }
 }

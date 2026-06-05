@@ -88,6 +88,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
                 LocalDate.now().minusDays(1),
                 LocalDate.now().plusDays(1),
                 List.of(lebensmittel.getId()),
+                false,
                 new BigDecimal("2.00"),
                 new BigDecimal("3.00"),
                 -5,
@@ -124,6 +125,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
                 null,
                 null,
                 List.of(),
+                false,
                 null,
                 null,
                 0,
@@ -135,6 +137,37 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
         assertThat(result.sortDir()).isEqualTo("asc");
         assertThat(result.content()).first()
                 .satisfies(item -> assertThat(item.highlights()).isEmpty());
+    }
+
+    // Verifies the dashboard/search "Ohne Kategorie" filter means category and source are both NULL.
+    @Test
+    void searchUncategorizedOnlyReturnsOnlyItemsWithoutCategoryAndSource() {
+        Receipt uncategorizedReceipt = receipt("REWE", LocalDate.now(), null, null, null,
+                item(0, "Offene Position", "2.00", null));
+        receipt("REWE", LocalDate.now(), null, null, null,
+                item(0, "Kategorisierte Position", "3.00", category("Lebensmittel")));
+
+        PageResponse<SearchResultDto> result = queryApiService.search(
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                true,
+                null,
+                null,
+                0,
+                20,
+                "receiptDate",
+                "desc");
+
+        assertThat(result.totalElements()).isEqualTo(1);
+        assertThat(result.content()).singleElement().satisfies(item -> {
+            assertThat(item.receiptId()).isEqualTo(uncategorizedReceipt.getId());
+            assertThat(item.description()).isEqualTo("Offene Position");
+            assertThat(item.categoryId()).isNull();
+            assertThat(item.categoryName()).isNull();
+        });
     }
 
     // Verifies report grouping keeps uncategorized items visible as "Ohne Kategorie" instead of dropping them.
@@ -271,6 +304,7 @@ class QueryApiServiceTests extends PostgresIntegrationTestSupport {
 
         assertThat(dashboard.currentMonthTotal()).isEqualByComparingTo("6.00");
         assertThat(dashboard.previousMonthTotal()).isEqualByComparingTo("3.00");
+        assertThat(dashboard.currentYearTotal()).isEqualByComparingTo("9.00");
         assertThat(dashboard.uncategorizedItemsCount()).isEqualTo(1);
         assertThat(dashboard.lastSyncStatus().lastSyncStatus()).isEqualTo(SyncStatus.SUCCESS);
         assertThat(dashboard.lastSyncStatus().isSyncing()).isFalse();

@@ -2,6 +2,7 @@ package de.ebon.api.service;
 
 import de.ebon.api.dto.AiSuggestionDto;
 import de.ebon.api.dto.PageResponse;
+import de.ebon.api.dto.DataMaintenanceResultDto;
 import de.ebon.api.dto.ReceiptDto;
 import de.ebon.api.dto.ReceiptItemCreateRequest;
 import de.ebon.api.dto.ReceiptItemDto;
@@ -176,21 +177,47 @@ public class ReceiptApiService {
     @Transactional
     public ReceiptDto reparseReceipt(Long id, boolean overwriteManualEdits) {
         Receipt receipt = activeReceipt(id);
-        boolean hasManualItems = receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(id).stream()
-                .anyMatch(ReceiptItem::isManuallyEdited);
-        if (hasManualItems && !overwriteManualEdits) {
+        if (hasManualEdits(receipt) && !overwriteManualEdits) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Bon enthaelt manuell editierte Positionen. overwriteManualEdits=true ist erforderlich.");
         }
 
+        reparseReceipt(receipt);
+        return getReceipt(id);
+    }
+
+    @Transactional
+    public DataMaintenanceResultDto reparseAllReceipts(boolean overwriteManualEdits) {
+        List<Receipt> receipts = receiptRepository.findByDeletedAtIsNullOrderByImportedAtDesc();
+        long skippedManualReceipts = 0;
+        long processedReceipts = 0;
+
+        for (Receipt receipt : receipts) {
+            if (!overwriteManualEdits && hasManualEdits(receipt)) {
+                skippedManualReceipts++;
+                continue;
+            }
+            reparseReceipt(receipt);
+            processedReceipts++;
+        }
+
+        return new DataMaintenanceResultDto(
+                "Bons wurden erneut geparst.",
+                receipts.size(),
+                processedReceipts,
+                skippedManualReceipts,
+                0,
+                0);
+    }
+
+    private void reparseReceipt(Receipt receipt) {
         ReceiptParseResult parseResult = receiptParserService.parse(receipt.getRawText());
         receipt.clearItems();
         receiptRepository.saveAndFlush(receipt);
         receiptParseApplier.apply(receipt, parseResult);
         Receipt savedReceipt = receiptRepository.saveAndFlush(receipt);
         categorizationService.categorizeReceipt(savedReceipt.getId());
-        return getReceipt(id);
     }
 
     @Transactional
@@ -235,6 +262,12 @@ public class ReceiptApiService {
             throw new EntityNotFoundException("Bon nicht gefunden.");
         }
         return receipt;
+    }
+
+    private boolean hasManualEdits(Receipt receipt) {
+        return receipt.getParseStatus() == ParseStatus.MANUALLY_EDITED
+                || receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()).stream()
+                .anyMatch(ReceiptItem::isManuallyEdited);
     }
 
     private void updateItemOnReceipt(Receipt receipt, Long itemId, ReceiptItemUpdateRequest request) {

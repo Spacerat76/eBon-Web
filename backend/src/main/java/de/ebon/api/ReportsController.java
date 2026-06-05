@@ -126,6 +126,36 @@ public class ReportsController {
         return csv("report-by-store.csv", csv.toString());
     }
 
+    @GetMapping("/api/reports/top-items/export")
+    @Operation(summary = "Top-Artikel-Report als CSV")
+    public ResponseEntity<String> topItemsExport(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String categoryIds,
+            @RequestParam(required = false) String store,
+            @RequestParam(defaultValue = "20") int size) {
+        StringBuilder csv = new StringBuilder("description,total,count\n");
+        topItems(dateFrom, dateTo, categoryIds, store, size)
+                .forEach(row -> csv.append(csv(row.description())).append(',')
+                        .append(row.total()).append(',')
+                        .append(row.count()).append('\n'));
+        return csv("report-top-items.csv", csv.toString());
+    }
+
+    @GetMapping("/api/reports/bonus/export")
+    @Operation(summary = "Bonus-Report als CSV")
+    public ResponseEntity<String> bonusExport(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String store) {
+        StringBuilder csv = new StringBuilder("bonusType,totalPoints,totalEarnedBalance\n");
+        bonus(dateFrom, dateTo, store)
+                .forEach(row -> csv.append(csv(row.bonusType())).append(',')
+                        .append(row.totalPoints()).append(',')
+                        .append(row.totalEarnedBalance()).append('\n'));
+        return csv("report-bonus.csv", csv.toString());
+    }
+
     private ResponseEntity<String> csv(String filename, String body) {
         return ResponseEntity.ok()
                 .contentType(MediaType.valueOf("text/csv"))

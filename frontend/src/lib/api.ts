@@ -1,7 +1,16 @@
 import type {
   ApiErrorResponse,
+  BonusReportDTO,
+  CategorizationRuleApplyResponse,
+  CategorizationRuleDTO,
+  CategorizationRulePreviewRequest,
+  CategorizationRulePreviewResponse,
+  CategorizationRuleRequest,
   CategoryDTO,
+  CategoryPatchRequest,
+  CategoryRequest,
   DashboardDTO,
+  DataMaintenanceResultDTO,
   MessageResponse,
   PageResponse,
   ReceiptDTO,
@@ -10,8 +19,17 @@ import type {
   ReceiptItemUpdateRequest,
   ReceiptListParams,
   ReceiptUpdateRequest,
+  ReportByCategoryDTO,
+  ReportByPeriodDTO,
+  ReportByStoreDTO,
+  ReportFilters,
+  SearchParams,
+  SearchResultDTO,
+  SettingsConnectionTestResponse,
+  SettingsDTO,
   SyncLogDTO,
-  SyncStatusDTO
+  SyncStatusDTO,
+  TopItemReportDTO
 } from "@/lib/types";
 
 export class ApiClientError extends Error {
@@ -110,6 +128,140 @@ export class ApiClient {
     return this.request(`/categories?includeInactive=${includeInactive ? "true" : "false"}`);
   }
 
+  createCategory(request: CategoryRequest): Promise<CategoryDTO> {
+    return this.request("/categories", {
+      method: "POST",
+      body: JSON.stringify(request)
+    });
+  }
+
+  updateCategory(id: number, request: CategoryRequest): Promise<CategoryDTO> {
+    return this.request(`/categories/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(request)
+    });
+  }
+
+  patchCategory(id: number, request: CategoryPatchRequest): Promise<CategoryDTO> {
+    return this.request(`/categories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(request)
+    });
+  }
+
+  deleteCategory(id: number): Promise<MessageResponse> {
+    return this.request(`/categories/${id}`, { method: "DELETE" });
+  }
+
+  search(params: SearchParams): Promise<PageResponse<SearchResultDTO>> {
+    return this.request(`/search?${toQuery({
+      q: params.q || undefined,
+      store: params.store || undefined,
+      dateFrom: params.dateFrom || undefined,
+      dateTo: params.dateTo || undefined,
+      categoryIds: params.categoryIds?.length ? params.categoryIds.join(",") : undefined,
+      uncategorizedOnly: params.uncategorizedOnly ? "true" : undefined,
+      amountMin: params.amountMin ?? undefined,
+      amountMax: params.amountMax ?? undefined,
+      page: params.page ?? 0,
+      size: params.size ?? 20,
+      sortBy: params.sortBy ?? "receiptDate",
+      sortDir: params.sortDir ?? "desc"
+    })}`);
+  }
+
+  reportByCategory(params: ReportFilters): Promise<ReportByCategoryDTO[]> {
+    return this.request(`/reports/by-category?${reportQuery(params)}`);
+  }
+
+  reportByPeriod(params: ReportFilters): Promise<ReportByPeriodDTO[]> {
+    return this.request(`/reports/by-period?${reportQuery(params)}`);
+  }
+
+  reportByStore(params: ReportFilters): Promise<ReportByStoreDTO[]> {
+    return this.request(`/reports/by-store?${reportQuery(params)}`);
+  }
+
+  topItems(params: ReportFilters): Promise<TopItemReportDTO[]> {
+    return this.request(`/reports/top-items?${reportQuery(params)}`);
+  }
+
+  bonusReport(params: Pick<ReportFilters, "dateFrom" | "dateTo" | "store">): Promise<BonusReportDTO[]> {
+    return this.request(`/reports/bonus?${toQuery({
+      dateFrom: params.dateFrom || undefined,
+      dateTo: params.dateTo || undefined,
+      store: params.store || undefined
+    })}`);
+  }
+
+  downloadReportCsv(type: "by-category" | "by-period" | "by-store" | "top-items" | "bonus", params: ReportFilters): Promise<Blob> {
+    return this.download(`/reports/${type}/export?${reportQuery(params)}`);
+  }
+
+  settings(): Promise<SettingsDTO> {
+    return this.request("/settings");
+  }
+
+  updateSettings(request: SettingsDTO): Promise<SettingsDTO> {
+    return this.request("/settings", {
+      method: "PUT",
+      body: JSON.stringify(request)
+    });
+  }
+
+  testSettingsConnection(target: "PAPERLESS" | "OPENROUTER"): Promise<SettingsConnectionTestResponse> {
+    return this.request("/settings/test-connection", {
+      method: "POST",
+      body: JSON.stringify({ target })
+    });
+  }
+
+  rules(): Promise<CategorizationRuleDTO[]> {
+    return this.request("/categorization-rules");
+  }
+
+  createRule(request: CategorizationRuleRequest): Promise<CategorizationRuleDTO> {
+    return this.request("/categorization-rules", {
+      method: "POST",
+      body: JSON.stringify(request)
+    });
+  }
+
+  updateRule(id: number, request: CategorizationRuleRequest): Promise<CategorizationRuleDTO> {
+    return this.request(`/categorization-rules/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(request)
+    });
+  }
+
+  deleteRule(id: number): Promise<void> {
+    return this.request(`/categorization-rules/${id}`, { method: "DELETE" });
+  }
+
+  applyRule(id: number): Promise<CategorizationRuleApplyResponse> {
+    return this.request(`/categorization-rules/${id}/apply`, { method: "POST" });
+  }
+
+  previewRule(request: CategorizationRulePreviewRequest): Promise<CategorizationRulePreviewResponse> {
+    return this.request("/categorization-rules/preview", {
+      method: "POST",
+      body: JSON.stringify(request)
+    });
+  }
+
+  reparseAllReceipts(overwriteManualEdits: boolean): Promise<DataMaintenanceResultDTO> {
+    return this.request(`/receipts/reparse?overwriteManualEdits=${overwriteManualEdits ? "true" : "false"}`, {
+      method: "POST"
+    });
+  }
+
+  resetImportedReceipts(confirmation: string): Promise<DataMaintenanceResultDTO> {
+    return this.request("/admin/data-reset/imported-receipts", {
+      method: "POST",
+      body: JSON.stringify({ confirmation })
+    });
+  }
+
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     const token = this.tokenProvider();
@@ -137,6 +289,34 @@ export class ApiClient {
 
     return response.json() as Promise<T>;
   }
+
+  private async download(path: string): Promise<Blob> {
+    const headers = new Headers();
+    const token = this.tokenProvider();
+
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+
+    const response = await fetch(`/api${path}`, { headers });
+
+    if (!response.ok) {
+      throw await toClientError(response);
+    }
+
+    return response.blob();
+  }
+}
+
+function reportQuery(params: ReportFilters): string {
+  return toQuery({
+    dateFrom: params.dateFrom || undefined,
+    dateTo: params.dateTo || undefined,
+    categoryIds: params.categoryIds?.length ? params.categoryIds.join(",") : undefined,
+    store: params.store || undefined,
+    groupBy: params.groupBy || undefined,
+    size: params.size ?? undefined
+  });
 }
 
 function toQuery(values: Record<string, string | number | undefined>): string {

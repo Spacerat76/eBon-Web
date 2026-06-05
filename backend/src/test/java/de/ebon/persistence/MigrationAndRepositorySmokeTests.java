@@ -127,7 +127,9 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         receipt.addItem(new ReceiptItem(21, "ALPEN-MILCHCREME", new BigDecimal("1.79")));
         receipt.addItem(new ReceiptItem(22, "ALPENMILCH 90G", new BigDecimal("1.39")));
         receipt.addItem(new ReceiptItem(23, "SAMT ERDBEERE", new BigDecimal("2.49")));
-        receipt.addItem(new ReceiptItem(24, "Unklare Sonderposition", new BigDecimal("2.49")));
+        receipt.addItem(new ReceiptItem(24, "FR.JOG.NATUR 1,5", new BigDecimal("1.09")));
+        receipt.addItem(new ReceiptItem(25, "DUO VLA SCH./VA.", new BigDecimal("1.49")));
+        receipt.addItem(new ReceiptItem(26, "Unklare Sonderposition", new BigDecimal("2.49")));
         receiptRepository.saveAndFlush(receipt);
 
         categorizationService.categorizeReceipt(receipt.getId());
@@ -181,8 +183,12 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         assertThat(items.get(22).getCategorySource()).isEqualTo(CategorySource.RULE);
         assertThat(items.get(23).getCategory().getName()).isEqualTo("Vorrat und Fertiggerichte");
         assertThat(items.get(23).getCategorySource()).isEqualTo(CategorySource.RULE);
-        assertThat(items.get(24).getCategory()).isNull();
-        assertThat(items.get(24).getCategorySource()).isNull();
+        assertThat(items.get(24).getCategory().getName()).isEqualTo("Milchprodukte und Eier");
+        assertThat(items.get(24).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(25).getCategory().getName()).isEqualTo("Milchprodukte und Eier");
+        assertThat(items.get(25).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(26).getCategory()).isNull();
+        assertThat(items.get(26).getCategorySource()).isNull();
     }
 
     // Verifies repository persistence keeps receipt items and implements TAG_REMOVED as a soft delete.

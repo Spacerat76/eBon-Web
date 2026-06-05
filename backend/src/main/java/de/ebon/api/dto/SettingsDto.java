@@ -24,6 +24,8 @@ public record SettingsDto(
         @Schema(example = "********", description = "Maskiert in Responses; fehlend oder ******** beim Speichern bedeutet unveraendert.")
         @Size(max = 4096)
         String openRouterApiKey,
+        @Size(max = 2048)
+        String openRouterBaseUrl,
         @Size(max = 128)
         String openRouterModel,
         @Schema(example = "0.900", minimum = "0", maximum = "1",

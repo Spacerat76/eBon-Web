@@ -58,6 +58,7 @@ public class QueryApiService {
             LocalDate dateFrom,
             LocalDate dateTo,
             List<Long> categoryIds,
+            boolean uncategorizedOnly,
             BigDecimal amountMin,
             BigDecimal amountMax,
             int page,
@@ -71,7 +72,7 @@ public class QueryApiService {
                 Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
                 Sort.by(Sort.Direction.fromString(safeSortDir), safeSortBy));
         return PageResponse.from(receiptItemRepository.findAll(
-                itemSpecification(q, store, dateFrom, dateTo, categoryIds, amountMin, amountMax),
+                itemSpecification(q, store, dateFrom, dateTo, categoryIds, uncategorizedOnly, amountMin, amountMax),
                 pageable).map(item -> toSearchResult(item, q)), safeSortBy, safeSortDir);
     }
 
@@ -185,6 +186,9 @@ public class QueryApiService {
         BigDecimal previousMonthTotal = filteredItems(previousMonthStart, previousMonthEnd, List.of(), null).stream()
                 .map(this::totalPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal currentYearTotal = filteredItems(today.withDayOfYear(1), today, List.of(), null).stream()
+                .map(this::totalPrice)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
         List<ReceiptDto> recentReceipts = receiptRepository.findAll(
                         receiptSpecification(null, null, null),
                         PageRequest.of(0, 5, Sort.by(
@@ -197,6 +201,7 @@ public class QueryApiService {
         return new DashboardDto(
                 currentMonthTotal,
                 previousMonthTotal,
+                currentYearTotal,
                 reportByCategory(currentMonthStart, today, List.of(), null),
                 bonusReport(null, null, null),
                 recentReceipts,
@@ -209,7 +214,7 @@ public class QueryApiService {
             LocalDate dateTo,
             List<Long> categoryIds,
             String store) {
-        return receiptItemRepository.findAll(itemSpecification(null, store, dateFrom, dateTo, categoryIds, null, null));
+        return receiptItemRepository.findAll(itemSpecification(null, store, dateFrom, dateTo, categoryIds, false, null, null));
     }
 
     private Specification<Receipt> receiptSpecification(LocalDate dateFrom, LocalDate dateTo, String store) {
@@ -237,6 +242,7 @@ public class QueryApiService {
             LocalDate dateFrom,
             LocalDate dateTo,
             List<Long> categoryIds,
+            boolean uncategorizedOnly,
             BigDecimal amountMin,
             BigDecimal amountMax) {
         return (root, query, builder) -> {
@@ -261,6 +267,10 @@ public class QueryApiService {
             }
             if (categoryIds != null && !categoryIds.isEmpty()) {
                 predicates.add(root.get("category").get("id").in(categoryIds));
+            }
+            if (uncategorizedOnly) {
+                predicates.add(builder.isNull(root.get("category")));
+                predicates.add(builder.isNull(root.get("categorySource")));
             }
             if (amountMin != null) {
                 predicates.add(builder.greaterThanOrEqualTo(root.get("totalPrice"), amountMin));

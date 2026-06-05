@@ -20,6 +20,8 @@ interface AppShellProps {
 }
 
 export function AppShell({ apiToken, children, navigation, onTokenChange, route }: AppShellProps) {
+  const routePath = pathFromRoute(route);
+
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 border-r border-zinc-200 bg-white px-4 py-4 dark:border-zinc-800 dark:bg-zinc-950 lg:block">
@@ -36,7 +38,7 @@ export function AppShell({ apiToken, children, navigation, onTokenChange, route 
         <nav className="space-y-1">
           {navigation.map((item) => (
             <NavigationLink
-              active={item.href === `#${route}`}
+              active={isNavigationActive(item.href, routePath)}
               href={item.href}
               icon={item.icon}
               key={item.href}
@@ -51,7 +53,7 @@ export function AppShell({ apiToken, children, navigation, onTokenChange, route 
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <p className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">eBon-Web</p>
-              <h1 className="text-xl font-semibold tracking-normal text-zinc-950 dark:text-zinc-50">{activeTitle(route, navigation)}</h1>
+              <h1 className="text-xl font-semibold tracking-normal text-zinc-950 dark:text-zinc-50">{activeTitle(routePath, navigation)}</h1>
             </div>
             <form className="flex w-full gap-2 md:w-auto" onSubmit={(event) => event.preventDefault()}>
               <label className="sr-only" htmlFor="api-token">
@@ -82,7 +84,7 @@ export function AppShell({ apiToken, children, navigation, onTokenChange, route 
       <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 lg:hidden">
         {navigation.map((item) => {
           const Icon = item.icon;
-          const active = item.href === `#${route}`;
+          const active = isNavigationActive(item.href, routePath);
           return (
             <a
               aria-current={active ? "page" : undefined}
@@ -132,5 +134,20 @@ function NavigationLink({
 }
 
 function activeTitle(route: string, navigation: NavigationItem[]): string {
+  if (route.startsWith("/receipts/")) {
+    return "Bons";
+  }
+
   return navigation.find((item) => item.href === `#${route}`)?.label ?? "Dashboard";
+}
+
+function pathFromRoute(route: string): string {
+  return route.split("?")[0] || "/";
+}
+
+function isNavigationActive(href: string, route: string): boolean {
+  if (href === "#/receipts" && route.startsWith("/receipts/")) {
+    return true;
+  }
+  return href === `#${route}`;
 }

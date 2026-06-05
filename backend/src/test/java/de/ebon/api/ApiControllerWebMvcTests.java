@@ -28,6 +28,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -57,7 +58,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
     // Verifies controller parsing of comma-separated category IDs and forwarding of sort values to the service layer.
     @Test
     void searchParsesCategoryIdsAndForwardsUnknownSortValues() throws Exception {
-        when(queryApiService.search(any(), any(), any(), any(), anyList(), any(), any(), anyInt(), anyInt(), anyString(), anyString()))
+        when(queryApiService.search(any(), any(), any(), any(), anyList(), anyBoolean(), any(), any(), anyInt(), anyInt(), anyString(), anyString()))
                 .thenReturn(PageResponse.from(
                         new PageImpl<>(List.of(new SearchResultDto(
                                 1L,
@@ -72,7 +73,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
                         "receipt.receiptDate",
                         "desc"));
 
-        HttpResponse<String> response = sendGet("/api/search?q=milch&categoryIds=1,%202,,3&sortBy=unknown&sortDir=desc");
+        HttpResponse<String> response = sendGet("/api/search?q=milch&categoryIds=1,%202,,3&uncategorizedOnly=true&sortBy=unknown&sortDir=desc");
 
         assertThat(response.statusCode()).isEqualTo(200);
         verify(queryApiService).search(
@@ -81,6 +82,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
                 eq(null),
                 eq(null),
                 eq(List.of(1L, 2L, 3L)),
+                eq(true),
                 eq(null),
                 eq(null),
                 eq(0),
@@ -92,7 +94,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
     // Verifies blank category filters are treated as no filter instead of failing or creating bogus IDs.
     @Test
     void searchTreatsBlankCategoryIdsAsEmptyList() throws Exception {
-        when(queryApiService.search(any(), any(), any(), any(), anyList(), any(), any(), anyInt(), anyInt(), anyString(), anyString()))
+        when(queryApiService.search(any(), any(), any(), any(), anyList(), anyBoolean(), any(), any(), anyInt(), anyInt(), anyString(), anyString()))
                 .thenReturn(PageResponse.from(new PageImpl<>(List.of()), "receipt.receiptDate", "desc"));
 
         HttpResponse<String> response = sendGet("/api/search?categoryIds=%20%20%20");
@@ -104,6 +106,7 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
                 eq(null),
                 eq(null),
                 eq(List.of()),
+                eq(false),
                 eq(null),
                 eq(null),
                 eq(0),

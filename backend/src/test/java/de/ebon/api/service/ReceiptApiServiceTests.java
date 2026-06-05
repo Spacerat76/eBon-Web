@@ -1,6 +1,7 @@
 package de.ebon.api.service;
 
 import de.ebon.api.dto.PageResponse;
+import de.ebon.api.dto.DataMaintenanceResultDto;
 import de.ebon.api.dto.ReceiptDto;
 import de.ebon.api.dto.ReceiptItemCreateRequest;
 import de.ebon.api.dto.ReceiptItemDto;
@@ -54,6 +55,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
+@SuppressWarnings("unchecked")
 class ReceiptApiServiceTests {
 
     @Mock
@@ -395,6 +397,46 @@ class ReceiptApiServiceTests {
         assertThat(dto.storeBranch()).isEqualTo("Am Markt 1");
         verify(receiptParserService).parse(receipt.getRawText());
         verify(categorizationService).categorizeReceipt(receipt.getId());
+    }
+
+    // Verifies the administrative reparse-all action preserves manual work by default and reports skipped receipts.
+    @Test
+    void reparseAllReceiptsSkipsManualReceiptsUnlessOverwriteIsRequested() {
+        Receipt cleanReceipt = receipt(60L, 7001, "REWE", false, "Bio Milch");
+        Receipt manualReceipt = receipt(61L, 7002, "DM", false, "Manuell geaendert");
+        ReceiptItem manualItem = firstItem(manualReceipt);
+        manualItem.updateManualValues(null, null, null, null, null, null, null);
+        ReceiptParseResult parseResult = new ReceiptParseResult(
+                ParseStatus.PARSED,
+                new ParsedReceipt(
+                        LocalDate.of(2026, 6, 1),
+                        LocalTime.of(10, 15),
+                        "REWE",
+                        "Am Markt 1",
+                        new BigDecimal("1.99"),
+                        "EUR",
+                        null,
+                        null,
+                        null,
+                        List.of()),
+                null);
+
+        when(receiptRepository.findByDeletedAtIsNullOrderByImportedAtDesc())
+                .thenReturn(List.of(cleanReceipt, manualReceipt));
+        when(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(cleanReceipt.getId()))
+                .thenReturn(List.of(firstItem(cleanReceipt)));
+        when(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(manualReceipt.getId()))
+                .thenReturn(List.of(manualItem));
+        when(receiptParserService.parse(anyString())).thenReturn(parseResult);
+        when(receiptRepository.saveAndFlush(any(Receipt.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DataMaintenanceResultDto result = service.reparseAllReceipts(false);
+
+        assertThat(result.totalReceipts()).isEqualTo(2);
+        assertThat(result.processedReceipts()).isEqualTo(1);
+        assertThat(result.skippedManualReceipts()).isEqualTo(1);
+        verify(categorizationService).categorizeReceipt(cleanReceipt.getId());
+        verify(categorizationService, never()).categorizeReceipt(manualReceipt.getId());
     }
 
     // Verifies user deletes are soft deletes so imported receipt data is not physically lost.

@@ -20,14 +20,17 @@ public class SettingsService {
     private final AppSettingRepository appSettingRepository;
     private final PaperlessProperties paperlessProperties;
     private final AiCategorizationProperties aiProperties;
+    private final SettingsConnectionTester connectionTester;
 
     public SettingsService(
             AppSettingRepository appSettingRepository,
             PaperlessProperties paperlessProperties,
-            AiCategorizationProperties aiProperties) {
+            AiCategorizationProperties aiProperties,
+            SettingsConnectionTester connectionTester) {
         this.appSettingRepository = appSettingRepository;
         this.paperlessProperties = paperlessProperties;
         this.aiProperties = aiProperties;
+        this.connectionTester = connectionTester;
     }
 
     @Transactional(readOnly = true)
@@ -41,6 +44,7 @@ public class SettingsService {
                 mask(paperlessToken),
                 value("paperless_ebon_tag", paperlessProperties.getEbonTag()),
                 mask(openRouterKey),
+                value("openrouter_base_url", aiProperties.getOpenrouterBaseUrl()),
                 value("openrouter_model", value("ai_model", aiProperties.getModel())),
                 confidence(),
                 integerValue("sync_interval_minutes", 60),
@@ -55,6 +59,7 @@ public class SettingsService {
         saveSecretIfPresent("paperless_api_token", request.paperlessApiToken(), "Paperless-NGX API-Token");
         saveIfPresent("paperless_ebon_tag", request.paperlessEbonTag(), "Paperless-NGX eBon-Tag");
         saveSecretIfPresent("openrouter_api_key", request.openRouterApiKey(), "OpenRouter API-Key");
+        saveIfPresent("openrouter_base_url", request.openRouterBaseUrl(), "OpenRouter Basis-URL");
         saveIfPresent("openrouter_model", request.openRouterModel(), "OpenRouter Modell");
         if (request.aiCategorizationMinConfidence() != null) {
             save("ai_categorization_min_confidence",
@@ -70,14 +75,12 @@ public class SettingsService {
 
     public SettingsConnectionTestResponse testConnection(SettingsConnectionTestRequest request) {
         return switch (request.target()) {
-            case PAPERLESS -> new SettingsConnectionTestResponse(
-                    "PAPERLESS",
-                    !getSettings().paperlessBaseUrl().isBlank(),
-                    "Paperless-Konfiguration ist vorhanden. Ein echter Verbindungstest folgt in Phase 10.");
-            case OPENROUTER -> new SettingsConnectionTestResponse(
-                    "OPENROUTER",
-                    true,
-                    "OpenRouter-Konfiguration ist gespeichert. Externe Test-Calls werden in Tests nicht ausgefuehrt.");
+            case PAPERLESS -> connectionTester.testPaperless(
+                    value("paperless_base_url", paperlessProperties.getBaseUrl()),
+                    value("paperless_api_token", paperlessProperties.getApiToken()));
+            case OPENROUTER -> connectionTester.testOpenRouter(
+                    value("openrouter_base_url", aiProperties.getOpenrouterBaseUrl()),
+                    value("openrouter_api_key", aiProperties.getOpenrouterApiKey()));
         };
     }
 

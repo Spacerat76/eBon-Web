@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, Loader2, RefreshCw, ReceiptText, Tags, WalletCards } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Loader2, RefreshCw, Tags, WalletCards } from "lucide-react";
 
 import { ParseStatusBadge } from "@/components/receipt-badges";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
 import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent } from "@/lib/format";
-import type { DashboardDTO, SyncLogDTO, SyncStatusDTO } from "@/lib/types";
+import type { BonusReportDTO, DashboardDTO, ReportByCategoryDTO, SyncLogDTO, SyncStatusDTO } from "@/lib/types";
 
 const CategoryChart = lazy(() => import("@/components/category-chart").then((module) => ({ default: module.CategoryChart })));
 
@@ -19,17 +19,25 @@ interface DashboardPageProps {
 }
 
 const chartColors = ["#2563eb", "#16a34a", "#eab308", "#dc2626", "#7c3aed", "#0891b2", "#ea580c", "#475569"];
+type DashboardRange = "currentMonth" | "lastQuarter" | "lastYear" | "custom";
 
 export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
   const [dashboard, setDashboard] = useState<DashboardDTO | null>(null);
+  const [categoryData, setCategoryData] = useState<ReportByCategoryDTO[]>([]);
+  const [bonusData, setBonusData] = useState<BonusReportDTO[]>([]);
   const [syncLog, setSyncLog] = useState<SyncLogDTO[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [syncTriggering, setSyncTriggering] = useState(false);
+  const [range, setRange] = useState<DashboardRange>("currentMonth");
+  const [customDateFrom, setCustomDateFrom] = useState("");
+  const [customDateTo, setCustomDateTo] = useState("");
 
   const loadDashboard = useCallback(async () => {
     if (!hasApiToken) {
       setDashboard(null);
+      setCategoryData([]);
+      setBonusData([]);
       setSyncLog([]);
       setError(null);
       return;
@@ -39,15 +47,25 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
     setError(null);
 
     try {
-      const [dashboardResponse, syncLogResponse] = await Promise.all([apiClient.dashboard(), apiClient.syncLog(0, 5)]);
+      const rangeFilter = range === "custom"
+        ? { dateFrom: customDateFrom || undefined, dateTo: customDateTo || undefined }
+        : rangeFor(range);
+      const [dashboardResponse, syncLogResponse, categoryResponse, bonusResponse] = await Promise.all([
+        apiClient.dashboard(),
+        apiClient.syncLog(0, 5),
+        apiClient.reportByCategory(rangeFilter),
+        apiClient.bonusReport(rangeFilter)
+      ]);
       setDashboard(dashboardResponse);
+      setCategoryData(categoryResponse);
+      setBonusData(bonusResponse);
       setSyncLog(syncLogResponse.content);
     } catch (loadError) {
       setError(toUserMessage(loadError));
     } finally {
       setLoading(false);
     }
-  }, [apiClient, hasApiToken]);
+  }, [apiClient, customDateFrom, customDateTo, hasApiToken, range]);
 
   useEffect(() => {
     void loadDashboard();
@@ -107,7 +125,7 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
         </Button>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <KpiCard
           icon={WalletCards}
           loading={loading}
@@ -115,51 +133,70 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
           value={formatCurrency(dashboard?.currentMonthTotal)}
         />
         <KpiCard
+          icon={WalletCards}
+          loading={loading}
+          title="Vormonat"
+          value={formatCurrency(dashboard?.previousMonthTotal)}
+        />
+        <KpiCard
+          icon={WalletCards}
+          loading={loading}
+          title="Aktuelles Jahr"
+          value={formatCurrency(dashboard?.currentYearTotal)}
+        />
+        <KpiCard
           icon={monthDelta >= 0 ? ArrowUpRight : ArrowDownRight}
           loading={loading}
           tone={monthDelta > 0 ? "red" : "green"}
-          title="Delta"
+          title="Delta zum Vormonat"
           value={formatPercent(monthDelta)}
-        />
-        <KpiCard
-          icon={ReceiptText}
-          loading={loading}
-          title="Letzte Bons"
-          value={formatNumber(dashboard?.recentReceipts.length)}
         />
         <KpiCard
           icon={Tags}
           loading={loading}
+          onClick={() => {
+            window.location.hash = "#/search?uncategorizedOnly=true";
+          }}
           title="Ohne Kategorie"
           value={formatNumber(dashboard?.uncategorizedItemsCount)}
         />
         <KpiCard
           icon={WalletCards}
           loading={loading}
-          title="Bonus"
-          value={formatBonusSummary(dashboard)}
+          title="Bonus neu"
+          value={formatBonusSummary(bonusData)}
         />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.95fr)]">
         <Card>
-          <CardHeader>
-            <CardTitle>Ausgaben nach Kategorie</CardTitle>
+          <CardHeader className="space-y-3">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <CardTitle>Ausgaben nach Kategorie</CardTitle>
+              <RangeControls
+                customDateFrom={customDateFrom}
+                customDateTo={customDateTo}
+                onCustomDateFromChange={setCustomDateFrom}
+                onCustomDateToChange={setCustomDateTo}
+                onRangeChange={setRange}
+                range={range}
+              />
+            </div>
           </CardHeader>
           <CardContent className="min-h-80">
             {loading ? (
               <Skeleton className="h-64 w-full" />
-            ) : dashboard?.currentMonthByCategory.length ? (
+            ) : categoryData.length ? (
               <div className="grid gap-4 lg:grid-cols-[minmax(220px,0.8fr)_minmax(0,1fr)]">
                 <div className="h-64">
                   <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-                    <CategoryChart colors={chartColors} data={dashboard.currentMonthByCategory} />
+                    <CategoryChart colors={chartColors} data={categoryData} />
                   </Suspense>
                 </div>
                 <div className="overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-800">
                   <table className="w-full text-sm">
                     <tbody>
-                      {dashboard.currentMonthByCategory.slice(0, 8).map((entry, index) => (
+                      {categoryData.slice(0, 8).map((entry, index) => (
                         <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-900" key={`${entry.categoryId}-${entry.categoryName}`}>
                           <td className="px-3 py-2">
                             <span className="inline-flex items-center gap-2">
@@ -233,12 +270,12 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
       <section className="grid gap-4 xl:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Bonus</CardTitle>
+            <CardTitle>Bonus neu im Zeitraum</CardTitle>
           </CardHeader>
           <CardContent>
-            {dashboard?.bonusSummary.length ? (
+            {bonusData.length ? (
               <div className="space-y-2">
-                {dashboard.bonusSummary.map((bonus) => (
+                {bonusData.map((bonus) => (
                   <div className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800" key={bonus.bonusType}>
                     <span className="font-medium">{bonus.bonusType}</span>
                     <span className="text-zinc-600 dark:text-zinc-300">
@@ -289,18 +326,23 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
 function KpiCard({
   icon: Icon,
   loading,
+  onClick,
   title,
   value,
   tone = "neutral"
 }: {
   icon: typeof WalletCards;
   loading: boolean;
+  onClick?: () => void;
   title: string;
   value: string;
   tone?: "neutral" | "green" | "red";
 }) {
   return (
-    <Card>
+    <Card
+      className={onClick ? "cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-700" : undefined}
+      onClick={onClick}
+    >
       <CardContent className="flex items-center gap-3">
         <span
           className={
@@ -319,6 +361,53 @@ function KpiCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function RangeControls({
+  customDateFrom,
+  customDateTo,
+  onCustomDateFromChange,
+  onCustomDateToChange,
+  onRangeChange,
+  range
+}: {
+  customDateFrom: string;
+  customDateTo: string;
+  onCustomDateFromChange: (value: string) => void;
+  onCustomDateToChange: (value: string) => void;
+  onRangeChange: (value: DashboardRange) => void;
+  range: DashboardRange;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+        onChange={(event) => onRangeChange(event.target.value as DashboardRange)}
+        value={range}
+      >
+        <option value="currentMonth">Aktueller Monat</option>
+        <option value="lastQuarter">Letztes Quartal</option>
+        <option value="lastYear">Letztes Jahr</option>
+        <option value="custom">Benutzerdefiniert</option>
+      </select>
+      {range === "custom" ? (
+        <>
+          <input
+            className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+            onChange={(event) => onCustomDateFromChange(event.target.value)}
+            type="date"
+            value={customDateFrom}
+          />
+          <input
+            className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+            onChange={(event) => onCustomDateToChange(event.target.value)}
+            type="date"
+            value={customDateTo}
+          />
+        </>
+      ) : null}
+    </div>
   );
 }
 
@@ -372,13 +461,34 @@ function EmptyState({ text }: { text: string }) {
   return <div className="rounded-md border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">{text}</div>;
 }
 
-function formatBonusSummary(dashboard: DashboardDTO | null): string {
-  if (!dashboard?.bonusSummary.length) {
+function formatBonusSummary(bonusSummary: BonusReportDTO[]): string {
+  if (!bonusSummary.length) {
     return formatCurrency(0);
   }
 
-  const totalBalance = dashboard.bonusSummary.reduce((sum, entry) => sum + (entry.totalEarnedBalance ?? 0), 0);
+  const totalBalance = bonusSummary.reduce((sum, entry) => sum + (entry.totalEarnedBalance ?? 0), 0);
   return formatCurrency(totalBalance);
+}
+
+function rangeFor(range: DashboardRange): { dateFrom: string; dateTo: string } {
+  const today = new Date();
+  const end = toDateInput(today);
+  if (range === "lastYear") {
+    const start = new Date(today);
+    start.setFullYear(start.getFullYear() - 1);
+    return { dateFrom: toDateInput(start), dateTo: end };
+  }
+  if (range === "lastQuarter") {
+    const start = new Date(today);
+    start.setMonth(start.getMonth() - 3);
+    return { dateFrom: toDateInput(start), dateTo: end };
+  }
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  return { dateFrom: toDateInput(start), dateTo: end };
+}
+
+function toDateInput(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }
 
 function toUserMessage(error: unknown): string {

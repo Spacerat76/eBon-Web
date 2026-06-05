@@ -120,6 +120,7 @@ export interface BonusReportDTO {
 export interface DashboardDTO {
   currentMonthTotal: number;
   previousMonthTotal: number;
+  currentYearTotal: number;
   currentMonthByCategory: ReportByCategoryDTO[];
   bonusSummary: BonusReportDTO[];
   recentReceipts: ReceiptDTO[];
@@ -134,10 +135,136 @@ export interface SettingsDTO {
   paperlessApiToken: string | null;
   paperlessEbonTag: string | null;
   openRouterApiKey: string | null;
+  openRouterBaseUrl: string | null;
   openRouterModel: string | null;
   aiCategorizationMinConfidence: number | null;
   syncIntervalMinutes: number | null;
   currency: string | null;
+}
+
+export interface SettingsConnectionTestResponse {
+  target: "PAPERLESS" | "OPENROUTER";
+  success: boolean;
+  message: string;
+}
+
+export interface SearchResultDTO {
+  receiptId: number;
+  receiptItemId: number;
+  receiptDate: string | null;
+  storeName: string | null;
+  description: string;
+  totalPrice: number;
+  categoryId: number | null;
+  categoryName: string | null;
+  highlights: string[];
+}
+
+export interface SearchParams {
+  q?: string;
+  store?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  categoryIds?: number[];
+  uncategorizedOnly?: boolean;
+  amountMin?: number | null;
+  amountMax?: number | null;
+  page?: number;
+  size?: number;
+  sortBy?: "receiptDate" | "storeName" | "description" | "totalPrice";
+  sortDir?: "asc" | "desc";
+}
+
+export interface ReportFilters {
+  dateFrom?: string;
+  dateTo?: string;
+  categoryIds?: number[];
+  store?: string;
+  groupBy?: "day" | "week" | "month" | "year";
+  size?: number;
+}
+
+export interface ReportByPeriodDTO {
+  periodStart: string;
+  period: string;
+  total: number;
+}
+
+export interface ReportByStoreDTO {
+  storeName: string;
+  total: number;
+  receiptCount: number;
+}
+
+export interface TopItemReportDTO {
+  description: string;
+  total: number;
+  count: number;
+}
+
+export type RuleMatchField = "DESCRIPTION" | "STORE_NAME";
+export type RuleMatchType = "CONTAINS" | "STARTS_WITH" | "ENDS_WITH" | "EXACT" | "REGEX";
+
+export interface CategorizationRuleDTO {
+  id: number;
+  categoryId: number;
+  categoryName: string;
+  matchField: RuleMatchField;
+  matchType: RuleMatchType;
+  matchValue: string;
+  priority: number;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CategorizationRuleRequest {
+  categoryId: number;
+  matchField: RuleMatchField;
+  matchType: RuleMatchType;
+  matchValue: string;
+  priority?: number | null;
+  isActive?: boolean | null;
+  applyToExisting?: boolean | null;
+}
+
+export interface CategorizationRulePreviewRequest {
+  categoryId?: number | null;
+  matchField: RuleMatchField;
+  matchType: RuleMatchType;
+  matchValue: string;
+}
+
+export interface CategorizationRulePreviewResponse {
+  matchingItemsCount: number;
+}
+
+export interface CategorizationRuleApplyResponse {
+  changedItemsCount: number;
+}
+
+export interface CategoryRequest {
+  name: string;
+  colorHex: string | null;
+  icon: string | null;
+  sortOrder: number | null;
+  isActive: boolean | null;
+}
+
+export interface CategoryPatchRequest {
+  name?: string | null;
+  colorHex?: string | null;
+  icon?: string | null;
+  sortOrder?: number | null;
+  isActive?: boolean | null;
+}
+
+export interface DataMaintenanceResultDTO {
+  message: string;
+  totalReceipts: number;
+  processedReceipts: number;
+  skippedManualReceipts: number;
+  deletedReceipts: number;
+  deletedSyncLogs: number;
 }
 
 export interface MessageResponse {

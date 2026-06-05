@@ -7,6 +7,7 @@ import java.util.List;
 public record DashboardDto(
         BigDecimal currentMonthTotal,
         BigDecimal previousMonthTotal,
+        BigDecimal currentYearTotal,
         List<ReportDto.ByCategory> currentMonthByCategory,
         List<ReportDto.Bonus> bonusSummary,
         List<ReceiptDto> recentReceipts,

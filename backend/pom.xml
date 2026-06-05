@@ -21,6 +21,7 @@
         <java.version>25</java.version>
         <springdoc-openapi.version>3.0.3</springdoc-openapi.version>
         <testcontainers.version>1.21.4</testcontainers.version>
+        <jacocoArgLine></jacocoArgLine>
     </properties>
 
     <dependencyManagement>
@@ -103,9 +104,43 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
             <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-mockito-agent</id>
+                        <phase>process-test-classes</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>org.mockito</groupId>
+                                    <artifactId>mockito-core</artifactId>
+                                    <version>${mockito.version}</version>
+                                    <destFileName>mockito-core.jar</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                            <outputDirectory>${project.build.directory}/agents</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>@{jacocoArgLine} -javaagent:${project.build.directory}/agents/mockito-core.jar</argLine>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>0.8.13</version>
+                <configuration>
+                    <propertyName>jacocoArgLine</propertyName>
+                </configuration>
                 <executions>
                     <execution>
                         <id>prepare-agent</id>

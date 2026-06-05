@@ -1,0 +1,390 @@
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Download, Loader2 } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { ApiClient } from "@/lib/api";
+import { ApiClientError } from "@/lib/api";
+import { formatCurrency, formatNumber } from "@/lib/format";
+import type { BonusReportDTO, CategoryDTO, ReportByCategoryDTO, ReportByPeriodDTO, ReportByStoreDTO, ReportFilters, TopItemReportDTO } from "@/lib/types";
+
+interface ReportsPageProps {
+  apiClient: ApiClient;
+  hasApiToken: boolean;
+}
+
+type ReportTab = "category" | "period" | "store" | "topItems" | "bonus";
+type RangePreset = "currentMonth" | "lastQuarter" | "lastYear" | "custom";
+type ReportRow = ReportByCategoryDTO | ReportByPeriodDTO | ReportByStoreDTO | TopItemReportDTO | BonusReportDTO;
+
+const tabs: Array<{ id: ReportTab; label: string }> = [
+  { id: "category", label: "Kategorie" },
+  { id: "period", label: "Zeitraum" },
+  { id: "store", label: "Geschäft" },
+  { id: "topItems", label: "Top-Artikel" },
+  { id: "bonus", label: "Bonus" }
+];
+
+const chartColors = ["#2563eb", "#16a34a", "#eab308", "#dc2626", "#7c3aed", "#0891b2", "#ea580c", "#475569"];
+
+export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
+  const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [tab, setTab] = useState<ReportTab>("category");
+  const [preset, setPreset] = useState<RangePreset>("currentMonth");
+  const [filters, setFilters] = useState<ReportFilters>(() => ({
+    ...rangeFor("currentMonth"),
+    groupBy: "month",
+    categoryIds: []
+  }));
+  const [rows, setRows] = useState<ReportRow[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadReport = useCallback(async () => {
+    if (!hasApiToken) {
+      setRows([]);
+      setCategories([]);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const [categoryResponse, reportResponse] = await Promise.all([
+        apiClient.categories(false),
+        loadTab(apiClient, tab, filters)
+      ]);
+      setCategories(categoryResponse);
+      setRows(reportResponse);
+    } catch (loadError) {
+      setError(toUserMessage(loadError));
+    } finally {
+      setLoading(false);
+    }
+  }, [apiClient, filters, hasApiToken, tab]);
+
+  useEffect(() => {
+    void loadReport();
+  }, [loadReport]);
+
+  const title = useMemo(() => tabs.find((entry) => entry.id === tab)?.label ?? "Report", [tab]);
+
+  function updatePreset(nextPreset: RangePreset) {
+    setPreset(nextPreset);
+    if (nextPreset !== "custom") {
+      setFilters((current) => ({ ...current, ...rangeFor(nextPreset) }));
+    }
+  }
+
+  async function exportCsv() {
+    setExporting(true);
+    setError(null);
+
+    try {
+      const type = reportExportType(tab);
+      const blob = await apiClient.downloadReportCsv(type, filters);
+      downloadBlob(blob, `ebon-report-${type}.csv`);
+    } catch (exportError) {
+      setError(toUserMessage(exportError));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  if (!hasApiToken) {
+    return (
+      <Card>
+        <CardContent className="flex min-h-72 flex-col items-center justify-center text-center">
+          <h2 className="text-base font-semibold">API-Token erforderlich</h2>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Danach können Reports geladen werden.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {error ? <ErrorBox message={error} /> : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Reports</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {tabs.map((entry) => (
+              <Button key={entry.id} onClick={() => setTab(entry.id)} size="sm" variant={tab === entry.id ? "primary" : "secondary"}>
+                {entry.label}
+              </Button>
+            ))}
+          </div>
+
+          <div className="grid gap-3 xl:grid-cols-[190px_150px_150px_minmax(240px,1fr)_180px_120px]">
+            <Field label="Zeitraum">
+              <select className={selectClassName} onChange={(event) => updatePreset(event.target.value as RangePreset)} value={preset}>
+                <option value="currentMonth">Aktueller Monat</option>
+                <option value="lastQuarter">Letztes Quartal</option>
+                <option value="lastYear">Letztes Jahr</option>
+                <option value="custom">Benutzerdefiniert</option>
+              </select>
+            </Field>
+            <Field label="Von">
+              <Input
+                onChange={(event) => {
+                  setPreset("custom");
+                  setFilters((current) => ({ ...current, dateFrom: event.target.value || undefined }));
+                }}
+                type="date"
+                value={filters.dateFrom ?? ""}
+              />
+            </Field>
+            <Field label="Bis">
+              <Input
+                onChange={(event) => {
+                  setPreset("custom");
+                  setFilters((current) => ({ ...current, dateTo: event.target.value || undefined }));
+                }}
+                type="date"
+                value={filters.dateTo ?? ""}
+              />
+            </Field>
+            <Field label="Kategorien">
+              <select
+                className={selectClassName}
+                multiple
+                onChange={(event) => setFilters((current) => ({
+                  ...current,
+                  categoryIds: Array.from(event.target.selectedOptions).map((option) => Number(option.value))
+                }))}
+                value={(filters.categoryIds ?? []).map(String)}
+              >
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Geschäft">
+              <Input onChange={(event) => setFilters((current) => ({ ...current, store: event.target.value || undefined }))} placeholder="optional" value={filters.store ?? ""} />
+            </Field>
+            <Field label="Gruppe">
+              <select className={selectClassName} onChange={(event) => setFilters((current) => ({ ...current, groupBy: event.target.value as ReportFilters["groupBy"] }))} value={filters.groupBy ?? "month"}>
+                <option value="day">Tag</option>
+                <option value="week">Woche</option>
+                <option value="month">Monat</option>
+                <option value="year">Jahr</option>
+              </select>
+            </Field>
+          </div>
+        </CardContent>
+      </Card>
+
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
+        <Card>
+          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <CardTitle>{title}</CardTitle>
+            <Button disabled={exporting} onClick={exportCsv} size="sm" variant="secondary">
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              CSV
+            </Button>
+          </CardHeader>
+          <CardContent className="h-80">
+            {loading ? <Skeleton className="h-full w-full" /> : rows.length ? <ReportChart rows={rows} tab={tab} /> : <EmptyState text="Keine Reportdaten" />}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Tabelle</CardTitle>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            {loading ? <Skeleton className="h-48 w-full" /> : rows.length ? <ReportTable rows={rows} tab={tab} /> : <EmptyState text="Keine Daten" />}
+          </CardContent>
+        </Card>
+      </section>
+    </div>
+  );
+}
+
+function reportExportType(tab: ReportTab): "by-category" | "by-period" | "by-store" | "top-items" | "bonus" {
+  if (tab === "category") {
+    return "by-category";
+  }
+  if (tab === "period") {
+    return "by-period";
+  }
+  if (tab === "store") {
+    return "by-store";
+  }
+  if (tab === "topItems") {
+    return "top-items";
+  }
+  return "bonus";
+}
+
+async function loadTab(apiClient: ApiClient, tab: ReportTab, filters: ReportFilters): Promise<ReportRow[]> {
+  switch (tab) {
+    case "category":
+      return apiClient.reportByCategory(filters);
+    case "period":
+      return apiClient.reportByPeriod(filters);
+    case "store":
+      return apiClient.reportByStore(filters);
+    case "topItems":
+      return apiClient.topItems({ ...filters, size: 20 });
+    case "bonus":
+      return apiClient.bonusReport(filters);
+  }
+}
+
+function ReportChart({ rows, tab }: { rows: ReportRow[]; tab: ReportTab }) {
+  if (tab === "category") {
+    const data = rows as ReportByCategoryDTO[];
+    return (
+      <ResponsiveContainer height="100%" width="100%">
+        <PieChart>
+          <Pie data={data} dataKey="total" innerRadius={64} nameKey="categoryName" outerRadius={112}>
+            {data.map((entry, index) => <Cell fill={chartColors[index % chartColors.length]} key={`${entry.categoryName}-${entry.total}`} />)}
+          </Pie>
+          <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+        </PieChart>
+      </ResponsiveContainer>
+    );
+  }
+
+  const data = chartData(rows, tab);
+  return (
+    <ResponsiveContainer height="100%" width="100%">
+      <BarChart data={data}>
+        <XAxis dataKey="label" hide={data.length > 10} />
+        <YAxis width={72} />
+        <Tooltip formatter={(value) => tab === "bonus" && String(value).includes(".") ? formatCurrency(Number(value)) : formatCurrency(Number(value))} />
+        <Bar dataKey="value" fill="#2563eb" radius={[4, 4, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function ReportTable({ rows, tab }: { rows: ReportRow[]; tab: ReportTab }) {
+  return (
+    <table className="w-full min-w-[420px] text-sm">
+      <tbody>
+        {rows.map((row, index) => {
+          const cells = tableCells(row, tab);
+          return (
+            <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-900" key={index}>
+              <td className="px-3 py-2 font-medium">{cells[0]}</td>
+              <td className="px-3 py-2 text-right">{cells[1]}</td>
+              {cells[2] ? <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400">{cells[2]}</td> : null}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function chartData(rows: ReportRow[], tab: ReportTab): Array<{ label: string; value: number }> {
+  return rows.slice(0, 20).map((row) => {
+    if (tab === "period") {
+      const value = row as ReportByPeriodDTO;
+      return { label: value.period, value: value.total };
+    }
+    if (tab === "store") {
+      const value = row as ReportByStoreDTO;
+      return { label: value.storeName, value: value.total };
+    }
+    if (tab === "topItems") {
+      const value = row as TopItemReportDTO;
+      return { label: value.description, value: value.total };
+    }
+    const value = row as BonusReportDTO;
+    return { label: value.bonusType, value: value.totalEarnedBalance ?? value.totalPoints ?? 0 };
+  });
+}
+
+function tableCells(row: ReportRow, tab: ReportTab): string[] {
+  if (tab === "category") {
+    const value = row as ReportByCategoryDTO;
+    return [value.categoryName, formatCurrency(value.total)];
+  }
+  if (tab === "period") {
+    const value = row as ReportByPeriodDTO;
+    return [value.period, formatCurrency(value.total)];
+  }
+  if (tab === "store") {
+    const value = row as ReportByStoreDTO;
+    return [value.storeName, formatCurrency(value.total), `${formatNumber(value.receiptCount)} Bons`];
+  }
+  if (tab === "topItems") {
+    const value = row as TopItemReportDTO;
+    return [value.description, formatCurrency(value.total), `${formatNumber(value.count)}×`];
+  }
+  const value = row as BonusReportDTO;
+  return [value.bonusType, `${formatNumber(value.totalPoints)} Punkte`, formatCurrency(value.totalEarnedBalance)];
+}
+
+function rangeFor(preset: RangePreset): Pick<ReportFilters, "dateFrom" | "dateTo"> {
+  const today = new Date();
+  const end = toDateInput(today);
+  if (preset === "lastYear") {
+    const start = new Date(today);
+    start.setFullYear(start.getFullYear() - 1);
+    return { dateFrom: toDateInput(start), dateTo: end };
+  }
+  if (preset === "lastQuarter") {
+    const start = new Date(today);
+    start.setMonth(start.getMonth() - 3);
+    return { dateFrom: toDateInput(start), dateTo: end };
+  }
+  const start = new Date(today.getFullYear(), today.getMonth(), 1);
+  return { dateFrom: toDateInput(start), dateTo: end };
+}
+
+function toDateInput(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function Field({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <label className="block text-sm">
+      <span className="mb-1 block text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <div className="flex h-full min-h-48 items-center justify-center rounded-md border border-dashed border-zinc-200 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">{text}</div>;
+}
+
+function ErrorBox({ message }: { message: string }) {
+  return <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{message}</div>;
+}
+
+function toUserMessage(error: unknown): string {
+  if (error instanceof ApiClientError) {
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return "Die Anfrage konnte nicht verarbeitet werden.";
+}
+
+const selectClassName = "min-h-10 w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-950 shadow-sm dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-50";
