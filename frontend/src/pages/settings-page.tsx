@@ -503,10 +503,27 @@ function GeneralSettings({
             </Button>
           </div>
 
-          <div className="rounded-md border border-red-200 p-3 dark:border-red-900">
-            <Field label="Bestätigung">
-              <Input onChange={(event) => onResetConfirmationChange(event.target.value)} value={resetConfirmation} />
-            </Field>
+          <div className="rounded-md border border-red-200 bg-red-50/50 p-4 dark:border-red-900 dark:bg-red-950/20">
+            <div className="space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
+              <div className="font-medium text-red-700 dark:text-red-300">Importierte Bon-Daten zurücksetzen</div>
+              <p>
+                Löscht alle importierten Bons inklusive Positionen, Parse-Ergebnissen, Kategoriezuordnungen,
+                KI-Vorschlägen und Sync-Protokollen. Kategorien, Regeln, Einstellungen und Datenbankmigrationen
+                bleiben erhalten.
+              </p>
+              <p>
+                Gib zur Bestätigung exakt <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs dark:bg-zinc-900">DELETE_IMPORTED_RECEIPTS</code> ein.
+              </p>
+            </div>
+            <div className="mt-3">
+              <Field label="Bestätigungstext">
+                <Input
+                  onChange={(event) => onResetConfirmationChange(event.target.value)}
+                  placeholder="DELETE_IMPORTED_RECEIPTS"
+                  value={resetConfirmation}
+                />
+              </Field>
+            </div>
             <Button className="mt-3" disabled={saving || resetConfirmation !== "DELETE_IMPORTED_RECEIPTS"} onClick={onResetImportedReceipts} variant="danger">
               <Trash2 className="h-4 w-4" />
               Importierte Bon-Daten löschen
