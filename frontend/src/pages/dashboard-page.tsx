@@ -19,7 +19,7 @@ interface DashboardPageProps {
 }
 
 const chartColors = ["#2563eb", "#16a34a", "#eab308", "#dc2626", "#7c3aed", "#0891b2", "#ea580c", "#475569"];
-type DashboardRange = "currentMonth" | "lastQuarter" | "lastYear" | "custom";
+type DashboardRange = "currentMonth" | "lastQuarter" | "currentYear" | "previousYear" | "custom";
 
 export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
   const [dashboard, setDashboard] = useState<DashboardDTO | null>(null);
@@ -388,7 +388,8 @@ function RangeControls({
       >
         <option value="currentMonth">Aktueller Monat</option>
         <option value="lastQuarter">Letztes Quartal</option>
-        <option value="lastYear">Letztes Jahr</option>
+        <option value="currentYear">Aktuelles Jahr</option>
+        <option value="previousYear">Vorheriges Jahr</option>
         <option value="custom">Benutzerdefiniert</option>
       </select>
       {range === "custom" ? (
@@ -473,10 +474,17 @@ function formatBonusSummary(bonusSummary: BonusReportDTO[]): string {
 function rangeFor(range: DashboardRange): { dateFrom: string; dateTo: string } {
   const today = new Date();
   const end = toDateInput(today);
-  if (range === "lastYear") {
-    const start = new Date(today);
-    start.setFullYear(start.getFullYear() - 1);
-    return { dateFrom: toDateInput(start), dateTo: end };
+  if (range === "currentYear") {
+    return {
+      dateFrom: toDateInput(new Date(today.getFullYear(), 0, 1)),
+      dateTo: toDateInput(new Date(today.getFullYear(), 11, 31))
+    };
+  }
+  if (range === "previousYear") {
+    return {
+      dateFrom: toDateInput(new Date(today.getFullYear() - 1, 0, 1)),
+      dateTo: toDateInput(new Date(today.getFullYear() - 1, 11, 31))
+    };
   }
   if (range === "lastQuarter") {
     const start = new Date(today);
@@ -488,7 +496,10 @@ function rangeFor(range: DashboardRange): { dateFrom: string; dateTo: string } {
 }
 
 function toDateInput(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function toUserMessage(error: unknown): string {

@@ -17,7 +17,7 @@ interface ReportsPageProps {
 }
 
 type ReportTab = "category" | "period" | "store" | "topItems" | "bonus";
-type RangePreset = "currentMonth" | "lastQuarter" | "lastYear" | "custom";
+type RangePreset = "currentMonth" | "lastQuarter" | "currentYear" | "previousYear" | "custom";
 type ReportRow = ReportByCategoryDTO | ReportByPeriodDTO | ReportByStoreDTO | TopItemReportDTO | BonusReportDTO;
 
 const tabs: Array<{ id: ReportTab; label: string }> = [
@@ -129,7 +129,8 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
               <select className={selectClassName} onChange={(event) => updatePreset(event.target.value as RangePreset)} value={preset}>
                 <option value="currentMonth">Aktueller Monat</option>
                 <option value="lastQuarter">Letztes Quartal</option>
-                <option value="lastYear">Letztes Jahr</option>
+                <option value="currentYear">Aktuelles Jahr</option>
+                <option value="previousYear">Vorheriges Jahr</option>
                 <option value="custom">Benutzerdefiniert</option>
               </select>
             </Field>
@@ -333,10 +334,17 @@ function tableCells(row: ReportRow, tab: ReportTab): string[] {
 function rangeFor(preset: RangePreset): Pick<ReportFilters, "dateFrom" | "dateTo"> {
   const today = new Date();
   const end = toDateInput(today);
-  if (preset === "lastYear") {
-    const start = new Date(today);
-    start.setFullYear(start.getFullYear() - 1);
-    return { dateFrom: toDateInput(start), dateTo: end };
+  if (preset === "currentYear") {
+    return {
+      dateFrom: toDateInput(new Date(today.getFullYear(), 0, 1)),
+      dateTo: toDateInput(new Date(today.getFullYear(), 11, 31))
+    };
+  }
+  if (preset === "previousYear") {
+    return {
+      dateFrom: toDateInput(new Date(today.getFullYear() - 1, 0, 1)),
+      dateTo: toDateInput(new Date(today.getFullYear() - 1, 11, 31))
+    };
   }
   if (preset === "lastQuarter") {
     const start = new Date(today);
@@ -348,7 +356,10 @@ function rangeFor(preset: RangePreset): Pick<ReportFilters, "dateFrom" | "dateTo
 }
 
 function toDateInput(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function downloadBlob(blob: Blob, filename: string) {
