@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { CheckCircle2, Loader2, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
+import { CheckCircle2, Download, FileCheck2, Loader2, Plus, RotateCcw, Save, Trash2, Upload } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
 import type {
+  BackupValidationReportDTO,
   CategorizationRuleDTO,
   CategorizationRuleRequest,
   CategoryDTO,
@@ -24,7 +25,9 @@ interface SettingsPageProps {
   hasApiToken: boolean;
 }
 
-type SettingsTab = "general" | "categories" | "rules";
+type SettingsTab = "general" | "categories" | "rules" | "backup";
+
+const RESTORE_CONFIRMATION = "RESTORE_BACKUP";
 
 const emptySettings: SettingsDTO = {
   paperlessBaseUrl: "",
@@ -71,6 +74,9 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
   const [rulePreview, setRulePreview] = useState<number | null>(null);
   const [overwriteManualEdits, setOverwriteManualEdits] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState("");
+  const [backupFile, setBackupFile] = useState<File | null>(null);
+  const [backupValidation, setBackupValidation] = useState<BackupValidationReportDTO | null>(null);
+  const [restoreConfirmation, setRestoreConfirmation] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -151,6 +157,83 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
   async function resetImportedReceipts() {
     await runMaintenance(() => apiClient.resetImportedReceipts(resetConfirmation));
     setResetConfirmation("");
+  }
+
+  async function downloadBackup() {
+    setSaving(true);
+    setError(null);
+    setFeedback(null);
+
+    try {
+      const backup = await apiClient.downloadBackup();
+      saveBlob(backup.blob, backup.filename);
+      setFeedback("Backup heruntergeladen. API-Schluessel sind darin nicht enthalten und muessen nach einem Restore neu gesetzt werden.");
+    } catch (backupError) {
+      setError(toUserMessage(backupError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function validateBackup() {
+    if (!backupFile) {
+      setError("Bitte waehle zuerst eine Backup-ZIP-Datei aus.");
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setFeedback(null);
+
+    try {
+      const validation = await apiClient.validateBackup(backupFile);
+      setBackupValidation(validation);
+      if (validation.valid) {
+        setFeedback("Backup-Dry-Run erfolgreich. Die Datenbank wurde dabei nicht veraendert.");
+      } else {
+        setError("Backup-Dry-Run fehlgeschlagen. Pruefe die Validierungsfehler.");
+      }
+    } catch (validationError) {
+      setBackupValidation(null);
+      setError(toUserMessage(validationError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function restoreBackup() {
+    if (!backupFile) {
+      setError("Bitte waehle zuerst eine Backup-ZIP-Datei aus.");
+      return;
+    }
+    if (restoreConfirmation !== RESTORE_CONFIRMATION) {
+      setError(`Gib zur Bestaetigung exakt ${RESTORE_CONFIRMATION} ein.`);
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setFeedback(null);
+
+    try {
+      const result = await apiClient.restoreBackup(backupFile);
+      setBackupValidation(result.validation);
+      setRestoreConfirmation("");
+      setFeedback(`${result.message} Maskierte API-Schluessel muessen danach in den Einstellungen neu gesetzt werden.`);
+      await loadSettings();
+    } catch (restoreError) {
+      setError(toUserMessage(restoreError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function changeBackupFile(file: File | null) {
+    setBackupFile(file);
+    setBackupValidation(null);
+    setRestoreConfirmation("");
+    setFeedback(null);
+    setError(null);
   }
 
   async function runMaintenance(action: () => Promise<DataMaintenanceResultDTO>) {
@@ -328,6 +411,7 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
         <Button onClick={() => setTab("general")} size="sm" variant={tab === "general" ? "primary" : "secondary"}>Allgemein</Button>
         <Button onClick={() => setTab("categories")} size="sm" variant={tab === "categories" ? "primary" : "secondary"}>Kategorien</Button>
         <Button onClick={() => setTab("rules")} size="sm" variant={tab === "rules" ? "primary" : "secondary"}>Regeln</Button>
+        <Button onClick={() => setTab("backup")} size="sm" variant={tab === "backup" ? "primary" : "secondary"}>Backup</Button>
       </div>
 
       {loading ? <Skeleton className="h-96 w-full" /> : null}
@@ -384,6 +468,19 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
           ruleDraft={ruleDraft}
           rules={rules}
           saving={saving}
+        />
+      ) : null}
+      {!loading && tab === "backup" ? (
+        <BackupSettings
+          backupFile={backupFile}
+          confirmation={restoreConfirmation}
+          onConfirmationChange={setRestoreConfirmation}
+          onDownload={downloadBackup}
+          onFileChange={changeBackupFile}
+          onRestore={restoreBackup}
+          onValidate={validateBackup}
+          saving={saving}
+          validation={backupValidation}
         />
       ) : null}
     </div>
@@ -531,6 +628,159 @@ function GeneralSettings({
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function BackupSettings({
+  backupFile,
+  confirmation,
+  onConfirmationChange,
+  onDownload,
+  onFileChange,
+  onRestore,
+  onValidate,
+  saving,
+  validation
+}: {
+  backupFile: File | null;
+  confirmation: string;
+  onConfirmationChange: (value: string) => void;
+  onDownload: () => void;
+  onFileChange: (file: File | null) => void;
+  onRestore: () => void;
+  onValidate: () => void;
+  saving: boolean;
+  validation: BackupValidationReportDTO | null;
+}) {
+  const restoreAllowed = Boolean(backupFile && validation?.valid && confirmation === RESTORE_CONFIRMATION);
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <Card>
+        <CardHeader>
+          <CardTitle>Backup erstellen</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
+            <p>
+              Erstellt eine ZIP-Datei mit Kategorien, Regeln, Bons, Positionen, KI-Logs, Sync-Logs und
+              Anwendungseinstellungen.
+            </p>
+            <p>
+              API-Schluessel werden nicht exportiert. Paperless- und OpenRouter-Schluessel muessen nach einem Restore
+              neu gesetzt werden.
+            </p>
+          </div>
+          <Button disabled={saving} onClick={onDownload}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Backup herunterladen
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Restore</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+            Restore ersetzt die aktuelle Anwendungsdatenbank vollständig mit dem Inhalt der Backup-Datei. Währenddessen
+            sind Schreibzugriffe gesperrt.
+          </div>
+          <Field label="Backup-ZIP">
+            <Input
+              accept=".zip,application/zip"
+              onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+              type="file"
+            />
+          </Field>
+          {backupFile ? (
+            <div className="text-xs text-zinc-500 dark:text-zinc-400">
+              Ausgewählt: {backupFile.name} ({Math.round(backupFile.size / 1024)} KB)
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={saving || !backupFile} onClick={onValidate} size="sm" variant="secondary">
+              <FileCheck2 className="h-4 w-4" />
+              Dry-Run prüfen
+            </Button>
+          </div>
+          <Field label="Restore-Bestätigung">
+            <Input
+              onChange={(event) => onConfirmationChange(event.target.value)}
+              placeholder={RESTORE_CONFIRMATION}
+              value={confirmation}
+            />
+          </Field>
+          <Button disabled={saving || !restoreAllowed} onClick={onRestore} variant="danger">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            Backup wiederherstellen
+          </Button>
+          {!validation?.valid && backupFile ? (
+            <div className="text-xs text-zinc-500 dark:text-zinc-400">
+              Restore wird erst nach erfolgreichem Dry-Run und exakter Bestätigung freigeschaltet.
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {validation ? (
+        <Card className="xl:col-span-2">
+          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <CardTitle>Dry-Run Ergebnis</CardTitle>
+            {validation.valid ? <Badge tone="green">Valide</Badge> : <Badge tone="red">Fehlerhaft</Badge>}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="text-sm text-zinc-600 dark:text-zinc-300">
+              Manifest-Version: {validation.manifestVersion ?? "unbekannt"}
+            </div>
+            {validation.errors.length ? (
+              <ValidationMessageList tone="red" title="Fehler" values={validation.errors} />
+            ) : null}
+            {validation.warnings.length ? (
+              <ValidationMessageList tone="amber" title="Warnungen" values={validation.warnings} />
+            ) : null}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px] text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-100 text-left text-xs uppercase text-zinc-500 dark:border-zinc-900 dark:text-zinc-400">
+                    <th className="px-3 py-2 font-medium">Bereich</th>
+                    <th className="px-3 py-2 text-right font-medium">Datensätze</th>
+                    <th className="px-3 py-2 text-right font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {validation.tables.map((table) => (
+                    <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-900" key={table.name}>
+                      <td className="px-3 py-2 font-medium">{backupTableLabel(table.name)}</td>
+                      <td className="px-3 py-2 text-right">{table.recordCount}</td>
+                      <td className="px-3 py-2 text-right">
+                        {table.valid ? <Badge tone="green">OK</Badge> : <Badge tone="red">Fehler</Badge>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+function ValidationMessageList({ title, tone, values }: { title: string; tone: "amber" | "red"; values: string[] }) {
+  const className = tone === "red"
+    ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/20 dark:text-red-200"
+    : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/20 dark:text-amber-200";
+
+  return (
+    <div className={`rounded-md border px-3 py-2 text-sm ${className}`}>
+      <div className="font-medium">{title}</div>
+      <ul className="mt-1 list-disc space-y-1 pl-5">
+        {values.map((value) => <li key={value}>{value}</li>)}
+      </ul>
     </div>
   );
 }
@@ -775,6 +1025,32 @@ function normalizeRule(rule: CategorizationRuleRequest): CategorizationRuleReque
     matchValue: rule.matchValue.trim(),
     applyToExisting: Boolean(rule.applyToExisting)
   };
+}
+
+function backupTableLabel(name: string): string {
+  const labels: Record<string, string> = {
+    ai_categorization_log: "KI-Kategorisierung",
+    app_settings: "Einstellungen",
+    categories: "Kategorien",
+    categorization_rules: "Kategorisierungsregeln",
+    parse_rules: "Parser-Regeln",
+    receipt_items: "Bon-Positionen",
+    receipts: "Bons",
+    sync_log: "Sync-Protokolle",
+    sync_log_entry: "Sync-Protokolldetails"
+  };
+  return labels[name] ?? name;
+}
+
+function saveBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 function matchFieldLabel(value: RuleMatchField): string {

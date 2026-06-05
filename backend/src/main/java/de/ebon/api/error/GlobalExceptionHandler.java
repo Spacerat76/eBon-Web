@@ -1,5 +1,6 @@
 package de.ebon.api.error;
 
+import de.ebon.backup.BackupRestoreLockedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.validation.ConstraintViolationException;
@@ -67,6 +68,13 @@ public class GlobalExceptionHandler {
             DataIntegrityViolationException exception,
             HttpServletRequest request) {
         return build(HttpStatus.CONFLICT, "Datenkonflikt beim Speichern.", request);
+    }
+
+    @ExceptionHandler(BackupRestoreLockedException.class)
+    public ResponseEntity<ApiError> handleBackupRestoreLock(
+            BackupRestoreLockedException exception,
+            HttpServletRequest request) {
+        return build(HttpStatus.LOCKED, exception.getMessage(), request);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

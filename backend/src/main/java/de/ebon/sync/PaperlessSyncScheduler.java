@@ -24,6 +24,8 @@ class PaperlessSyncScheduler {
     void runScheduledSync() {
         try {
             syncService.synchronize();
+        } catch (de.ebon.backup.BackupRestoreLockedException exception) {
+            LOGGER.info("Scheduled Paperless sync skipped because backup/restore is active.");
         } catch (SyncAlreadyRunningException exception) {
             LOGGER.info("Scheduled Paperless sync skipped because another sync is already running.");
         }

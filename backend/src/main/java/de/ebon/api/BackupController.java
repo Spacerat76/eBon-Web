@@ -1,42 +1,54 @@
 package de.ebon.api;
 
+import de.ebon.api.dto.BackupRestoreResultDto;
+import de.ebon.api.dto.BackupValidationReportDto;
+import de.ebon.api.service.BackupService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import org.springframework.http.HttpStatus;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @Tag(name = "Backup & Restore")
 @SecurityRequirement(name = "bearerAuth")
 public class BackupController {
 
-    @GetMapping("/api/backup/download")
-    @Operation(summary = "Backup-ZIP herunterladen (Phase 9)")
-    public void downloadBackup() {
-        throw notImplemented();
+    private final BackupService backupService;
+
+    public BackupController(BackupService backupService) {
+        this.backupService = backupService;
     }
 
-    @PostMapping("/api/backup/restore")
-    @Operation(summary = "Backup wiederherstellen (Phase 9)")
-    public void restoreBackup(@RequestParam("file") MultipartFile file) {
-        throw notImplemented();
+    @GetMapping(value = "/api/backup/download", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    @Operation(summary = "Backup-ZIP herunterladen")
+    public ResponseEntity<byte[]> downloadBackup() {
+        BackupService.BackupFile backupFile = backupService.createBackup();
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+                        .filename(backupFile.filename())
+                        .build()
+                        .toString())
+                .body(backupFile.content());
     }
 
-    @PostMapping("/api/backup/validate")
-    @Operation(summary = "Backup-ZIP dry-run validieren (Phase 9)")
-    public void validateBackup(@RequestParam("file") MultipartFile file) {
-        throw notImplemented();
+    @PostMapping(value = "/api/backup/restore", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Backup wiederherstellen")
+    public BackupRestoreResultDto restoreBackup(@RequestParam("file") MultipartFile file) {
+        return backupService.restore(file);
     }
 
-    private ResponseStatusException notImplemented() {
-        return new ResponseStatusException(
-                HttpStatus.NOT_IMPLEMENTED,
-                "Backup und Restore werden in Phase 9 implementiert.");
+    @PostMapping(value = "/api/backup/validate", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @Operation(summary = "Backup-ZIP dry-run validieren")
+    public BackupValidationReportDto validateBackup(@RequestParam("file") MultipartFile file) {
+        return backupService.validate(file);
     }
 }

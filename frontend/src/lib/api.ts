@@ -1,5 +1,7 @@
 import type {
   ApiErrorResponse,
+  BackupRestoreResultDTO,
+  BackupValidationReportDTO,
   BonusReportDTO,
   CategorizationRuleApplyResponse,
   CategorizationRuleDTO,
@@ -31,6 +33,11 @@ import type {
   SyncStatusDTO,
   TopItemReportDTO
 } from "@/lib/types";
+
+export interface DownloadedFile {
+  blob: Blob;
+  filename: string;
+}
 
 export class ApiClientError extends Error {
   readonly status: number;
@@ -262,6 +269,18 @@ export class ApiClient {
     });
   }
 
+  downloadBackup(): Promise<DownloadedFile> {
+    return this.downloadWithFilename("/backup/download", "ebon-backup.zip");
+  }
+
+  validateBackup(file: File): Promise<BackupValidationReportDTO> {
+    return this.uploadFile("/backup/validate", file);
+  }
+
+  restoreBackup(file: File): Promise<BackupRestoreResultDTO> {
+    return this.uploadFile("/backup/restore", file);
+  }
+
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     const token = this.tokenProvider();
@@ -306,6 +325,50 @@ export class ApiClient {
 
     return response.blob();
   }
+
+  private async downloadWithFilename(path: string, fallbackFilename: string): Promise<DownloadedFile> {
+    const headers = new Headers();
+    const token = this.tokenProvider();
+
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+
+    const response = await fetch(`/api${path}`, { headers });
+
+    if (!response.ok) {
+      throw await toClientError(response);
+    }
+
+    return {
+      blob: await response.blob(),
+      filename: filenameFromContentDisposition(response.headers.get("content-disposition"), fallbackFilename)
+    };
+  }
+
+  private async uploadFile<T>(path: string, file: File): Promise<T> {
+    const headers = new Headers();
+    const token = this.tokenProvider();
+
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+
+    const body = new FormData();
+    body.set("file", file);
+
+    const response = await fetch(`/api${path}`, {
+      method: "POST",
+      headers,
+      body
+    });
+
+    if (!response.ok) {
+      throw await toClientError(response);
+    }
+
+    return response.json() as Promise<T>;
+  }
 }
 
 function reportQuery(params: ReportFilters): string {
@@ -338,4 +401,16 @@ async function toClientError(response: Response): Promise<ApiClientError> {
   } catch {
     return new ApiClientError(fallbackMessage, response.status, null);
   }
+}
+
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  if (!header) {
+    return fallback;
+  }
+  const quoted = /filename="([^"]+)"/i.exec(header);
+  if (quoted?.[1]) {
+    return quoted[1];
+  }
+  const plain = /filename=([^;]+)/i.exec(header);
+  return plain?.[1]?.trim() || fallback;
 }

@@ -1,5 +1,7 @@
 package de.ebon.sync;
 
+import de.ebon.backup.BackupRestoreLockedException;
+import de.ebon.backup.BackupRestoreLock;
 import de.ebon.persistence.repository.SyncLogRepository;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
@@ -17,14 +19,17 @@ public class PaperlessSyncService {
     private final PaperlessSyncRunner syncRunner;
     private final SyncLogRepository syncLogRepository;
     private final TaskExecutor syncTaskExecutor;
+    private final BackupRestoreLock backupRestoreLock;
 
     public PaperlessSyncService(
             PaperlessSyncRunner syncRunner,
             SyncLogRepository syncLogRepository,
-            @Qualifier("syncTaskExecutor") TaskExecutor syncTaskExecutor) {
+            @Qualifier("syncTaskExecutor") TaskExecutor syncTaskExecutor,
+            BackupRestoreLock backupRestoreLock) {
         this.syncRunner = syncRunner;
         this.syncLogRepository = syncLogRepository;
         this.syncTaskExecutor = syncTaskExecutor;
+        this.backupRestoreLock = backupRestoreLock;
     }
 
     public void triggerAsync() {
@@ -54,6 +59,9 @@ public class PaperlessSyncService {
     }
 
     private void acquireLock() {
+        if (backupRestoreLock.isLocked()) {
+            throw new BackupRestoreLockedException("Backup/Restore laeuft; Sync ist voruebergehend gesperrt.");
+        }
         if (!syncing.compareAndSet(false, true)) {
             throw new SyncAlreadyRunningException();
         }

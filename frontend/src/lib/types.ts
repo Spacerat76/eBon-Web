@@ -267,6 +267,25 @@ export interface DataMaintenanceResultDTO {
   deletedSyncLogs: number;
 }
 
+export interface BackupTableValidationDTO {
+  name: string;
+  recordCount: number;
+  valid: boolean;
+}
+
+export interface BackupValidationReportDTO {
+  valid: boolean;
+  manifestVersion: string | null;
+  tables: BackupTableValidationDTO[];
+  warnings: string[];
+  errors: string[];
+}
+
+export interface BackupRestoreResultDTO {
+  message: string;
+  validation: BackupValidationReportDTO;
+}
+
 export interface MessageResponse {
   message: string;
 }
