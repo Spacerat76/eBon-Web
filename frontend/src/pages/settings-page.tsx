@@ -526,34 +526,68 @@ function GeneralSettings({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Paperless-NGX URL">
+            <Field
+              help="Backend-Adresse für Paperless-API-Aufrufe. Im Docker-Netz kann das z. B. http://paperless:8001 sein; im lokalen Netzwerk auch eine IP-Adresse."
+              label="Paperless-NGX URL"
+            >
               <Input onChange={(event) => onSettingsChange({ ...settings, paperlessBaseUrl: event.target.value })} value={settings.paperlessBaseUrl ?? ""} />
             </Field>
-            <Field label="Paperless API-Token">
+            <Field
+              help="Token für die Paperless-API. Wird nur an das Backend gesendet und in der UI maskiert angezeigt."
+              label="Paperless API-Token"
+            >
               <Input onChange={(event) => onSettingsChange({ ...settings, paperlessApiToken: event.target.value })} type="password" value={settings.paperlessApiToken ?? ""} />
             </Field>
-            <Field label="Paperless Web-URL">
+            <Field
+              help="Browser-Adresse für Links aus eBon zu Paperless-Dokumenten. Diese URL muss von deinem Browser erreichbar sein."
+              label="Paperless Web-URL"
+            >
               <Input onChange={(event) => onSettingsChange({ ...settings, paperlessPublicBaseUrl: event.target.value })} value={settings.paperlessPublicBaseUrl ?? ""} />
             </Field>
-            <Field label="Dokument-URL-Vorlage">
-              <Input onChange={(event) => onSettingsChange({ ...settings, paperlessDocumentUrlTemplate: event.target.value })} value={settings.paperlessDocumentUrlTemplate ?? ""} />
+            <Field
+              help="Optional. Überschreibt den automatisch erzeugten Paperless-Link. Nutze {paperlessDocumentId} als Platzhalter, z. B. http://paperless.local/documents/{paperlessDocumentId}/details."
+              label="Dokument-URL-Vorlage"
+            >
+              <Input
+                onChange={(event) => onSettingsChange({ ...settings, paperlessDocumentUrlTemplate: event.target.value })}
+                placeholder="http://paperless.local/documents/{paperlessDocumentId}/details"
+                value={settings.paperlessDocumentUrlTemplate ?? ""}
+              />
             </Field>
-            <Field label="eBon Tag">
+            <Field
+              help="Nur Paperless-Dokumente mit diesem Tag werden synchronisiert. Der Tag-Name muss exakt zu Paperless passen."
+              label="eBon Tag"
+            >
               <Input onChange={(event) => onSettingsChange({ ...settings, paperlessEbonTag: event.target.value })} value={settings.paperlessEbonTag ?? ""} />
             </Field>
-            <Field label="OpenRouter API-Key">
+            <Field
+              help="Optionaler Schlüssel für KI-Funktionen. Ohne Schlüssel bleiben KI-Parsing und KI-Kategorisierung deaktiviert."
+              label="OpenRouter API-Key"
+            >
               <Input onChange={(event) => onSettingsChange({ ...settings, openRouterApiKey: event.target.value })} type="password" value={settings.openRouterApiKey ?? ""} />
             </Field>
-            <Field label="OpenRouter URL">
+            <Field
+              help="Basis-URL des KI-Anbieters. Normalerweise kann der Standardwert verwendet werden."
+              label="OpenRouter URL"
+            >
               <Input onChange={(event) => onSettingsChange({ ...settings, openRouterBaseUrl: event.target.value })} value={settings.openRouterBaseUrl ?? ""} />
             </Field>
-            <Field label="OpenRouter Modell">
+            <Field
+              help="Modellname für KI-Parsing und KI-Kategorisierung. Änderungen wirken auf zukünftige KI-Aufrufe."
+              label="OpenRouter Modell"
+            >
               <Input onChange={(event) => onSettingsChange({ ...settings, openRouterModel: event.target.value })} value={settings.openRouterModel ?? ""} />
             </Field>
-            <Field label="Sync-Intervall Minuten">
+            <Field
+              help="Abstand für automatische Paperless-Syncs. Manuelle Syncs sind davon unabhängig."
+              label="Sync-Intervall Minuten"
+            >
               <Input onChange={(event) => onSettingsChange({ ...settings, syncIntervalMinutes: Number(event.target.value) })} min={1} type="number" value={settings.syncIntervalMinutes ?? 60} />
             </Field>
-            <Field label="Währung">
+            <Field
+              help="Standardwährung für Anzeige und neue manuelle Werte, z. B. EUR."
+              label="Währung"
+            >
               <Input maxLength={3} onChange={(event) => onSettingsChange({ ...settings, currency: event.target.value.toUpperCase() })} value={settings.currency ?? "EUR"} />
             </Field>
           </div>
@@ -562,7 +596,7 @@ function GeneralSettings({
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <div className="text-sm font-medium">KI-Konfidenz: {Math.round(confidence * 1000) / 10} %</div>
-                <div className="text-xs text-zinc-500 dark:text-zinc-400">Niedriger automatisiert mehr, höher lässt mehr Positionen ohne Kategorie offen.</div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">Niedriger automatisiert mehr, höher lässt mehr Positionen ohne Kategorie offen. Abgelehnte KI-Vorschläge bleiben in der UI sichtbar.</div>
               </div>
               <Input className="md:w-32" max={1} min={0} onChange={(event) => onSettingsChange({ ...settings, aiCategorizationMinConfidence: Number(event.target.value) })} step={0.001} type="number" value={confidence} />
             </div>
@@ -688,7 +722,10 @@ function BackupSettings({
             Restore ersetzt die aktuelle Anwendungsdatenbank vollständig mit dem Inhalt der Backup-Datei. Währenddessen
             sind Schreibzugriffe gesperrt.
           </div>
-          <Field label="Backup-ZIP">
+          <Field
+            help="ZIP-Datei aus einem eBon-Backup. Vor dem Restore zuerst den Dry-Run ausführen; dabei wird die Datenbank nicht verändert."
+            label="Backup-ZIP"
+          >
             <Input
               accept=".zip,application/zip"
               onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
@@ -706,7 +743,10 @@ function BackupSettings({
               Dry-Run prüfen
             </Button>
           </div>
-          <Field label="Restore-Bestätigung">
+          <Field
+            help="Restore ersetzt alle aktuellen Anwendungsdaten durch das Backup. Gib den Bestätigungstext exakt ein, um den Button freizuschalten."
+            label="Restore-Bestätigung"
+          >
             <Input
               onChange={(event) => onConfirmationChange(event.target.value)}
               placeholder={RESTORE_CONFIRMATION}
@@ -819,16 +859,16 @@ function CategorySettings({
           <CardTitle>{editingCategoryId == null ? "Neue Kategorie" : "Kategorie bearbeiten"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Field label="Name">
+          <Field help="Sichtbarer Kategoriename für Auswertungen, Filter und manuelle Zuordnung." label="Name">
             <Input onChange={(event) => onCategoryDraftChange({ ...categoryDraft, name: event.target.value })} value={categoryDraft.name} />
           </Field>
-          <Field label="Farbe">
+          <Field help="Farbe für Charts und Kategorieanzeige." label="Farbe">
             <Input onChange={(event) => onCategoryDraftChange({ ...categoryDraft, colorHex: event.target.value })} type="color" value={categoryDraft.colorHex ?? "#71717a"} />
           </Field>
-          <Field label="Icon">
+          <Field help="Optionaler Icon-Name für spätere UI-Darstellung." label="Icon">
             <Input onChange={(event) => onCategoryDraftChange({ ...categoryDraft, icon: event.target.value })} value={categoryDraft.icon ?? ""} />
           </Field>
-          <Field label="Sortierung">
+          <Field help="Kleinere Werte erscheinen weiter oben." label="Sortierung">
             <Input onChange={(event) => onCategoryDraftChange({ ...categoryDraft, sortOrder: Number(event.target.value) })} type="number" value={categoryDraft.sortOrder ?? 0} />
           </Field>
           <label className="flex items-center gap-2 text-sm">
@@ -919,7 +959,7 @@ function RuleSettings({
           <CardTitle>{editingRuleId == null ? "Neue Regel" : "Regel bearbeiten"}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Field label="Zielkategorie">
+          <Field help="Kategorie, die passende Positionen durch diese Regel erhalten." label="Zielkategorie">
             <select className={selectClassName} onChange={(event) => onRuleDraftChange({ ...ruleDraft, categoryId: Number(event.target.value) })} value={ruleDraft.categoryId || categories[0]?.id || 0}>
               {categories.map((category) => (
                 <option key={category.id} value={category.id}>{category.name}</option>
@@ -927,13 +967,13 @@ function RuleSettings({
             </select>
           </Field>
           <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Match-Feld">
+            <Field help="Position prüft den Artikeltext, Geschäft prüft den Laden-Namen." label="Match-Feld">
               <select className={selectClassName} onChange={(event) => onRuleDraftChange({ ...ruleDraft, matchField: event.target.value as RuleMatchField })} value={ruleDraft.matchField}>
                 <option value="DESCRIPTION">Position</option>
                 <option value="STORE_NAME">Geschäft</option>
               </select>
             </Field>
-            <Field label="Match-Typ">
+            <Field help="Exakt ist am strengsten, Regex erlaubt Muster für komplexe Fälle." label="Match-Typ">
               <select className={selectClassName} onChange={(event) => onRuleDraftChange({ ...ruleDraft, matchType: event.target.value as RuleMatchType })} value={ruleDraft.matchType}>
                 <option value="CONTAINS">Enthält</option>
                 <option value="STARTS_WITH">Beginnt mit</option>
@@ -943,10 +983,10 @@ function RuleSettings({
               </select>
             </Field>
           </div>
-          <Field label="Match-Wert">
+          <Field help="Suchtext oder Regex. Regeln sollten so präzise sein, dass sie keine falschen Produkte treffen." label="Match-Wert">
             <Input onChange={(event) => onRuleDraftChange({ ...ruleDraft, matchValue: event.target.value })} value={ruleDraft.matchValue} />
           </Field>
-          <Field label="Priorität">
+          <Field help="Niedrigste Priorität gewinnt. Spezifische Regeln sollten kleinere Werte haben als breite Fallback-Regeln." label="Priorität">
             <Input onChange={(event) => onRuleDraftChange({ ...ruleDraft, priority: Number(event.target.value) })} type="number" value={ruleDraft.priority ?? 100} />
           </Field>
           <label className="flex items-center gap-2 text-sm">
@@ -1067,11 +1107,12 @@ function matchTypeLabel(value: RuleMatchType): string {
   }[value];
 }
 
-function Field({ children, label }: { children: ReactNode; label: string }) {
+function Field({ children, help, label }: { children: ReactNode; help?: string; label: string }) {
   return (
     <label className="block text-sm">
       <span className="mb-1 block text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">{label}</span>
       {children}
+      {help ? <span className="mt-1 block text-xs leading-5 text-zinc-500 dark:text-zinc-400">{help}</span> : null}
     </label>
   );
 }

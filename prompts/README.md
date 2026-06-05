@@ -25,6 +25,6 @@ Dieser Ordner enthaelt vorbereitete Prompts, um das Projekt Schritt fuer Schritt
 10. `phase-10-search-reports-settings.md`
 11. `phase-11-backup-restore.md`
 12. `phase-12-real-integration-hardening.md`
+13. `phase-13-ci-e2e-operations.md`
 
 Bei limitiertem KI-Kontingent: Nach jeder Phase stoppen, selbst pruefen, dann erst weiter.
-

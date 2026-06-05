@@ -48,6 +48,7 @@ Follow the phases in `ebon-specification.md` section 16:
 10. Search, reports, settings, category/rule management, CSV export, and frontend secret handling.
 11. Backup/restore with dry-run, transactional restore, write lock, restore runbook, and backup UI.
 12. Real integration, Docker full-system verification, logging, secret masking, README, smoke test, and final hardening.
+13. CI, Selenium E2E smoke tests, rolling scheduled backups, category icons, and software versioning.
 
 ## Domain-Specific Guardrails
 
@@ -62,6 +63,8 @@ Follow the phases in `ebon-specification.md` section 16:
 - Data-maintenance reset operations must be explicit, transactional, and limited to imported receipt data and related detail/log data; categories, categorization rules, settings, backups, and Flyway history must remain intact.
 - Category deletion is physical only when unreferenced; otherwise deactivate.
 - Secrets returned through settings or backup must be masked or marked for reconfiguration.
+- Rolling automatic backups must use the same secret masking as manual backups and must not delete manually downloaded backups.
+- CI and E2E tests must run without real Paperless-NGX/OpenRouter tokens or private receipt data.
 
 ## Project Skills
 

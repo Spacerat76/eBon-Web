@@ -623,6 +623,29 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 - **F-17.2:** Bei Entfernung eines Dokuments wegen `TAG_REMOVED` wird ein dedizierter Log-Eintrag erstellt (Grund `TAG_REMOVED`, paperless_document_id, vorherige Receipt-ID, Zeitstempel).
 - **F-17.3:** Der Sync-Log ist über `GET /api/sync/log` (paginiert) abrufbar.
 
+### F-18: CI, E2E, Rollierende Backups, Icons & Versionierung
+
+- **F-18.1:** Das Repository enthält eine GitHub-Actions-CI-Pipeline für Pull Requests und Pushes auf den Hauptbranch.
+- **F-18.2:** Die CI führt mindestens aus:
+  - `cd backend && mvn verify`
+  - `cd frontend && npm ci`
+  - `cd frontend && npm run build`
+  - `docker compose config`
+- **F-18.3:** CI-Tests dürfen keine echten Paperless-NGX- oder OpenRouter.ai-Calls ausführen und dürfen keine echten Secrets benötigen.
+- **F-18.4:** Es existiert mindestens ein Selenium-basierter Frontend-Smoke-Test für zentrale UI-Flows:
+  - App startet und Dashboard/Navigation rendert.
+  - Einstellungen-Seite ist erreichbar.
+  - Backup-Tab zeigt Download/Dry-Run/Restore-Bedienelemente.
+  - Receipt- oder Suchseite rendert mit Testdaten oder Mockdaten.
+- **F-18.5:** Automatische rollierende Backups können zeitgesteuert aktiviert werden. Standardmäßig sind sie lokal deaktiviert oder sicher konfiguriert, damit keine unerwarteten Dateien entstehen.
+- **F-18.6:** Rollierende Backups verwenden dasselbe Secret-Masking und dasselbe ZIP-Format wie manuelle Backups.
+- **F-18.7:** Für rollierende Backups sind konfigurierbar: Zielverzeichnis/Volume, Intervall oder Cron-Ausdruck, maximale Anzahl aufzubewahrender Backups und Aktivierungsflag.
+- **F-18.8:** Alte automatische Backups werden nach Retention-Regel gelöscht. Manuell heruntergeladene Backups werden nicht durch die Retention gelöscht.
+- **F-18.9:** Kategorie-Icons werden in der UI auswählbar und in relevanten Ansichten angezeigt, ohne die bestehende Kategorie-Farbkodierung zu ersetzen.
+- **F-18.10:** Kategorie-Icons werden gegen eine feste erlaubte Icon-Liste validiert, damit keine beliebigen Icon-Namen oder HTML/SVG-Fragmente persistiert werden.
+- **F-18.11:** Die Anwendung zeigt eine konsistente Software-Version in UI und Backend an.
+- **F-18.12:** Die Versionsinformation wird zentral aus Build-/Projektmetadaten abgeleitet und in Backup-Manifest, OpenAPI-Info, UI-Footer oder Settings-Bereich sowie optional Docker-Labels verwendet.
+
 ---
 
 ## 7. Use Cases
@@ -1589,6 +1612,10 @@ Secret-Werte in `app_settings.json` werden nicht im Klartext exportiert. Für Se
 
 Das Restore-Backend prüft `manifest.version`. Nur Backups mit kompatibler Version (aktuell: `"1"`) werden akzeptiert. Bei inkompatiblen Versionen: `422 Unprocessable Entity` mit erklärender Fehlermeldung.
 
+### 12.4 Rollierende automatische Backups
+
+Automatische Backups sind eine optionale Phase-13-Erweiterung. Sie verwenden dasselbe Backup-ZIP-Format wie manuelle Backups und exportieren Secrets niemals im Klartext. Die Funktion ist konfigurierbar über Aktivierungsflag, Intervall oder Cron-Ausdruck, Zielverzeichnis/Volume und Retention-Anzahl. Die Retention löscht ausschließlich automatisch erzeugte Backups im konfigurierten Zielverzeichnis und niemals manuell heruntergeladene Backup-Dateien.
+
 ---
 
 ## 13. Fehlerbehandlung & Logging
@@ -1649,7 +1676,11 @@ Ein `@ControllerAdvice` fängt alle Exceptions ab und gibt strukturierte Fehlero
 | Mehrere Paperless-Instanzen | Nicht im Scope. Genau eine Paperless-NGX-Instanz wird unterstützt. |
 | HTTPS/TLS im Container | Nicht im Scope. TLS-Terminierung obliegt einem vorgelagerten Reverse Proxy. |
 | Automatische Kategorisierungsregel-Generierung per KI | Nicht im Scope. KI darf Kategorien vorschlagen; `categorization_rule`-Einträge werden nur durch Nutzerbestätigung angelegt. Automatische `parse_rule`-Adaptation für Bon-Parsing ist hingegen eingeschlossen. |
-| CI/CD-Pipeline | Nicht im Scope dieser Spezifikation. Test-Suite wird über `mvn verify` ausgeführt. |
+| CI/CD-Pipeline | Eingeschlossen in Phase 13: GitHub Actions für Backend, Frontend, Docker-Konfiguration und E2E-Smoke-Tests. |
+| Browser-E2E-Tests | Eingeschlossen in Phase 13: Selenium-basierte Smoke-Tests für zentrale UI-Flows. |
+| Automatische Backups | Eingeschlossen in Phase 13: zeitgesteuerte rollierende lokale Backups mit Retention. |
+| Kategorie-Icons | Eingeschlossen in Phase 13: Auswahl, Anzeige und konsistente Persistenz vorhandener Kategorie-Icons. |
+| Release-/Software-Versionierung | Eingeschlossen in Phase 13: zentrale Versionsanzeige und konsistente Build-/Backup-/UI-Version. |
 
 ---
 
@@ -1670,6 +1701,8 @@ Diese Spezifikation ist so umzusetzen, dass ein KI-Agent das Projekt schrittweis
 │   └── src/
 ├── docs/
 │   └── restore-runbook.md
+├── .github/
+│   └── workflows/
 ├── docker-compose.yml
 ├── .env.example
 └── README.md
@@ -1693,6 +1726,7 @@ Die Frontend-, Backup- und Hardening-Arbeiten sind bewusst feiner aufgeteilt als
 | 10 | Suche, Reports, Einstellungen, Kategorien-/Regelverwaltung, CSV-Export und Frontend-Secret-Handling | `npm run build`, relevante Such-/Report-/Settings-Flows geprüft |
 | 11 | Backup/Restore, Dry-Run, transaktionaler Restore, Schreibsperre, Restore-Runbook und Backup-UI | `mvn verify`, `npm run build`, Restore-Dry-Run-Test, transaktionaler Restore-Test |
 | 12 | Echte Integration, Docker-Gesamtsystem, Logging, Secret-Masking, README, Smoke-Test und finale Verifikation | `docker compose up --build`, Smoke-Test |
+| 13 | CI, Selenium-E2E-Smoke-Tests, rollierende Backups, Kategorie-Icons und Software-Versionierung | GitHub-Actions-Workflow definiert, E2E-Smoke-Test lauffähig, `mvn verify`, `npm run build`, `docker compose config` |
 
 ### 16.3 Agenten-Regeln
 
@@ -1774,3 +1808,12 @@ Jede `expected.json` folgt dem KI-Parsing-JSON-Schema aus F-02. Bei negativen Te
 - Given ein valides Backup, when Dry-Run ausgeführt wird, then werden keine Daten verändert.
 - Given ein inkompatibles Manifest, when Restore ausgeführt wird, then antwortet die API mit `422`.
 - Given ein Fehler während Restore-Import, then wird die gesamte Transaktion zurückgerollt.
+
+**CI/E2E/Operationalisierung:**
+
+- Given ein Pull Request, when GitHub Actions läuft, then werden Backend-Tests, Frontend-Build und Docker-Compose-Konfiguration ohne echte Secrets geprüft.
+- Given die Frontend-Smoke-Tests laufen, then werden zentrale Navigations- und Settings-Flows per Selenium geprüft.
+- Given rollierende Backups sind aktiviert, when der geplante Zeitpunkt erreicht ist, then entsteht ein maskiertes Backup im konfigurierten Zielverzeichnis.
+- Given mehr automatische Backups als erlaubt existieren, when Retention ausgeführt wird, then werden nur alte automatische Backups gelöscht.
+- Given eine Kategorie bearbeitet wird, then kann ein Icon aus einer erlaubten Liste gewählt und später in Listen/Reports angezeigt werden.
+- Given die Anwendung läuft, then ist die Software-Version in UI und Backend konsistent sichtbar.
