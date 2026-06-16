@@ -6,6 +6,7 @@ import de.ebon.backup.BackupRestoreLock;
 import de.ebon.backup.BackupRestoreLockedException;
 import de.ebon.backup.BackupRestoreWriteGuardFilter;
 import de.ebon.support.PostgresIntegrationTestSupport;
+import de.ebon.system.VersionService;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
@@ -51,6 +52,9 @@ class BackupServiceTests extends PostgresIntegrationTestSupport {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private VersionService versionService;
+
     private byte[] baselineBackup;
 
     @BeforeEach
@@ -83,6 +87,21 @@ class BackupServiceTests extends PostgresIntegrationTestSupport {
         assertThat(validation.tables())
                 .anySatisfy(table -> assertThat(table.name()).isEqualTo("categories"));
         assertThat(countRows("category")).isEqualTo(categoriesBefore);
+    }
+
+    // Verifies automatic backups use the same ZIP content and secret masking while getting an auto-specific filename.
+    @Test
+    void createAutomaticBackupUsesSameMaskedManifestFormat() throws Exception {
+        upsertSetting(TOKEN_KEY, "plain-paperless-secret");
+
+        BackupService.BackupFile backupFile = backupService.createAutomaticBackup();
+        String manifestJson = readZipEntry(backupFile.content(), "manifest.json");
+        String settingsJson = readZipEntry(backupFile.content(), "app_settings.json");
+
+        assertThat(backupFile.filename()).startsWith("ebon-backup-auto-").endsWith(".zip");
+        assertThat(manifestJson).contains("\"appVersion\":\"" + versionService.version() + "\"");
+        assertThat(settingsJson).doesNotContain("plain-paperless-secret");
+        assertThat(settingsJson).contains("\"requiresReconfiguration\":true");
     }
 
     // Verifies restore fully replaces mutable application data and requires masked secrets to be configured again.
@@ -165,6 +184,24 @@ class BackupServiceTests extends PostgresIntegrationTestSupport {
         assertThat(validation.errors()).contains("Manifest-Version 999 ist nicht kompatibel.");
     }
 
+    // Verifies backup restore cannot persist arbitrary category icon values outside the backend allowlist.
+    @Test
+    void validateRejectsUnknownCategoryIconValues() throws Exception {
+        byte[] backupContent = backupService.createBackup().content();
+        byte[] invalidIconBackup = replaceZipEntryText(
+                backupContent,
+                "categories.json",
+                "\"icon\":\"shopping-basket\"",
+                "\"icon\":\"<svg/onload=alert(1)>\"");
+
+        BackupValidationReportDto validation = backupService.validate(multipart(invalidIconBackup));
+
+        assertThat(validation.valid()).isFalse();
+        assertThat(validation.errors())
+                .anySatisfy(error -> assertThat(error)
+                        .contains("Kategorie-Icon <svg/onload=alert(1)> ist nicht erlaubt."));
+    }
+
     // Verifies nested backup/restore operations are rejected so two destructive operations cannot overlap.
     @Test
     void backupRestoreLockRejectsNestedOperations() {
@@ -221,7 +258,7 @@ class BackupServiceTests extends PostgresIntegrationTestSupport {
     private Long upsertCategory(String name) {
         return jdbcTemplate.queryForObject("""
                 insert into category (name, color_hex, icon, is_active, sort_order)
-                values (?, '#123456', 'test', true, 999)
+                values (?, '#123456', 'tag', true, 999)
                 on conflict (name) do update set color_hex = excluded.color_hex
                 returning id
                 """, Long.class, name);

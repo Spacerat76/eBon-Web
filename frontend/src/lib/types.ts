@@ -105,6 +105,16 @@ export interface CategoryDTO {
   assignedItemsCount: number;
 }
 
+export interface CategoryIconDTO {
+  value: string;
+  label: string;
+}
+
+export interface SystemInfoDTO {
+  name: string;
+  version: string;
+}
+
 export interface ReportByCategoryDTO {
   categoryId: number | null;
   categoryName: string;

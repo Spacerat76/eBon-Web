@@ -1,4 +1,4 @@
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { Cell, Pie, PieChart, Tooltip } from "recharts";
 
 import { formatCurrency } from "@/lib/format";
 import type { ReportByCategoryDTO } from "@/lib/types";
@@ -10,8 +10,8 @@ interface CategoryChartProps {
 
 export function CategoryChart({ colors, data }: CategoryChartProps) {
   return (
-    <ResponsiveContainer height="100%" width="100%">
-      <PieChart>
+    <div className="flex h-full min-h-64 w-full items-center justify-center overflow-hidden">
+      <PieChart height={256} width={260}>
         <Pie
           data={data}
           dataKey="total"
@@ -26,6 +26,6 @@ export function CategoryChart({ colors, data }: CategoryChartProps) {
         </Pie>
         <Tooltip formatter={(value) => formatCurrency(Number(value))} />
       </PieChart>
-    </ResponsiveContainer>
+    </div>
   );
 }

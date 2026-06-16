@@ -41,10 +41,16 @@ services:
       SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-60}
       SYNC_SCHEDULER_ENABLED: ${SYNC_SCHEDULER_ENABLED:-true}
       SYNC_INITIAL_DELAY_MS: ${SYNC_INITIAL_DELAY_MS:-3600000}
+      ROLLING_BACKUP_ENABLED: ${ROLLING_BACKUP_ENABLED:-false}
+      ROLLING_BACKUP_DIRECTORY: ${ROLLING_BACKUP_DIRECTORY:-/var/lib/ebon/backups/automatic}
+      ROLLING_BACKUP_CRON: "${ROLLING_BACKUP_CRON:-0 0 3 * * *}"
+      ROLLING_BACKUP_RETENTION_COUNT: ${ROLLING_BACKUP_RETENTION_COUNT:-7}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       LOG_STRUCTURED_FORMAT: ${LOG_STRUCTURED_FORMAT:-logstash}
     ports:
       - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - automatic_backups:/var/lib/ebon/backups/automatic
     depends_on:
       db:
         condition: service_healthy
@@ -69,3 +75,4 @@ services:
 
 volumes:
   db_data:
+  automatic_backups:

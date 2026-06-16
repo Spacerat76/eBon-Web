@@ -2,6 +2,7 @@ package de.ebon.api.service;
 
 import de.ebon.api.dto.CategoryDto;
 import de.ebon.api.dto.CategoryRequest;
+import de.ebon.categorization.CategoryIconRegistry;
 import de.ebon.categorization.CategoryManagementService;
 import de.ebon.persistence.model.Category;
 import de.ebon.persistence.repository.CategoryRepository;
@@ -14,10 +15,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,8 +44,9 @@ class CategoryApiServiceTests {
         categoryApiService = new CategoryApiService(
                 categoryRepository,
                 receiptItemRepository,
-                categoryManagementService);
-        when(receiptItemRepository.countByCategory_Id(anyLong())).thenReturn(0L);
+                categoryManagementService,
+                new CategoryIconRegistry());
+        lenient().when(receiptItemRepository.countByCategory_Id(anyLong())).thenReturn(0L);
     }
 
     // Verifies the category list contract for normal UI lists and admin views that include inactive categories.
@@ -85,6 +90,21 @@ class CategoryApiServiceTests {
         assertThat(created.isActive()).isFalse();
         assertThat(created.sortOrder()).isEqualTo(42);
         verify(categoryRepository).saveAndFlush(any(Category.class));
+    }
+
+    // Verifies category icons are chosen from the safe fixed list instead of accepting arbitrary HTML/SVG names.
+    @Test
+    void createRejectsUnknownIconValues() {
+        when(categoryRepository.findByNameIgnoreCase("Neue Kategorie")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> categoryApiService.create(new CategoryRequest(
+                "Neue Kategorie",
+                "#123456",
+                "<svg/onload=alert(1)>",
+                42,
+                true)))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("Kategorie-Icon ist nicht erlaubt.");
     }
 
     private Category category(long id, String name, boolean active, int sortOrder) {

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && vite build",
+    "dev:e2e": "cross-env VITE_EBON_MOCK_API=true vite --host 127.0.0.1 --port 5173 --strictPort",
+    "e2e": "node e2e/run-smoke.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
@@ -21,6 +23,10 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "6.0.2",
+    "chromedriver": "^149.0.3",
+    "cross-env": "^10.1.0",
+    "edgedriver": "^6.3.0",
+    "selenium-webdriver": "^4.38.0",
     "typescript": "6.0.3",
     "vite": "8.0.16"
   }

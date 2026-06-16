@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - codex
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Verify Docker for Testcontainers
+        run: docker version
+
+      - name: Maven verify
+        run: mvn verify
+        working-directory: backend
+        env:
+          APP_API_TOKEN: ci_test_token
+          SYNC_SCHEDULER_ENABLED: "false"
+          ROLLING_BACKUP_ENABLED: "false"
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build
+        run: npm run build
+        working-directory: frontend
+
+      - name: Selenium smoke test
+        run: npm run e2e
+        working-directory: frontend
+
+  docker-config:
+    name: Docker Compose Config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate compose config
+        run: docker compose config
+        env:
+          DB_PASSWORD: ci_db_password
+          APP_API_TOKEN: ci_test_token
+          PAPERLESS_API_TOKEN: ci_paperless_placeholder
+          SYNC_SCHEDULER_ENABLED: "false"
+          ROLLING_BACKUP_ENABLED: "false"

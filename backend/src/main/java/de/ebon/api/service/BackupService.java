@@ -4,6 +4,8 @@ import de.ebon.api.dto.BackupRestoreResultDto;
 import de.ebon.api.dto.BackupTableValidationDto;
 import de.ebon.api.dto.BackupValidationReportDto;
 import de.ebon.backup.BackupRestoreLock;
+import de.ebon.categorization.CategoryIconRegistry;
+import de.ebon.system.VersionService;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -36,7 +38,6 @@ import tools.jackson.databind.ObjectMapper;
 public class BackupService {
 
     private static final String MANIFEST_VERSION = "1";
-    private static final String APP_VERSION = "0.1.0-SNAPSHOT";
     private static final Set<String> SECRET_SETTING_KEYS = Set.of("paperless_api_token", "openrouter_api_key");
     private static final TypeReference<Map<String, Object>> MANIFEST_TYPE = new TypeReference<>() {
     };
@@ -45,12 +46,17 @@ public class BackupService {
     private static final DateTimeFormatter FILE_TIMESTAMP_FORMATTER = DateTimeFormatter
             .ofPattern("yyyy-MM-dd_HH-mm")
             .withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter AUTOMATIC_FILE_TIMESTAMP_FORMATTER = DateTimeFormatter
+            .ofPattern("yyyy-MM-dd_HH-mm-ss-SSS")
+            .withZone(ZoneOffset.UTC);
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final BackupRestoreLock backupRestoreLock;
+    private final CategoryIconRegistry categoryIconRegistry;
     private final TransactionTemplate transactionTemplate;
+    private final VersionService versionService;
     private final List<BackupTable> tables = backupTables();
 
     public BackupService(
@@ -58,16 +64,26 @@ public class BackupService {
             ObjectMapper objectMapper,
             Clock clock,
             BackupRestoreLock backupRestoreLock,
-            TransactionTemplate transactionTemplate) {
+            CategoryIconRegistry categoryIconRegistry,
+            TransactionTemplate transactionTemplate,
+            VersionService versionService) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.clock = clock;
         this.backupRestoreLock = backupRestoreLock;
+        this.categoryIconRegistry = categoryIconRegistry;
         this.transactionTemplate = transactionTemplate;
+        this.versionService = versionService;
     }
 
     public BackupFile createBackup() {
-        return backupRestoreLock.runLocked("BACKUP", this::createBackupUnlocked);
+        return backupRestoreLock.runLocked("BACKUP", () -> createBackupUnlocked("ebon-backup-", FILE_TIMESTAMP_FORMATTER));
+    }
+
+    public BackupFile createAutomaticBackup() {
+        return backupRestoreLock.runLocked(
+                "AUTOMATIC_BACKUP",
+                () -> createBackupUnlocked("ebon-backup-auto-", AUTOMATIC_FILE_TIMESTAMP_FORMATTER));
     }
 
     public BackupValidationReportDto validate(MultipartFile file) {
@@ -88,7 +104,7 @@ public class BackupService {
         });
     }
 
-    private BackupFile createBackupUnlocked() {
+    private BackupFile createBackupUnlocked(String filenamePrefix, DateTimeFormatter filenameFormatter) {
         Instant now = clock.instant();
         Map<String, Long> recordCounts = new LinkedHashMap<>();
         byte[] content;
@@ -112,7 +128,7 @@ public class BackupService {
             throw new UncheckedIOException(exception);
         }
 
-        return new BackupFile("ebon-backup-" + FILE_TIMESTAMP_FORMATTER.format(now) + ".zip", content);
+        return new BackupFile(filenamePrefix + filenameFormatter.format(now) + ".zip", content);
     }
 
     private List<Map<String, Object>> exportRows(BackupTable table) {
@@ -145,7 +161,7 @@ public class BackupService {
     private Map<String, Object> manifest(Instant createdAt, Map<String, Long> recordCounts) {
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("version", MANIFEST_VERSION);
-        manifest.put("appVersion", APP_VERSION);
+        manifest.put("appVersion", versionService.version());
         manifest.put("createdAt", createdAt.toString());
         manifest.put("tables", tables.stream().map(BackupTable::logicalName).toList());
         manifest.put("recordCounts", recordCounts);
@@ -196,6 +212,9 @@ public class BackupService {
             }
 
             List<Map<String, Object>> rows = readRows(content, table, errors);
+            if ("categories".equals(table.logicalName())) {
+                validateCategoryIcons(rows, errors);
+            }
             rowsByTable.put(table.logicalName(), rows);
             long actualCount = rows.size();
             Long expectedCount = manifestCounts.get(table.logicalName());
@@ -329,6 +348,20 @@ public class BackupService {
         validateReference(rowsByTable, "sync_log_entry", "receipt_id", receiptIds, true, errors);
     }
 
+    private void validateCategoryIcons(List<Map<String, Object>> rows, List<String> errors) {
+        for (Map<String, Object> row : rows) {
+            Object icon = row.get("icon");
+            if (icon == null || icon.toString().isBlank()) {
+                continue;
+            }
+            try {
+                categoryIconRegistry.normalizeAndValidate(icon.toString());
+            } catch (ResponseStatusException exception) {
+                errors.add("Kategorie-Icon " + icon + " ist nicht erlaubt.");
+            }
+        }
+    }
+
     private Set<String> ids(Map<String, List<Map<String, Object>>> rowsByTable, String logicalName) {
         return rowsByTable.getOrDefault(logicalName, List.of()).stream()
                 .map(row -> row.get("id"))
@@ -426,6 +459,9 @@ public class BackupService {
                 && SECRET_SETTING_KEYS.contains(row.get("key").toString())
                 && Objects.isNull(value)) {
             return "";
+        }
+        if ("categories".equals(table.logicalName()) && "icon".equals(column.name()) && value != null) {
+            return categoryIconRegistry.normalizeAndValidate(value.toString());
         }
         return value;
     }

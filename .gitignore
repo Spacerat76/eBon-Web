@@ -9,3 +9,5 @@ target/
 Thumbs.db
 .idea/
 frontend/.devserver-*.log
+backups/
+*.zip

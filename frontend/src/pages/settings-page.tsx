@@ -8,16 +8,19 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
+import { CategoryIcon } from "@/lib/category-icons";
 import type {
   BackupValidationReportDTO,
   CategorizationRuleDTO,
   CategorizationRuleRequest,
   CategoryDTO,
+  CategoryIconDTO,
   CategoryRequest,
   DataMaintenanceResultDTO,
   RuleMatchField,
   RuleMatchType,
-  SettingsDTO
+  SettingsDTO,
+  SystemInfoDTO
 } from "@/lib/types";
 
 interface SettingsPageProps {
@@ -64,7 +67,9 @@ const emptyRule: CategorizationRuleRequest = {
 export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
   const [tab, setTab] = useState<SettingsTab>("general");
   const [settings, setSettings] = useState<SettingsDTO>(emptySettings);
+  const [systemInfo, setSystemInfo] = useState<SystemInfoDTO | null>(null);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [categoryIcons, setCategoryIcons] = useState<CategoryIconDTO[]>([]);
   const [rules, setRules] = useState<CategorizationRuleDTO[]>([]);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [categoryDraft, setCategoryDraft] = useState<CategoryRequest>(emptyCategory);
@@ -93,14 +98,18 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
     setError(null);
 
     try {
-      const [settingsResponse, categoryResponse, ruleResponse] = await Promise.all([
+      const [settingsResponse, categoryResponse, ruleResponse, iconResponse, systemInfoResponse] = await Promise.all([
         apiClient.settings(),
         apiClient.categories(includeInactive),
-        apiClient.rules()
+        apiClient.rules(),
+        apiClient.categoryIcons(),
+        apiClient.systemInfo()
       ]);
       setSettings(settingsResponse);
       setCategories(categoryResponse);
       setRules(ruleResponse);
+      setCategoryIcons(iconResponse);
+      setSystemInfo(systemInfoResponse);
       if (categoryResponse.length && ruleDraft.categoryId === 0) {
         setRuleDraft((current) => ({ ...current, categoryId: categoryResponse[0].id }));
       }
@@ -428,11 +437,13 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
           resetConfirmation={resetConfirmation}
           saving={saving}
           settings={settings}
+          systemInfo={systemInfo}
         />
       ) : null}
       {!loading && tab === "categories" ? (
         <CategorySettings
           categoryDraft={categoryDraft}
+          categoryIcons={categoryIcons}
           categories={categories}
           editingCategoryId={editingCategoryId}
           includeInactive={includeInactive}
@@ -498,7 +509,8 @@ function GeneralSettings({
   overwriteManualEdits,
   resetConfirmation,
   saving,
-  settings
+  settings,
+  systemInfo
 }: {
   onOverwriteManualEditsChange: (value: boolean) => void;
   onReparseAll: () => void;
@@ -511,6 +523,7 @@ function GeneralSettings({
   resetConfirmation: string;
   saving: boolean;
   settings: SettingsDTO;
+  systemInfo: SystemInfoDTO | null;
 }) {
   const confidence = settings.aiCategorizationMinConfidence ?? 0.9;
 
@@ -525,6 +538,10 @@ function GeneralSettings({
           </Button>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex flex-col gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900/40">
+            <span className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Software-Version</span>
+            <span className="font-medium">{systemInfo?.version ?? "unbekannt"}</span>
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             <Field
               help="Backend-Adresse für Paperless-API-Aufrufe. Im Docker-Netz kann das z. B. http://paperless:8001 sein; im lokalen Netzwerk auch eine IP-Adresse."
@@ -828,6 +845,7 @@ function ValidationMessageList({ title, tone, values }: { title: string; tone: "
 function CategorySettings({
   categories,
   categoryDraft,
+  categoryIcons,
   editingCategoryId,
   includeInactive,
   onCancelEdit,
@@ -841,6 +859,7 @@ function CategorySettings({
 }: {
   categories: CategoryDTO[];
   categoryDraft: CategoryRequest;
+  categoryIcons: CategoryIconDTO[];
   editingCategoryId: number | null;
   includeInactive: boolean;
   onCancelEdit: () => void;
@@ -865,8 +884,17 @@ function CategorySettings({
           <Field help="Farbe für Charts und Kategorieanzeige." label="Farbe">
             <Input onChange={(event) => onCategoryDraftChange({ ...categoryDraft, colorHex: event.target.value })} type="color" value={categoryDraft.colorHex ?? "#71717a"} />
           </Field>
-          <Field help="Optionaler Icon-Name für spätere UI-Darstellung." label="Icon">
-            <Input onChange={(event) => onCategoryDraftChange({ ...categoryDraft, icon: event.target.value })} value={categoryDraft.icon ?? ""} />
+          <Field help="Nur feste, backend-validierte Icons sind auswählbar. Das verhindert beliebige Icon-Namen oder HTML/SVG-Fragmente." label="Icon">
+            <select
+              className={selectClassName}
+              onChange={(event) => onCategoryDraftChange({ ...categoryDraft, icon: event.target.value || null })}
+              value={categoryDraft.icon ?? ""}
+            >
+              <option value="">Kein Icon</option>
+              {categoryIcons.map((icon) => (
+                <option key={icon.value} value={icon.value}>{icon.label}</option>
+              ))}
+            </select>
           </Field>
           <Field help="Kleinere Werte erscheinen weiter oben." label="Sortierung">
             <Input onChange={(event) => onCategoryDraftChange({ ...categoryDraft, sortOrder: Number(event.target.value) })} type="number" value={categoryDraft.sortOrder ?? 0} />
@@ -901,6 +929,9 @@ function CategorySettings({
                   <td className="px-3 py-2">
                     <span className="inline-flex items-center gap-2">
                       <span className="h-3 w-3 rounded-full" style={{ backgroundColor: category.colorHex }} />
+                      <span style={{ color: category.colorHex }}>
+                        <CategoryIcon icon={category.icon} />
+                      </span>
                       <span className="font-medium">{category.name}</span>
                     </span>
                   </td>

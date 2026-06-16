@@ -1,6 +1,7 @@
 package de.ebon.api;
 
 import de.ebon.api.dto.CategoryDto;
+import de.ebon.api.dto.CategoryIconDto;
 import de.ebon.api.dto.PageResponse;
 import de.ebon.api.dto.ReportDto;
 import de.ebon.api.dto.SearchResultDto;
@@ -179,6 +180,18 @@ class ApiControllerWebMvcTests extends PostgresIntegrationTestSupport {
 
         assertThat(response.statusCode()).isEqualTo(200);
         verify(categoryApiService).list(true);
+    }
+
+    // Verifies the frontend can fetch the fixed backend-approved icon list instead of using free text.
+    @Test
+    void categoriesIconsReturnsAllowedIconValues() throws Exception {
+        when(categoryApiService.icons()).thenReturn(List.of(new CategoryIconDto("shopping-basket", "Lebensmittel")));
+
+        HttpResponse<String> response = sendGet("/api/categories/icons");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(response.body()).contains("\"value\":\"shopping-basket\"");
+        verify(categoryApiService).icons();
     }
 
     private HttpResponse<String> sendGet(String path) throws Exception {

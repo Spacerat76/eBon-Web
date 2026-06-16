@@ -59,6 +59,17 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
         assertThat(body.get("status").asString()).isEqualTo("OK");
     }
 
+    // Verifies the protected system info endpoint exposes the central application version for UI/build checks.
+    @Test
+    void systemInfoReturnsApplicationVersion() throws Exception {
+        HttpResponse<String> response = sendGet("/api/system/info", "test-token");
+        JsonNode body = objectMapper.readTree(response.body());
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(body.get("name").asString()).isEqualTo("eBon Expense Tracker");
+        assertThat(body.get("version").asString()).isNotBlank();
+    }
+
     // Verifies local development can load OpenAPI docs without authentication by default.
     @Test
     void openApiDocsArePublicByDefault() throws Exception {
@@ -68,6 +79,7 @@ class BackendSkeletonSecurityTests extends PostgresIntegrationTestSupport {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(body.get("openapi").asString()).isNotBlank();
         assertThat(body.get("info").get("title").asString()).isEqualTo("eBon Expense Tracker API");
+        assertThat(body.get("info").get("version").asString()).isNotBlank();
     }
 
     // Verifies Swagger UI follows the configured local-development redirect and loads unauthenticated by default.

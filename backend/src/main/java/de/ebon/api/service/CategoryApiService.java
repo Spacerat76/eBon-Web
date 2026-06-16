@@ -1,8 +1,10 @@
 package de.ebon.api.service;
 
 import de.ebon.api.dto.CategoryDto;
+import de.ebon.api.dto.CategoryIconDto;
 import de.ebon.api.dto.CategoryPatchRequest;
 import de.ebon.api.dto.CategoryRequest;
+import de.ebon.categorization.CategoryIconRegistry;
 import de.ebon.categorization.CategoryDeletionResult;
 import de.ebon.categorization.CategoryManagementService;
 import de.ebon.persistence.model.Category;
@@ -21,14 +23,17 @@ public class CategoryApiService {
     private final CategoryRepository categoryRepository;
     private final ReceiptItemRepository receiptItemRepository;
     private final CategoryManagementService categoryManagementService;
+    private final CategoryIconRegistry categoryIconRegistry;
 
     public CategoryApiService(
             CategoryRepository categoryRepository,
             ReceiptItemRepository receiptItemRepository,
-            CategoryManagementService categoryManagementService) {
+            CategoryManagementService categoryManagementService,
+            CategoryIconRegistry categoryIconRegistry) {
         this.categoryRepository = categoryRepository;
         this.receiptItemRepository = receiptItemRepository;
         this.categoryManagementService = categoryManagementService;
+        this.categoryIconRegistry = categoryIconRegistry;
     }
 
     @Transactional(readOnly = true)
@@ -39,13 +44,17 @@ public class CategoryApiService {
         return categories.stream().map(this::toDto).toList();
     }
 
+    public List<CategoryIconDto> icons() {
+        return categoryIconRegistry.list();
+    }
+
     @Transactional
     public CategoryDto create(CategoryRequest request) {
         requireUniqueName(request.name(), null);
         Category category = new Category(
                 request.name().trim(),
                 request.colorHex(),
-                request.icon(),
+                categoryIconRegistry.normalizeAndValidate(request.icon()),
                 request.sortOrder() == null ? 0 : request.sortOrder());
         if (Boolean.FALSE.equals(request.isActive())) {
             category.deactivate();
@@ -60,9 +69,10 @@ public class CategoryApiService {
         category.update(
                 request.name().trim(),
                 request.colorHex(),
-                request.icon(),
+                null,
                 request.sortOrder(),
                 request.isActive());
+        category.setIcon(categoryIconRegistry.normalizeAndValidate(request.icon()));
         return toDto(category);
     }
 
@@ -75,9 +85,12 @@ public class CategoryApiService {
         category.update(
                 request.name() == null ? null : request.name().trim(),
                 request.colorHex(),
-                request.icon(),
+                null,
                 request.sortOrder(),
                 request.isActive());
+        if (request.icon() != null) {
+            category.setIcon(categoryIconRegistry.normalizeAndValidate(request.icon()));
+        }
         return toDto(category);
     }
 

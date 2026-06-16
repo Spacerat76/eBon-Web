@@ -9,6 +9,7 @@ import type {
   CategorizationRulePreviewResponse,
   CategorizationRuleRequest,
   CategoryDTO,
+  CategoryIconDTO,
   CategoryPatchRequest,
   CategoryRequest,
   DashboardDTO,
@@ -29,10 +30,12 @@ import type {
   SearchResultDTO,
   SettingsConnectionTestResponse,
   SettingsDTO,
+  SystemInfoDTO,
   SyncLogDTO,
   SyncStatusDTO,
   TopItemReportDTO
 } from "@/lib/types";
+import { isMockApiEnabled, mockDownload, mockRequest, mockUploadFile } from "@/lib/mock-api";
 
 export interface DownloadedFile {
   blob: Blob;
@@ -62,6 +65,10 @@ export class ApiClient {
 
   dashboard(): Promise<DashboardDTO> {
     return this.request("/dashboard");
+  }
+
+  systemInfo(): Promise<SystemInfoDTO> {
+    return this.request("/system/info");
   }
 
   syncStatus(): Promise<SyncStatusDTO> {
@@ -133,6 +140,10 @@ export class ApiClient {
 
   categories(includeInactive = false): Promise<CategoryDTO[]> {
     return this.request(`/categories?includeInactive=${includeInactive ? "true" : "false"}`);
+  }
+
+  categoryIcons(): Promise<CategoryIconDTO[]> {
+    return this.request("/categories/icons");
   }
 
   createCategory(request: CategoryRequest): Promise<CategoryDTO> {
@@ -282,6 +293,10 @@ export class ApiClient {
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    if (isMockApiEnabled()) {
+      return mockRequest<T>(path, init);
+    }
+
     const headers = new Headers(init.headers);
     const token = this.tokenProvider();
 
@@ -310,6 +325,10 @@ export class ApiClient {
   }
 
   private async download(path: string): Promise<Blob> {
+    if (isMockApiEnabled()) {
+      return mockDownload(path);
+    }
+
     const headers = new Headers();
     const token = this.tokenProvider();
 
@@ -327,6 +346,13 @@ export class ApiClient {
   }
 
   private async downloadWithFilename(path: string, fallbackFilename: string): Promise<DownloadedFile> {
+    if (isMockApiEnabled()) {
+      return {
+        blob: await mockDownload(path),
+        filename: fallbackFilename
+      };
+    }
+
     const headers = new Headers();
     const token = this.tokenProvider();
 
@@ -347,6 +373,10 @@ export class ApiClient {
   }
 
   private async uploadFile<T>(path: string, file: File): Promise<T> {
+    if (isMockApiEnabled()) {
+      return mockUploadFile<T>(path, file);
+    }
+
     const headers = new Headers();
     const token = this.tokenProvider();
 

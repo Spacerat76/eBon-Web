@@ -1,6 +1,7 @@
 package de.ebon.api;
 
 import de.ebon.api.dto.CategoryDto;
+import de.ebon.api.dto.CategoryIconDto;
 import de.ebon.api.dto.CategoryPatchRequest;
 import de.ebon.api.dto.CategoryRequest;
 import de.ebon.api.dto.MessageResponse;
@@ -40,6 +41,12 @@ public class CategoriesController {
     @Operation(summary = "Kategorien abrufen")
     public List<CategoryDto> listCategories(@RequestParam(defaultValue = "false") boolean includeInactive) {
         return categoryApiService.list(includeInactive);
+    }
+
+    @GetMapping("/api/categories/icons")
+    @Operation(summary = "Erlaubte Kategorie-Icons abrufen")
+    public List<CategoryIconDto> listCategoryIcons() {
+        return categoryApiService.icons();
     }
 
     @PostMapping("/api/categories")

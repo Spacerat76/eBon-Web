@@ -248,7 +248,7 @@ function ReportChart({ rows, tab }: { rows: ReportRow[]; tab: ReportTab }) {
   if (tab === "category") {
     const data = rows as ReportByCategoryDTO[];
     return (
-      <ResponsiveContainer height="100%" width="100%">
+      <ResponsiveContainer height="100%" minHeight={1} minWidth={1} width="99%">
         <PieChart>
           <Pie data={data} dataKey="total" innerRadius={64} nameKey="categoryName" outerRadius={112}>
             {data.map((entry, index) => <Cell fill={chartColors[index % chartColors.length]} key={`${entry.categoryName}-${entry.total}`} />)}
@@ -261,7 +261,7 @@ function ReportChart({ rows, tab }: { rows: ReportRow[]; tab: ReportTab }) {
 
   const data = chartData(rows, tab);
   return (
-    <ResponsiveContainer height="100%" width="100%">
+    <ResponsiveContainer height="100%" minHeight={1} minWidth={1} width="99%">
       <BarChart data={data}>
         <XAxis dataKey="label" hide={data.length > 10} />
         <YAxis width={72} />

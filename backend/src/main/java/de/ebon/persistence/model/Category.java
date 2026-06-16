@@ -51,6 +51,10 @@ public class Category {
         active = true;
     }
 
+    public void setIcon(String icon) {
+        this.icon = icon;
+    }
+
     public void update(String name, String colorHex, String icon, Integer sortOrder, Boolean active) {
         if (name != null) {
             this.name = name;

@@ -29,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
+import { CategoryIcon } from "@/lib/category-icons";
 import { formatCurrency, formatDate, formatDateTime, formatDateTimeParts, formatNumber, formatPercent, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type {
@@ -988,6 +989,7 @@ function CategoryCell({ category, item }: { category: CategoryDTO | null | undef
         borderColor: category?.colorHex ?? "#d4d4d8"
       }}
     >
+      <CategoryIcon className="mr-1 h-3.5 w-3.5" icon={category?.icon} />
       {item.categoryName ?? category?.name ?? "Kategorie"}
     </span>
   );

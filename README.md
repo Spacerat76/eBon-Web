@@ -2,7 +2,7 @@
 
 eBon-Web is a single-user expense tracker for electronic receipts imported from Paperless-NGX.
 
-The project is built incrementally from `ebon-specification.md`. The current state includes the reproducible development environment, the Spring Boot backend with sync, parsing, categorization, DTOs, OpenAPI, backup/restore, and tests, plus the React/Vite frontend with dashboard, receipts, search, reports, settings, data maintenance, and backup UI. The full system can be started with Docker Compose.
+The project is built incrementally from `ebon-specification.md`. The current state includes the reproducible development environment, the Spring Boot backend with sync, parsing, categorization, DTOs, OpenAPI, backup/restore, rolling automatic backups, and tests, plus the React/Vite frontend with dashboard, receipts, search, reports, settings, data maintenance, backup UI, category icons, Selenium smoke tests, and CI workflow. The full system can be started with Docker Compose.
 
 ## Prerequisites
 
@@ -179,6 +179,10 @@ Important `.env` values for real integration:
 - `OPENROUTER_BASE_URL` and `OPENROUTER_MODEL`: optional OpenRouter endpoint/model configuration.
 - `APP_OPENAPI_PUBLIC_ACCESS`: `false` protects Swagger/OpenAPI; `true` is convenient for local browser testing.
 - `SPRINGDOC_API_DOCS_ENABLED` and `SPRINGDOC_SWAGGER_UI_ENABLED`: set both to `false` to disable OpenAPI and Swagger UI completely in a hardened runtime.
+- `ROLLING_BACKUP_ENABLED`: enables automatic scheduled backups. Default is `false`.
+- `ROLLING_BACKUP_DIRECTORY`: directory used by the backend for automatic backups. In Compose this is mounted to the `automatic_backups` Docker volume.
+- `ROLLING_BACKUP_RETENTION_COUNT`: maximum number of automatic backup ZIP files kept in the automatic backup directory.
+- `ROLLING_BACKUP_CRON`: optional Spring cron expression. It contains spaces, so leave it unset unless you need to override the default `0 0 3 * * *`.
 
 `PAPERLESS_BASE_URL` and `PAPERLESS_PUBLIC_BASE_URL` may legitimately differ. For example, inside Docker the backend might reach Paperless as `http://paperless:8001`, while your browser opens Paperless as `http://192.168.178.155:8001`.
 
@@ -232,6 +236,15 @@ cd frontend
 npm run build
 ```
 
+Run the Selenium smoke test with mock API data:
+
+```bash
+cd frontend
+npm run e2e
+```
+
+The E2E command starts Vite with `VITE_EBON_MOCK_API=true`, enters a mock API token, and checks Dashboard/navigation, Settings, Backup controls, Search, and Receipts. It does not need PostgreSQL, Paperless-NGX, OpenRouter, or private receipt data. A local Chrome/Chromium or Microsoft Edge installation is required. Chrome uses the bundled `chromedriver`; Edge uses the `edgedriver` package and may download the matching driver on first run. Set `EBON_E2E_BROWSER_BINARY` or `EDGE_BINARY_PATH` if the browser is installed in a non-standard location.
+
 ## Smoke Test
 
 After `docker compose up --build`, run these checks from another terminal:
@@ -269,6 +282,48 @@ The settings UI contains local admin actions for maintenance:
 
 These actions are transactional backend operations intended for local administration. They keep categories, categorization rules, app settings, backups, and Flyway history intact.
 
+## Automatic Rolling Backups
+
+Automatic backups are disabled by default. Enable them only after you have chosen a target directory or accepted the Compose volume default:
+
+```env
+ROLLING_BACKUP_ENABLED=true
+ROLLING_BACKUP_DIRECTORY=/var/lib/ebon/backups/automatic
+ROLLING_BACKUP_RETENTION_COUNT=7
+```
+
+When enabled, the backend scheduler writes ZIP files named like `ebon-backup-auto-2026-06-16_03-00-00-000.zip`. The ZIP structure and secret masking are the same as manual backups. Paperless/OpenRouter secrets are not exported and must be reconfigured after restore.
+
+Retention deletes only files whose names start with `ebon-backup-auto-` and end with `.zip` in the configured automatic backup directory. Manually downloaded backups such as `ebon-backup-2026-06-16_10-00.zip` are not deleted by automatic retention.
+
+The same application-level backup/restore lock is used for manual backup, restore, and automatic backup. If a manual backup or restore is running, the scheduler skips that run instead of running in parallel.
+
+## Category Icons
+
+Category icons are not free text. The backend exposes the fixed allowed list at:
+
+```bash
+curl -H "Authorization: Bearer $APP_API_TOKEN" http://localhost:8080/api/categories/icons
+```
+
+Category create/update requests are validated against that list. The settings UI renders an icon select and shows icons alongside category colors; unknown or empty icons fall back visually but are not accepted for new writes.
+
+## CI
+
+The GitHub Actions workflow lives at `.github/workflows/ci.yml` and runs on pull requests and pushes to `main`, `master`, and `codex`.
+
+It executes:
+
+```bash
+cd backend && mvn verify
+cd frontend && npm ci
+cd frontend && npm run build
+cd frontend && npm run e2e
+docker compose config
+```
+
+Backend tests use Testcontainers, so the GitHub runner must have Docker available. The workflow does not require real Paperless-NGX/OpenRouter secrets and disables scheduled sync/rolling backup behavior for CI.
+
 ## Version Notes
 
 The Devcontainer uses the target Java 25 image `mcr.microsoft.com/devcontainers/java:dev-25-jdk-bookworm`, Maven 3.9.16, Node.js 24.16.0 LTS, Docker CLI, and PostgreSQL 18. The backend Maven build is configured for Java 25 as well, so the container and build target now match.
@@ -282,6 +337,8 @@ The root Compose frontend publishes nginx on `FRONTEND_PORT` with a default of `
 Backend logs include a `traceId` and use Spring Boot structured console logging when `LOG_STRUCTURED_FORMAT` is set. The default example uses `logstash`; set `LOG_LEVEL=DEBUG` temporarily to include request method/path/status/duration logs without headers or secrets.
 
 The Devcontainer intentionally installs Maven, Node.js, and Docker CLI in `.devcontainer/Dockerfile` instead of using Devcontainer Features from `ghcr.io`. This avoids failures in environments where the Feature registry cannot resolve `ghcr.io/devcontainers/features/*`.
+
+The application version is centrally maintained in `backend/pom.xml`. Maven generates Spring Boot build metadata from that version. The backend exposes it through `GET /api/system/info`, OpenAPI `info.version`, and backup `manifest.json` as `appVersion`; the frontend shows it in Settings. For release builds, update the Maven project version first and rebuild the backend image/artifact from that metadata.
 
 ## Safety
 
