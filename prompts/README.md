@@ -26,5 +26,6 @@ Dieser Ordner enthaelt vorbereitete Prompts, um das Projekt Schritt fuer Schritt
 11. `phase-11-backup-restore.md`
 12. `phase-12-real-integration-hardening.md`
 13. `phase-13-ci-e2e-operations.md`
+14. `phase-14-openrouter-ai-parsing-fallback.md`
 
 Bei limitiertem KI-Kontingent: Nach jeder Phase stoppen, selbst pruefen, dann erst weiter.

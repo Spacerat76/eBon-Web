@@ -173,6 +173,7 @@ Die Datei `.env.example` dokumentiert alle erforderlichen Umgebungsvariablen mit
 | `bonus_points` | NUMERIC(10,2) | NULL | In diesem Einkauf neu gesammelte Payback-Punkte o.Ä. aus dem Bon (geparst) |
 | `bonus_type` | VARCHAR(64) | NULL | Art des Bonusprogramms (z.B. „Payback", „DeutschlandCard", „Bonusclub") |
 | `parse_status` | VARCHAR(32) | NOT NULL | Enum: `PENDING`, `PARSED`, `PARSE_ERROR`, `MANUALLY_EDITED` |
+| `parse_source` | VARCHAR(32) | NULL | Quelle des aktuellen Parsergebnisses: `RULE`, `AI`, optional später `MANUAL_CORRECTED`; NULL solange kein verwertbares Parsergebnis vorliegt |
 | `parse_error_message` | TEXT | NULL | Fehlermeldung bei `PARSE_ERROR` |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update (automatisch) |
 | `deleted_at` | TIMESTAMPTZ | NULL | Soft-Delete-Zeitpunkt, z.B. bei `TAG_REMOVED` |
@@ -238,6 +239,57 @@ Regeln werden in absteigender Priorität (niedrigster `priority`-Wert zuerst) ge
 | `model_used` | VARCHAR(128) | NOT NULL | Verwendetes KI-Modell |
 | `created_at` | TIMESTAMPTZ | NOT NULL | Zeitpunkt des KI-Calls |
 
+#### 4.1.5a `ai_parsing_log` (KI-Parsing-Fallback-Log)
+
+| Spalte | Typ | Constraints | Beschreibung |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Interne ID |
+| `receipt_id` | BIGINT | FK → receipt.id, NULL | Zugehöriger Bon; NULL nur für technische Verbindungstests ohne Bon-Daten |
+| `trigger` | VARCHAR(32) | NOT NULL | Enum: `SYNC_AUTO`, `MANUAL_REPARSE`, `MANUAL_REPARSE_FORCE_FULL_TEXT`, `BULK_REPARSE`, `SETTINGS_TEST` |
+| `status` | VARCHAR(32) | NOT NULL | Enum: `SUCCESS`, `FAILED`, `SKIPPED_LIMIT`, `INVALID_RESPONSE`, `LOW_CONFIDENCE`, `DISABLED`, `NO_API_KEY` |
+| `model_used` | VARCHAR(128) | NULL | Verwendetes OpenRouter-Modell; NULL, wenn kein Call ausgeführt wurde |
+| `started_at` | TIMESTAMPTZ | NOT NULL | Startzeitpunkt |
+| `finished_at` | TIMESTAMPTZ | NULL | Endzeitpunkt |
+| `duration_ms` | INTEGER | NULL | Dauer des KI-Calls oder der lokalen Fallback-Prüfung |
+| `prompt_tokens` | INTEGER | NULL | Von OpenRouter gemeldete Prompt-Tokens, sofern vorhanden |
+| `completion_tokens` | INTEGER | NULL | Von OpenRouter gemeldete Completion-Tokens, sofern vorhanden |
+| `total_tokens` | INTEGER | NULL | Von OpenRouter gemeldete Gesamt-Tokens, sofern vorhanden |
+| `parse_error_before` | TEXT | NULL | Fehlergrund des Regelparsers vor dem KI-Fallback |
+| `failure_reason` | TEXT | NULL | Nutzer-/Admin-tauglicher Grund, warum keine Übernahme erfolgte |
+| `overall_confidence` | NUMERIC(4,3) | NULL | Gesamtkonfidenz des KI-Parses |
+| `field_confidence_json` | JSONB | NULL | Optionale Feld-Konfidenzen der KI, z.B. für Datum, Store, Total, Items |
+| `warnings_json` | JSONB | NULL | Optionale KI-Warnungen, ohne Roh-Prompt oder vollständige Rohantwort |
+| `prompt_snippet` | TEXT | NULL | Optionales gekürztes/maskiertes Prompt-Snippet nur bei lokaler Debug-Konfiguration |
+| `response_snippet` | TEXT | NULL | Optionales gekürztes/maskiertes Antwort-Snippet nur bei lokaler Debug-Konfiguration |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Anlagezeitpunkt |
+
+Standardmäßig werden keine vollständigen Prompts und keine vollständigen KI-Rohantworten gespeichert. Snippets sind nur für lokale Entwicklung zulässig, müssen gekürzt und maskiert sein und dürfen keine Secrets enthalten.
+
+#### 4.1.5b `parse_rule_suggestion` (KI-vorgeschlagene Parser-Regel)
+
+| Spalte | Typ | Constraints | Beschreibung |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Interne ID |
+| `ai_parsing_log_id` | BIGINT | FK → ai_parsing_log.id, NOT NULL | Ursprung des Vorschlags |
+| `receipt_id` | BIGINT | FK → receipt.id, NULL | Betroffener Bon |
+| `store_name` | VARCHAR(255) | NULL | Store-Kontext für die vorgeschlagene Regel |
+| `rule_type` | VARCHAR(32) | NOT NULL | Enum wie `parse_rule.rule_type` |
+| `match_regex` | VARCHAR(1024) | NOT NULL | Vorgeschlagene Regex |
+| `extract_group` | VARCHAR(64) | NULL | Vorgeschlagene Capture-Group(s) |
+| `confidence` | NUMERIC(4,3) | NULL | Konfidenz des Vorschlags |
+| `trigger` | VARCHAR(32) | NOT NULL | Auslöser, der zum Vorschlag geführt hat |
+| `problem_description` | TEXT | NOT NULL | Welches Parserproblem der Vorschlag adressiert |
+| `solution_rationale` | TEXT | NOT NULL | Warum die Regel das Problem lösen soll |
+| `validation_status` | VARCHAR(32) | NOT NULL | Enum: `VALID`, `INVALID_REGEX`, `NO_MATCH`, `WRONG_EXTRACTION`, `COLLISION_RISK` |
+| `validation_message` | TEXT | NULL | Technische Validierungsdetails |
+| `status` | VARCHAR(32) | NOT NULL | Enum: `OPEN`, `ACCEPTED`, `REJECTED` |
+| `rejection_reason` | TEXT | NULL | Begründung bei `REJECTED` |
+| `accepted_parse_rule_id` | BIGINT | FK → parse_rule.id, NULL | Erzeugte aktive Parser-Regel nach Annahme |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Anlagezeitpunkt |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Letzte Änderung |
+
+Vorschläge werden nie automatisch aktiv. Sie müssen in der UI geprüft und können vor Annahme bearbeitet werden. Akzeptierte Vorschläge werden sofort als aktive `parse_rule` mit `source = AI_ADAPTED` übernommen und bleiben zusätzlich als Vorschlag auditierbar.
+
 #### 4.1.6 `app_settings` (Anwendungskonfiguration)
 
 | Spalte | Typ | Constraints | Beschreibung |
@@ -247,7 +299,7 @@ Regeln werden in absteigender Priorität (niedrigster `priority`-Wert zuerst) ge
 | `description` | TEXT | NULL | Beschreibung der Einstellung |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update |
 
-Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_temperature`, `ai_categorization_min_confidence`.
+Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_temperature`, `ai_categorization_min_confidence`, `ai_parsing_fallback_enabled`, `ai_parsing_model`, `ai_parsing_max_tokens`, `ai_parsing_temperature`, `ai_parsing_min_confidence`, `ai_parsing_sync_call_limit`, `ai_parsing_text_mode`, `ai_parsing_store_debug_snippets`.
 
 #### 4.1.7 `parse_rule` (Parsing-Regel, automatisch gelernt)
 
@@ -295,10 +347,16 @@ Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_t
 - `receipt.receipt_date` – INDEX
 - `receipt.store_name` – INDEX (für Suche)
 - `receipt.bonus_type` – INDEX
+- `receipt.parse_source` – INDEX
 - `receipt_item.receipt_id` – INDEX
 - `receipt_item.description` – GIN-Index für Volltextsuche (PostgreSQL `tsvector`)
 - `receipt_item.category_id` – INDEX
 - `categorization_rule.priority` – INDEX
+- `ai_parsing_log.receipt_id` – INDEX
+- `ai_parsing_log.trigger` – INDEX
+- `ai_parsing_log.status` – INDEX
+- `parse_rule_suggestion.status` – INDEX
+- `parse_rule_suggestion.receipt_id` – INDEX
 - `parse_rule.store_name` – INDEX
 - `parse_rule.rule_type` – INDEX
 - `parse_rule.is_active` – INDEX
@@ -318,6 +376,17 @@ Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_t
 |---|---|---|
 | `/api/documents/?tags__name__iexact={TAG}&page_size=100&ordering=-created` | GET | Alle Dokumente mit exakt passendem konfiguriertem Tag abrufen (case-insensitive, paginiert). `{TAG}` = Wert der Umgebungsvariable `PAPERLESS_EBON_TAG`. |
 | `/api/documents/{id}/` | GET | Metadaten eines einzelnen Dokuments |
+
+### 5.2 OpenRouter.ai API
+
+**Basis-URL:** konfigurierbar via `OPENROUTER_BASE_URL`, Standard `https://openrouter.ai/api/v1`
+**Authentifizierung:** Bearer-Token (`Authorization: Bearer <OPENROUTER_API_KEY>`)
+
+| Verwendeter Endpoint | Methode | Beschreibung |
+|---|---|---|
+| `/chat/completions` | POST | KI-Kategorisierung und KI-Parsing-Fallback |
+
+Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturierte Ausgaben über `response_format`/JSON-Schema anfordern. Unabhängig davon validiert das Backend jede Antwort lokal gegen das erwartete Schema. OpenRouter-Verbindungstests dürfen keine echten Bon-Daten senden.
 | `/api/documents/{id}/download/` | GET | Download des Dokuments (nicht verwendet) |
 
 Die Applikation verwendet ausschließlich den Textinhalt (`content`-Feld) aus dem Dokument-Metadaten-Response. Kein direkter Download von PDFs.
@@ -396,11 +465,15 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
   - Einzelne Kaufpositionen mit: Bezeichnung, Menge, Einheit, Einzelpreis, Gesamtpreis, Rabatt
   - Gesamtbetrag (`total_amount`)
 - **F-02.3:** Der Parser verwendet **primär** reguläre Ausdrücke und strukturbasiertes Parsen (regelbasiert). Der Parser ist erweiterbar für verschiedene Bon-Formate (Store-spezifische Parser als Strategy-Pattern).
-- **F-02.3a:** Schlägt das regelbasierte Parsing fehl (kein vollständiger Parse möglich), wird ein **KI-Fallback** über OpenRouter.ai durchgeführt. Der Prompt enthält den `raw_text` und fordert die Extraktion aller Bon-Felder als strukturiertes JSON an.
-- **F-02.3b:** Die KI-Ergebnisse werden validiert und anschließend verwendet, um ausschließlich **Parsing-Regeln** automatisch anzupassen (Rule-Adaptation): Neue Muster, Store-spezifische Formate oder abweichende Datumsformate werden in die regelbasierten Parser übernommen, sodass beim nächsten Durchlauf die Regeln greifen. Diese Rule-Adaptation erzeugt keine `categorization_rule`-Einträge.
-- **F-02.3c:** Die Rule-Adaptation speichert die neuen Muster persistent in der Tabelle `parse_rule` (s. Abschnitt 4.1.7), sodass sie nach einem Neustart erhalten bleiben.
-- **F-02.3d:** Der KI-Fallback für Parsing muss ein festes JSON-Schema liefern. Antworten außerhalb des Schemas werden verworfen und führen zu `PARSE_ERROR`, außer ein gültiger Teilparse kann nach F-02.5 gespeichert werden.
-- **F-02.3e:** Wenn ein Bon die Filialadresse nicht als Text enthält (z.B. Adresse nur als Grafik im dm-eBon), darf der Parser eine aus dem Text extrahierte Filial-ID über eine konfigurierbare Mapping-Tabelle auf `store_branch` auflösen. Ist kein Mapping vorhanden, bleibt ein technischer, eindeutig nachvollziehbarer Fallback wie `Filiale <Code>` zulässig.
+- **F-02.3a:** Schlägt das regelbasierte Parsing fehl (kein vollständiger Parse möglich), kann ein **KI-Fallback** über OpenRouter.ai durchgeführt werden. Der Fallback ist über `ai_parsing_fallback_enabled` konfigurierbar, standardmäßig aktiv und läuft nur, wenn ein OpenRouter API-Key verfügbar ist. Für manuelle Reparse-Aufrufe kann der Nutzer den KI-Fallback explizit verwenden oder deaktivieren.
+- **F-02.3b:** Der OpenRouter-Parsing-Fallback folgt einem kontrollierten Hybrid-Ansatz: Ein KI-Ergebnis darf den aktuellen Bon automatisch als `PARSED` speichern, aber nur wenn Schema, Pflichtfelder, fortlaufende Positionen, Zahlenformate, Summentoleranz `0.02` und `ai_parsing_min_confidence` erfüllt sind. Erfolgreiche KI-Parses setzen `receipt.parse_source = AI`.
+- **F-02.3c:** Der Prompt enthält den minimierten oder vollständigen `raw_text`, den Regelparser-Teilparse und den Fehlergrund des Regelparsers. Die KI muss ein vollständiges finales JSON liefern. Teilantworten oder Antworten außerhalb des Schemas werden nicht als `PARSED` übernommen.
+- **F-02.3d:** Der KI-Fallback kann optionale Parser-Regelvorschläge liefern. Diese werden in `parse_rule_suggestion` gespeichert, aber nicht automatisch aktiviert. Neue Regeln werden erst nach Nutzerprüfung/-bearbeitung als aktive `parse_rule` mit `source = AI_ADAPTED` übernommen. Diese Rule-Adaptation erzeugt keine `categorization_rule`-Einträge.
+- **F-02.3e:** Der KI-Fallback für Parsing muss ein festes JSON-Schema liefern. Antworten außerhalb des Schemas werden verworfen und führen zu `PARSE_ERROR`, außer ein gültiger Teilparse kann nach F-02.5 gespeichert werden. Jeder Versuch wird in `ai_parsing_log` protokolliert.
+- **F-02.3f:** Automatische KI-Parsing-Calls im Sync sind pro Sync-Lauf begrenzt (`ai_parsing_sync_call_limit`, Standard `25`). Wird das Limit erreicht, bleibt der Bon `PARSE_ERROR` mit einer klaren Meldung, dass der KI-Fallback wegen Limit übersprungen wurde.
+- **F-02.3g:** Für den an OpenRouter gesendeten Text gibt es `ai_parsing_text_mode`: `MINIMIZED` (Standard) entfernt offensichtliche Zahlungs-, Steuer-, TSE-, Signatur- und Metadatenblöcke soweit möglich; `FULL_TEXT` sendet den vollständigen Paperless-Text. `FULL_TEXT` bei manuellem Reparse verlangt eine ausdrückliche Bestätigung in der UI.
+- **F-02.3h:** Wenn ein späterer Regelparser-Reparse vollständig und valide ist, darf er ein früheres KI-Parsergebnis ersetzen und `receipt.parse_source = RULE` setzen. Manuelle Edits dürfen dabei nicht still überschrieben werden, soweit sie im jeweiligen Datenmodell abgebildet sind.
+- **F-02.3i:** Wenn ein Bon die Filialadresse nicht als Text enthält (z.B. Adresse nur als Grafik im dm-eBon), darf der Parser eine aus dem Text extrahierte Filial-ID über eine konfigurierbare Mapping-Tabelle auf `store_branch` auflösen. Ist kein Mapping vorhanden, bleibt ein technischer, eindeutig nachvollziehbarer Fallback wie `Filiale <Code>` zulässig.
 - **F-02.4:** Der Parser extrahiert aus dem `raw_text` zusätzlich folgende Bonus-Felder:
   - `bonus_balance`: In diesem Einkauf neu gesammeltes Bonusguthaben, nicht das aktuelle Bonuskonto-/Punkteguthaben
   - `bonus_points`: In diesem Einkauf neu gesammelte Payback-Punkte oder ähnliche Punktesysteme (mit Typ-Angabe)
@@ -432,6 +505,16 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
   "bonusBalance": 0.0,
   "bonusPoints": 0.0,
   "bonusType": "string|null",
+  "overallConfidence": 0.95,
+  "fieldConfidence": {
+    "receiptDate": 0.98,
+    "storeName": 0.95,
+    "totalAmount": 0.99,
+    "items": 0.93
+  },
+  "warnings": [
+    "storeBranch konnte nur aus Kontext abgeleitet werden"
+  ],
   "items": [
     {
       "positionIndex": 0,
@@ -442,9 +525,22 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
       "totalPrice": 1.23,
       "discountAmount": 0.0
     }
+  ],
+  "parseRuleSuggestions": [
+    {
+      "ruleType": "ITEM_PATTERN",
+      "storeName": "string|null",
+      "matchRegex": "string",
+      "extractGroup": "string|null",
+      "confidence": 0.91,
+      "problemDescription": "Welche Parser-Schwäche der Vorschlag adressiert",
+      "solutionRationale": "Warum diese Regel das Problem lösen soll"
+    }
   ]
 }
 ```
+
+`overallConfidence`, `fieldConfidence`, `warnings` und `parseRuleSuggestions` sind optionale KI-Metadaten. Sie dürfen die harte Backend-Validierung nicht ersetzen. `parseRuleSuggestions` werden unabhängig vom Parse-Ergebnis validiert; invalide Vorschläge verhindern keinen ansonsten validen KI-Parse.
 
 ### F-03: Kategorisierung
 
@@ -543,6 +639,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
   - optionale Paperless-Web-URL oder Dokument-URL-Vorlage für klickbare Links zu Paperless-Dokumenten
   - OpenRouter API-Key und Modell-Auswahl (mit Verbindungstest)
   - Mindest-Konfidenz für automatische KI-Kategorisierung (`ai_categorization_min_confidence`, Standard `0.900`, Wertebereich `0.000` bis `1.000`)
+  - OpenRouter KI-Parsing-Fallback: global aktiv/inaktiv (Default aktiv), separates Parsing-Modell, Max Tokens, Temperature, Mindest-Konfidenz (`ai_parsing_min_confidence`, Standard `0.900`), Sync-Call-Limit (Default `25`), Textmodus (`MINIMIZED`/`FULL_TEXT`) und lokales Debug-Snippet-Verhalten
   - Sync-Intervall (Minuten)
   - Anzuzeigende Währung
 - **F-11.2:** Sensible Felder (API-Keys) werden bei der Anzeige maskiert. Maskierte Platzhalterwerte dürfen beim Speichern nicht als neue Secrets persistiert werden. Klartext-Secrets werden ausschließlich beim initialen Setzen oder expliziten Ersetzen übertragen.
@@ -554,11 +651,12 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 
 ### F-12: Test-Suite
 
-- **F-12.1:** Für fachlich kritische Backend-Komponenten existieren automatisierte Tests. Priorität haben Parser, Sync, Kategorisierung, Backup/Restore, Settings/Secret-Masking und API-Fehlerbehandlung.
+- **F-12.1:** Für fachlich kritische Backend-Komponenten existieren automatisierte Tests. Priorität haben Parser, OpenRouter-KI-Parsing-Fallback, Sync, Kategorisierung, Backup/Restore, Settings/Secret-Masking und API-Fehlerbehandlung.
 - **F-12.2:** Verwendete Test-Frameworks: **JUnit 5**, **Mockito** (Mocking), **Cucumber** (BDD/Akzeptanztests für Parsing und Kategorisierung).
 - **F-12.3:** Testabdeckung wird über JaCoCo gemessen; Ziel: ≥ 80 % Zeilenabdeckung für Service-Klassen und ≥ 90 % Branch-Coverage für Parser-Klassen.
 - **F-12.4:** Cucumber-Feature-Files definieren Akzeptanzkriterien für:
   - Bon-Parsing (regelbasiert und KI-Fallback)
+  - KI-Parsing-Log und Parser-Regelvorschläge
   - Kategorisierung (Regeln + KI)
   - Sync-Verhalten (inkl. TAG_REMOVED)
   - Re-Parse-Konfliktauflösung
@@ -876,6 +974,44 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 
 ---
 
+### UC-14: KI-Parsing-Fallback prüfen
+
+**Akteur:** Nutzer
+**Vorbedingung:** Bon ist importiert und der Regelparser konnte ihn nicht vollständig parsen oder der Nutzer startet einen Reparse.
+**Auslöser:** Automatischer Sync, manueller Reparse oder Bulk-Reparse.
+
+**Hauptablauf:**
+1. Backend führt zuerst den Regelparser aus.
+2. Wenn der Regelparser `PARSED` liefert, wird kein KI-Parsing-Fallback benötigt und `parse_source = RULE` gesetzt.
+3. Wenn der Regelparser `PARSE_ERROR` liefert, prüft das Backend Fallback-Aktivierung, API-Key, Trigger und Sync-Call-Limit.
+4. Bei zulässigem Fallback sendet das Backend minimierten oder bestätigten vollständigen Bontext plus Teilparse und Fehlergrund an OpenRouter.
+5. Backend validiert die KI-Antwort streng. Bei Erfolg wird der Bon als `PARSED` mit `parse_source = AI` gespeichert und anschließend kategorisiert.
+6. Bei Fehler bleibt der Bon `PARSE_ERROR`; `parse_error_message` und `ai_parsing_log` erklären, warum keine Übernahme erfolgte.
+7. UI zeigt Badge, KI-Parsing-Status und vorhandene Parser-Regelvorschläge.
+
+**Nachbedingung:** Der Nutzer kann nachvollziehen, ob und warum KI-Parsing geholfen hat oder nicht.
+
+---
+
+### UC-15: Parser-Regelvorschlag prüfen und übernehmen
+
+**Akteur:** Nutzer
+**Vorbedingung:** Ein KI-Parsing-Lauf hat mindestens einen offenen `parse_rule_suggestion` erzeugt.
+**Auslöser:** Nutzer öffnet den Vorschlag im Bon-Detail oder in den Einstellungen.
+
+**Hauptablauf:**
+1. UI zeigt Problem-Beschreibung, Lösungsbegründung, Regex, Extract-Group, Store-Kontext und Validierungsergebnis.
+2. Nutzer kann Regex, Regeltyp, Extract-Group und Store-Kontext bearbeiten.
+3. Backend validiert die bearbeitete Regel erneut gegen den Beispiel-Bon und prüft offensichtliche Kollisionen.
+4. Nutzer akzeptiert den Vorschlag.
+5. Backend erzeugt eine aktive `parse_rule` mit `source = AI_ADAPTED`, setzt den Vorschlag auf `ACCEPTED` und verknüpft `accepted_parse_rule_id`.
+6. UI fragt, ob kein Reparse, nur der aktuelle Bon, alle `PARSE_ERROR`-Bons desselben Stores oder alle `PARSE_ERROR`-Bons erneut geparst werden sollen.
+7. Optional exportiert der Nutzer akzeptierte Regeln als Flyway-Migrationsentwurf.
+
+**Alternative:** Nutzer lehnt den Vorschlag mit Begründung ab. Der Vorschlag bleibt als `REJECTED` gespeichert, damit dieselbe Idee nicht blind erneut vorgeschlagen wird.
+
+---
+
 ## 8. API-Spezifikation (Backend)
 
 Alle Endpunkte haben das Präfix `/api`. Alle Responses sind JSON (`Content-Type: application/json`), sofern nicht anders angegeben. HTTP-Statuscodes folgen REST-Konventionen.
@@ -1023,11 +1159,37 @@ Gemeinsame Query-Parameter: `dateFrom`, `dateTo`, `categoryIds`, `store`, `group
 | Methode | Pfad | Beschreibung |
 |---|---|---|
 | POST | `/api/admin/data-reset/imported-receipts` | Importierte Bon-Daten löschen, Kategorien/Regeln/Einstellungen behalten |
+| POST | `/api/admin/reparse/bulk` | Bulk-Reparse für ausgewählte Bons, gleiche Stores oder alle `PARSE_ERROR`-Bons |
 
 Body für `/api/admin/data-reset/imported-receipts`:
 ```json
 { "confirmation": "DELETE_IMPORTED_RECEIPTS" }
 ```
+
+Body für `/api/admin/reparse/bulk`:
+```json
+{
+  "scope": "PARSE_ERROR_BY_STORE",
+  "storeName": "REWE",
+  "useAiFallback": true,
+  "aiTextMode": "MINIMIZED",
+  "confirmation": "REPARSE_RECEIPTS"
+}
+```
+
+#### KI-Parsing und Parser-Regelvorschläge
+
+| Methode | Pfad | Beschreibung |
+|---|---|---|
+| GET | `/api/receipts/{id}/ai-parsing-log` | KI-Parsing-Logs für einen Bon abrufen |
+| GET | `/api/parser/rule-suggestions` | Parser-Regelvorschläge paginiert abrufen |
+| GET | `/api/parser/rule-suggestions/{id}` | Parser-Regelvorschlag im Detail abrufen |
+| PUT | `/api/parser/rule-suggestions/{id}` | Parser-Regelvorschlag vor Annahme bearbeiten |
+| POST | `/api/parser/rule-suggestions/{id}/accept` | Vorschlag als aktive `parse_rule` übernehmen |
+| POST | `/api/parser/rule-suggestions/{id}/reject` | Vorschlag mit Begründung ablehnen |
+| POST | `/api/parser/rule-suggestions/export-migration` | Aus akzeptierten Parser-Regeln einen Flyway-Migrationsentwurf exportieren |
+| POST | `/api/parser/fixtures/preview` | Anonymisierte Fixture-Vorschau aus KI-Parsing-Log erzeugen |
+| POST | `/api/parser/fixtures/export` | Anonymisiertes Fixture lokal außerhalb des Test-Corpus exportieren |
 
 Body für `/api/settings/test-connection`:
 ```json
@@ -1098,7 +1260,15 @@ Die Implementierung muss explizite Request-/Response-DTOs verwenden. JPA-Entitie
   "bonusPoints": 25.0,
   "bonusType": "Payback",
   "parseStatus": "PARSED",
+  "parseSource": "AI",
   "parseErrorMessage": null,
+  "aiParsingSummary": {
+    "lastStatus": "SUCCESS",
+    "lastTrigger": "MANUAL_REPARSE",
+    "modelUsed": "google/gemini-flash-1.5",
+    "overallConfidence": 0.940,
+    "hasOpenRuleSuggestions": true
+  },
   "deletedAt": null,
   "deleteReason": null,
   "rawText": "Roher Paperless-Text, nur in Detailantworten befüllt",
@@ -1116,6 +1286,8 @@ Validierung:
 - `currency`: ISO-4217-Code, Standard `EUR`
 - `bonusBalance`: neu in diesem Einkauf gesammeltes Bonusguthaben oder `null`, nicht aktueller Bonuskonto-/Punktestand
 - `bonusPoints`: neu in diesem Einkauf gesammelte Punkte oder `null`
+- `parseSource`: `RULE`, `AI`, `MANUAL_CORRECTED` oder `null`; `AI` bedeutet, dass das aktuell gespeicherte Parsergebnis vom OpenRouter-KI-Fallback übernommen wurde
+- `aiParsingSummary`: optionaler letzter KI-Parsing-Status für UI-Badge und Detailanzeige; enthält keine Prompt- oder Rohantwortdaten
 - `rawText`: roher Paperless-Text; nur in Detail- und Mutationsantworten (`GET/PUT/POST /api/receipts/{id}`) befüllt, in Listen- und Dashboard-Antworten `null`
 
 ### ReceiptItemDTO
@@ -1194,12 +1366,74 @@ Validierung:
   "openRouterApiKey": "********",
   "openRouterModel": "google/gemini-flash-1.5",
   "aiCategorizationMinConfidence": 0.900,
+  "aiParsingFallbackEnabled": true,
+  "aiParsingModel": "google/gemini-flash-1.5",
+  "aiParsingMaxTokens": 2500,
+  "aiParsingTemperature": 0.0,
+  "aiParsingMinConfidence": 0.900,
+  "aiParsingSyncCallLimit": 25,
+  "aiParsingTextMode": "MINIMIZED",
+  "aiParsingStoreDebugSnippets": false,
   "syncIntervalMinutes": 60,
   "currency": "EUR"
 }
 ```
 
 Beim Speichern bedeuten fehlende Secret-Felder „unverändert lassen". Der Wert `"********"` darf nie persistiert werden.
+
+Validierung:
+
+- `aiParsingMinConfidence`: `0.000` bis `1.000`, Default `0.900`
+- `aiParsingSyncCallLimit`: Integer `>= 0`, Default `25`; `0` bedeutet kein automatischer KI-Parsing-Fallback im Sync
+- `aiParsingTextMode`: `MINIMIZED` oder `FULL_TEXT`; `FULL_TEXT` darf in manuellen Reparse-Flows nur nach ausdrücklicher Bestätigung verwendet werden
+- `aiParsingStoreDebugSnippets`: nur für lokale Entwicklung; bei `true` dürfen gekürzte/maskierte Prompt-/Antwort-Snippets gespeichert werden, niemals vollständige Rohdaten oder Secrets
+
+### AiParsingLogDTO
+
+```json
+{
+  "id": 1,
+  "receiptId": 42,
+  "trigger": "MANUAL_REPARSE",
+  "status": "SUCCESS",
+  "modelUsed": "google/gemini-flash-1.5",
+  "startedAt": "2026-06-16T10:00:00Z",
+  "finishedAt": "2026-06-16T10:00:03Z",
+  "durationMs": 3120,
+  "overallConfidence": 0.940,
+  "parseErrorBefore": "total_amount fehlt.",
+  "failureReason": null,
+  "fieldConfidence": { "receiptDate": 0.98, "items": 0.93 },
+  "warnings": ["storeBranch unsicher"],
+  "promptSnippet": null,
+  "responseSnippet": null
+}
+```
+
+### ParseRuleSuggestionDTO
+
+```json
+{
+  "id": 10,
+  "receiptId": 42,
+  "aiParsingLogId": 1,
+  "storeName": "McDonald's",
+  "ruleType": "ITEM_PATTERN",
+  "matchRegex": "^(?<quantity>\\d+)\\s+(?<description>.+?)\\s+(?<total>\\d+\\.\\d{2})$",
+  "extractGroup": "quantity,description,total",
+  "confidence": 0.920,
+  "trigger": "MANUAL_REPARSE",
+  "problemDescription": "Regelparser erkannte Punkt-Dezimalpositionen nicht.",
+  "solutionRationale": "Die Regel extrahiert Menge, Beschreibung und Betrag aus der McDonald's-Artikeltabelle.",
+  "validationStatus": "VALID",
+  "validationMessage": null,
+  "status": "OPEN",
+  "rejectionReason": null,
+  "acceptedParseRuleId": null
+}
+```
+
+Beim Akzeptieren eines Vorschlags muss die UI eine Reparse-Auswahl anbieten: aktueller Bon, gleicher Store, alle `PARSE_ERROR`-Bons oder keine sofortige Anwendung.
 
 ---
 
@@ -1238,6 +1472,10 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 
 - Header: Geschäft, Datum/Uhrzeit, Gesamtbetrag, Bonus-Info (Typ + in diesem Einkauf gesammeltes Guthaben/Punkte), Parse-Status-Badge, Buttons „Bearbeiten" / „Erneut parsen" / „Löschen".
 - Paperless-Dokument-ID wird als Link zur Paperless-Weboberfläche angezeigt, wenn `paperlessDocumentUrl` vorhanden ist; andernfalls bleibt sie als reine ID sichtbar.
+- Wenn `parseSource = AI`, zeigt die Detailansicht ein Badge „per KI geparst". Das Badge blockiert den Workflow nicht, macht die Datenherkunft aber dauerhaft sichtbar.
+- Parse-Fehler zeigen, ob der KI-Parsing-Fallback versucht wurde, deaktiviert war, wegen fehlendem API-Key nicht verfügbar war, wegen Sync-Limit übersprungen wurde, invalides JSON geliefert hat oder wegen niedriger Konfidenz nicht übernommen wurde.
+- KI-Parsing-Logs sind kompakt sichtbar (Trigger, Status, Modell, Zeitpunkt, Dauer, Grund) und technisch aufklappbar (Warnungen, Feld-Konfidenzen, Fehlgrund). Prompt- und Rohantwortdaten werden im Normalbetrieb nicht angezeigt.
+- Bonbezogene Parser-Regelvorschläge werden im Bon-Detail angezeigt. Für jeden Vorschlag muss sichtbar sein, welches Problem ihn ausgelöst hat und warum die Regel dieses Problem lösen soll.
 - Positionstabelle: Beschreibung, Menge, Einheit, Einzelpreis, Gesamtpreis, Rabatt, Kategorie (Chip mit Farbe), Quelle-Badge.
 - Im Editiermodus: Inline-Editierung aller Felder, Dropdown für Kategorie, Buttons „Position löschen" / „Position hinzufügen". Speichern/Abbrechen bleibt beim Scrollen sichtbar und klickbar (z.B. Sticky Action-Bar), damit lange Bons nicht nach oben zurückscrollen müssen.
 - Rohtextansicht (ausklappbar): `raw_text` in Monospace-Font.
@@ -1259,6 +1497,8 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 
 - Formular mit Feldern gemäß F-11.1.
 - „Verbindung testen"-Buttons direkt neben Paperless-NGX und OpenRouter URL-Feldern.
+- Eigener Bereich für KI-Parsing-Fallback: globaler Aktiv-Schalter, Parsing-Modell, Max Tokens, Temperature, Mindest-Konfidenz, Sync-Call-Limit, Textmodus (`MINIMIZED`/`FULL_TEXT`) und lokale Debug-Snippets.
+- `FULL_TEXT` muss als datenschutzrelevante Option erklärt werden. Manuelle Reparse-Flows mit `FULL_TEXT` verlangen eine zusätzliche Bestätigung.
 - Bereich „Datenwartung" mit Re-Parse aller Bons und Reset aller importierten Bon-Daten. Der Reset benötigt eine deutliche Bestätigung und darf Kategorien, Regeln und Einstellungen nicht löschen.
 
 #### 9.2.7 Einstellungen – Kategorien
@@ -1273,7 +1513,16 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 - Inline-Editierung, Drag-and-Drop zur Priorisierung (ändert `priority`-Wert).
 - „Regel anwenden"-Button pro Zeile.
 
-#### 9.2.9 Einstellungen – Backup
+#### 9.2.9 Einstellungen – Parser-Regelvorschläge
+
+- Zentrale Liste aller `parse_rule_suggestion`-Einträge mit Filter nach Status, Store, Regeltyp und Validierungsstatus.
+- Detailansicht zeigt Regex, Extract-Group, Beispielkontext, Problem-Beschreibung, Lösungsbegründung und Validierungsergebnis.
+- Offene Vorschläge können bearbeitet, akzeptiert oder mit Begründung abgelehnt werden.
+- Beim Akzeptieren wird eine aktive `parse_rule` erzeugt. Danach kann der Nutzer wählen, ob kein Reparse, nur der aktuelle Bon, alle `PARSE_ERROR`-Bons desselben Stores oder alle `PARSE_ERROR`-Bons erneut geparst werden.
+- Akzeptierte Parser-Regeln können als Flyway-Migrationsentwurf exportiert werden. Der Export erzeugt keinen automatischen Commit und schreibt nicht ohne Nutzerentscheidung in das Repository.
+- Für Entwickler kann aus einem KI-Parsing-Log eine anonymisierte Fixture-Vorschau erzeugt werden. Der Export erfolgt lokal außerhalb `backend/src/test/resources/corpus/`; ein Fixture gelangt nur nach manueller Prüfung bewusst ins Repository.
+
+#### 9.2.10 Einstellungen – Backup
 
 - Bereich „Backup erstellen": Button „Backup jetzt herunterladen" + Information über letztes Backup.
 - Bereich „Restore": File-Upload-Feld + Warntextblock + Bestätigungseingabe + „Restore starten"-Button.
@@ -1308,7 +1557,15 @@ Alle Umgebungsvariablen werden beim Start des Containers gelesen. Sie befüllen 
 | `PAPERLESS_API_TOKEN` | Ja | – | Paperless-NGX API-Token |
 | `PAPERLESS_EBON_TAG` | Nein | `eBON` | Tag-Name in Paperless-NGX |
 | `OPENROUTER_API_KEY` | Nein | – | OpenRouter API-Key (optional, falls KI-Fallback gewünscht) |
-| `OPENROUTER_MODEL` | Nein | `google/gemini-flash-1.5` | Zu verwendendes KI-Modell |
+| `OPENROUTER_MODEL` | Nein | `google/gemini-flash-1.5` | Zu verwendendes Standardmodell für KI-Kategorisierung |
+| `OPENROUTER_PARSING_MODEL` | Nein | Wert von `OPENROUTER_MODEL` | Zu verwendendes Modell für KI-Parsing-Fallback |
+| `OPENROUTER_PARSING_MAX_TOKENS` | Nein | `2500` | Max Tokens für KI-Parsing |
+| `OPENROUTER_PARSING_TEMPERATURE` | Nein | `0.0` | Temperature für KI-Parsing |
+| `AI_PARSING_FALLBACK_ENABLED` | Nein | `true` | Globaler Schalter für OpenRouter-KI-Parsing-Fallback |
+| `AI_PARSING_MIN_CONFIDENCE` | Nein | `0.900` | Mindest-Konfidenz für automatische Übernahme eines KI-Parses |
+| `AI_PARSING_SYNC_CALL_LIMIT` | Nein | `25` | Maximale KI-Parsing-Calls pro automatischem Sync-Lauf |
+| `AI_PARSING_TEXT_MODE` | Nein | `MINIMIZED` | `MINIMIZED` oder `FULL_TEXT`; `FULL_TEXT` ist datenschutzsensitiv |
+| `AI_PARSING_STORE_DEBUG_SNIPPETS` | Nein | `false` | Nur lokale Entwicklung: gekürzte/maskierte Prompt-/Antwort-Snippets speichern |
 | `SYNC_INTERVAL_MINUTES` | Nein | `60` | Sync-Intervall in Minuten |
 | `LOG_LEVEL` | Nein | `INFO` | Log-Level (`DEBUG`, `INFO`, `WARN`, `ERROR`) |
 
@@ -1582,8 +1839,10 @@ ebon-backup-2026-05-26_10-00.zip
 ├── categories.json
 ├── categorization_rules.json
 ├── parse_rules.json
+├── parse_rule_suggestions.json
 ├── receipts.json
 ├── receipt_items.json
+├── ai_parsing_log.json
 ├── ai_categorization_log.json
 ├── sync_log.json
 ├── sync_log_entry.json
@@ -1599,7 +1858,7 @@ Secret-Werte in `app_settings.json` werden nicht im Klartext exportiert. Für Se
   "version": "1",
   "appVersion": "1.0.0",
   "createdAt": "2026-05-26T10:00:00Z",
-  "tables": ["categories", "categorization_rules", "parse_rules", "receipts", "receipt_items", "ai_categorization_log", "sync_log", "sync_log_entry", "app_settings"],
+  "tables": ["categories", "categorization_rules", "parse_rules", "parse_rule_suggestions", "receipts", "receipt_items", "ai_parsing_log", "ai_categorization_log", "sync_log", "sync_log_entry", "app_settings"],
   "recordCounts": {
     "categories": 8,
     "receipts": 142,
@@ -1626,10 +1885,10 @@ Automatische Backups sind eine optionale Phase-13-Erweiterung. Sie verwenden das
 - Log-Level konfigurierbar via `LOG_LEVEL`.
 - Jeder eingehende API-Request wird auf `DEBUG` geloggt (Methode, Pfad, Status, Dauer).
 - Fehler werden mit Stack-Trace auf `ERROR` geloggt.
-- KI-Calls werden auf `INFO` geloggt (Modell, Positions-ID, Ergebnis-Kategorie, Dauer).
+- KI-Calls werden auf `INFO` geloggt (Workflow, Modell, betroffene Bon-/Positions-ID, Status, Dauer). Bei KI-Parsing-Calls werden keine vollständigen Bontexte, Prompts oder Rohantworten auf `INFO` oder `ERROR` geloggt.
 - `TAG_REMOVED`-Events werden als INFO geloggt.
 - Secrets (`APP_API_TOKEN`, `PAPERLESS_API_TOKEN`, `OPENROUTER_API_KEY`, Datenbankpasswörter) dürfen nie im Klartext geloggt werden.
-- `raw_text`, KI-Prompts und KI-Rohantworten dürfen standardmäßig nicht auf `INFO` oder `ERROR` geloggt werden. Auf `DEBUG` dürfen sie nur gekürzt und mit sichtbarer PII-Warnung erscheinen.
+- `raw_text`, KI-Prompts und KI-Rohantworten dürfen standardmäßig nicht auf `INFO` oder `ERROR` geloggt werden. Auf `DEBUG` oder in lokalen Debug-Snippets dürfen sie nur gekürzt, maskiert und mit sichtbarer PII-Warnung erscheinen.
 - Jeder Request erhält eine `traceId`, die in Fehlerantworten und Logs korreliert werden kann.
 
 ### 13.2 Globale Fehlerbehandlung (Backend)
@@ -1638,7 +1897,8 @@ Ein `@ControllerAdvice` fängt alle Exceptions ab und gibt strukturierte Fehlero
 
 ### 13.3 Resilience
 
-- KI-Calls: 3 Versuche mit exponential backoff. Schlägt der letzte Versuch fehl oder liefert die KI keine eindeutig passende Kategorie: Position bleibt unkategorisiert (`category_id = NULL`, `category_source = NULL`), Warnung wird geloggt.
+- KI-Kategorisierungs-Calls: 3 Versuche mit exponential backoff. Schlägt der letzte Versuch fehl oder liefert die KI keine eindeutig passende Kategorie: Position bleibt unkategorisiert (`category_id = NULL`, `category_source = NULL`), Warnung wird geloggt.
+- KI-Parsing-Calls: 3 Versuche mit exponential backoff bei transienten Fehlern. Schlägt der letzte Versuch fehl, wird der Fallback als `FAILED` in `ai_parsing_log` protokolliert und der Bon bleibt `PARSE_ERROR` mit dem besten verfügbaren Teilparse. Bei invalidem JSON, zu niedriger Konfidenz oder Sync-Limit wird ein spezifischer Status protokolliert.
 - Paperless-NGX-Calls: 3 Versuche bei HTTP 5xx. Bei endgültigem Fehler: Sync schlägt fehl, kein Partial-Import kaputt.
 - Datenbank-Fehler: Bei Transaktionsfehler vollständiges Rollback, Fehlermeldung in Response.
 
@@ -1681,6 +1941,7 @@ Ein `@ControllerAdvice` fängt alle Exceptions ab und gibt strukturierte Fehlero
 | Automatische Backups | Eingeschlossen in Phase 13: zeitgesteuerte rollierende lokale Backups mit Retention. |
 | Kategorie-Icons | Eingeschlossen in Phase 13: Auswahl, Anzeige und konsistente Persistenz vorhandener Kategorie-Icons. |
 | Release-/Software-Versionierung | Eingeschlossen in Phase 13: zentrale Versionsanzeige und konsistente Build-/Backup-/UI-Version. |
+| OpenRouter KI-Parsing-Fallback | Eingeschlossen in Phase 14: kontrollierte automatische Übernahme valider KI-Parses, KI-Parsing-Log, Parser-Regelvorschläge, UI-Verwaltung und Migrationsexport. |
 
 ---
 
@@ -1727,6 +1988,7 @@ Die Frontend-, Backup- und Hardening-Arbeiten sind bewusst feiner aufgeteilt als
 | 11 | Backup/Restore, Dry-Run, transaktionaler Restore, Schreibsperre, Restore-Runbook und Backup-UI | `mvn verify`, `npm run build`, Restore-Dry-Run-Test, transaktionaler Restore-Test |
 | 12 | Echte Integration, Docker-Gesamtsystem, Logging, Secret-Masking, README, Smoke-Test und finale Verifikation | `docker compose up --build`, Smoke-Test |
 | 13 | CI, Selenium-E2E-Smoke-Tests, rollierende Backups, Kategorie-Icons und Software-Versionierung | GitHub-Actions-Workflow definiert, E2E-Smoke-Test lauffähig, `mvn verify`, `npm run build`, `docker compose config` |
+| 14 | OpenRouter KI-Parsing-Fallback, KI-Parsing-Log, Parser-Regelvorschläge, UI-Verwaltung, Fixture-Vorschau und Migrationsexport | Mocked OpenRouter-Tests, `mvn verify`, `npm run build`, kein echter OpenRouter-Call in Tests/CI |
 
 ### 16.3 Agenten-Regeln
 
@@ -1752,6 +2014,8 @@ Eine Implementierung gilt als vollständig, wenn:
 - OpenAPI unter `/v3/api-docs` verfügbar und geschützt ist.
 - Mindestens ein Parser-Corpus mit mehreren Store-Formaten erfolgreich verarbeitet wird.
 - Backup-Dry-Run und Restore-Transaktion automatisiert getestet sind.
+- KI-Parsing-Fallback automatisiert gegen gemockte OpenRouter-Antworten getestet ist: Erfolg, invalides JSON, niedrige Konfidenz, Sync-Limit, deaktivierter Fallback, fehlender API-Key.
+- Parser-Regelvorschläge in Tests validiert, akzeptiert, abgelehnt und als Migration exportiert werden können.
 
 ### 17.2 Parser-Corpus
 
