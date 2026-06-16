@@ -31,6 +31,7 @@ Use this skill for React, TypeScript, Vite, shadcn/ui, Tailwind CSS, dashboards,
 - Use dense, scannable layouts for operational work.
 - Use tables for receipt lists, receipt items, rules, categories, and reports.
 - Use badges for parse status and category source.
+- Show a visible "per KI geparst" badge when `parseSource = AI`.
 - Use inline validation for forms.
 - Use skeletons or spinners for async states.
 - Use toast notifications for success and error feedback.
@@ -39,6 +40,9 @@ Use this skill for React, TypeScript, Vite, shadcn/ui, Tailwind CSS, dashboards,
 - Keep save/cancel actions reachable while editing long receipts, for example with a sticky action bar.
 - Dashboard wording must be explicit: "Letzte Bons" is quick navigation to recent receipts; "Bonus" means newly earned points/balance for the selected period.
 - Dashboard category and bonus widgets should support month, last quarter, last year, and custom date-range filters when the phase requires final reports/settings work.
+- AI parsing logs shown in the UI must be prompt-free by default: show status, trigger, model, timestamps, duration, failure reason, warnings, and field confidence, but not full prompts or raw model responses.
+- Parser rule suggestions must show why they exist: trigger, parser problem, solution rationale, validation status, and affected receipt/store context.
+- Any manual reparse using KI text mode `FULL_TEXT` must require an explicit confirmation before sending the request.
 
 ## Core Flows
 
@@ -50,8 +54,11 @@ Use this skill for React, TypeScript, Vite, shadcn/ui, Tailwind CSS, dashboards,
 - Reports with charts, table, and CSV export.
 - Settings for Paperless, OpenRouter, sync interval, currency.
 - Settings for Paperless public URL/document URL template and AI categorization confidence.
+- Settings for OpenRouter KI parsing fallback: enabled flag, parsing model, max tokens, temperature, minimum confidence, sync call limit, text mode, and local debug-snippet flag.
 - Data maintenance settings: re-parse all receipts and reset imported receipt data with explicit confirmation.
 - Category and rule management.
+- Parser rule suggestion management: list, filter, inspect, edit, accept, reject, choose reparse scope, and export accepted suggestions as a Flyway migration draft.
+- Fixture preview/export for parser debugging must be anonymized and export outside `backend/src/test/resources/corpus/` unless manually reviewed.
 - Backup download, validate, and restore confirmation.
 
 ## Verification

@@ -49,13 +49,19 @@ Follow the phases in `ebon-specification.md` section 16:
 11. Backup/restore with dry-run, transactional restore, write lock, restore runbook, and backup UI.
 12. Real integration, Docker full-system verification, logging, secret masking, README, smoke test, and final hardening.
 13. CI, Selenium E2E smoke tests, rolling scheduled backups, category icons, and software versioning.
+14. OpenRouter AI parsing fallback with controlled AI parse adoption, AI parsing logs, parser rule suggestions, UI review workflow, fixture preview, and migration export.
 
 ## Domain-Specific Guardrails
 
 - `TAG_REMOVED` uses soft-delete on receipts (`deleted_at`, `delete_reason`), never unsafe hard-delete.
 - `TAG_REMOVED` is only applied after all Paperless pages are fetched successfully.
 - Parser output is valid only if it meets the `PARSED` definition and sum validation from the specification.
-- AI parsing must use the fixed JSON schema from F-02 and reject invalid JSON.
+- AI parsing must use the fixed JSON schema from F-02 and reject invalid JSON. A KI parse may be adopted only when schema validation, required fields, contiguous item indexes, sum tolerance, and `ai_parsing_min_confidence` pass.
+- Successful KI parsing sets `receipt.parse_source = AI`; successful rule-based parsing sets `receipt.parse_source = RULE`.
+- OpenRouter KI parsing attempts must be written to `ai_parsing_log` without storing full prompts or raw responses by default.
+- KI-generated parser rules must first be stored as `parse_rule_suggestion`; never create active `parse_rule` entries automatically without user acceptance.
+- `FULL_TEXT` AI parsing for manual reparse requires explicit UI confirmation. Automatic sync must respect `ai_parsing_sync_call_limit`.
+- Parser rule suggestions must explain trigger, problem, solution rationale, and validation status, and accepted suggestions may be exported as Flyway migration drafts.
 - AI categorization is optional. If no `OPENROUTER_API_KEY` exists, items remain uncategorized.
 - Uncategorized items are represented as `category_id = NULL` and `category_source = NULL`; do not create or persist a fake "Ohne Kategorie" category.
 - Bonus fields store only points or balance newly earned in the receipt, never the current loyalty-account balance.

@@ -14,6 +14,8 @@ Use this skill before finishing work, when reviewing changes, or when adding tes
 - External services must be mocked in tests.
 - Data-loss risks must be tested before UI polish.
 - Secrets must never leak through logs, API responses, backups, screenshots, fixtures, or errors.
+- OpenRouter KI parsing must be tested only with mocks/test doubles; no real KI calls in automated tests or CI.
+- Prompt and raw response data must be absent by default from logs, backups, API responses, screenshots, and fixtures.
 
 ## Required Checks by Change Type
 
@@ -63,4 +65,12 @@ docker compose up --build
 - Are data-maintenance reset operations transactional, explicitly confirmed, and limited to imported receipt data while keeping categories, rules, settings, backups, and Flyway history?
 - Are backup/restore paths transactional and lock writes?
 - Are all new secrets masked?
+- Does KI parsing adoption require valid schema, required fields, contiguous item indexes, sum tolerance, and minimum confidence?
+- Are `receipt.parse_source`, `ai_parsing_log`, and `parse_rule_suggestion` updated consistently?
+- Is automatic `parse_rule` creation blocked until a user accepts a parser rule suggestion?
+- Does automatic sync respect `ai_parsing_sync_call_limit` and leave clear `PARSE_ERROR` reasons when skipped?
+- Does `FULL_TEXT` KI parsing require explicit confirmation in manual reparse flows?
+- Are parser rule suggestions validated, editable, acceptable, rejectable, and exportable as migration drafts?
+- Do backup/restore include `ai_parsing_log` and `parse_rule_suggestion` without full prompts/raw responses?
+- Do UI tests cover the "per KI geparst" badge, KI parsing log display, parser suggestion workflow, and FULL_TEXT confirmation?
 - Are tests focused on behavior rather than implementation trivia?

@@ -29,6 +29,7 @@ Use this skill when creating or changing the development environment, Docker Com
 - Start a local PostgreSQL development database.
 - Keep dev database credentials obviously non-production.
 - Never write real API tokens into tracked files.
+- Keep `.env.example` current when new settings are added, including `AI_PARSING_*` and `OPENROUTER_PARSING_*` variables for the OpenRouter KI parsing fallback.
 - Document fallback version choices if Java 25 or PostgreSQL 18 images are unavailable.
 
 ## Verification
@@ -42,4 +43,3 @@ node --version
 npm --version
 docker compose config
 ```
-

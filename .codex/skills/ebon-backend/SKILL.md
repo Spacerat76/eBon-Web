@@ -25,6 +25,11 @@ Use this skill for Spring Boot backend work, persistence, REST APIs, security, s
 - Secrets must be centrally masked before logging, returning through APIs, or exporting backups.
 - Backup restore must be transactional.
 - Data-maintenance reset operations must be explicit, confirmed, and transactional. They may delete imported receipts, receipt items, parser/AI/sync detail data, but must keep categories, categorization rules, settings, backups, and Flyway history.
+- `receipt.parse_source` must reflect the current parser source: `RULE` for rule-based parser output and `AI` for adopted OpenRouter KI parsing output.
+- OpenRouter KI parsing attempts belong in `ai_parsing_log`, not `ai_categorization_log`.
+- KI-generated parser rules must be stored as `parse_rule_suggestion` first. They become active `parse_rule` rows only after explicit user acceptance.
+- Accepted parser rule suggestions must remain audit-linked to the generated `parse_rule` and may be exported as Flyway migration drafts.
+- Backup/restore must include `ai_parsing_log` and `parse_rule_suggestion`, while preserving the default rule that full prompts and raw KI responses are not exported.
 
 ## API and Settings Rules
 
@@ -32,6 +37,9 @@ Use this skill for Spring Boot backend work, persistence, REST APIs, security, s
 - Paperless document links returned by the API must never contain API tokens or other secrets.
 - Re-parse-all defaults to preserving manual edits (`overwriteManualEdits=false`) unless the user explicitly confirms overwriting.
 - Search, receipt lists, and dashboard links that target uncategorized work must use the same semantic state: `category_id = NULL` and `category_source = NULL`.
+- Settings must expose separate KI parsing controls: enabled flag, parsing model, max tokens, temperature, minimum confidence, sync call limit, text mode, and local debug-snippet flag.
+- Manual reparse with KI text mode `FULL_TEXT` must require explicit confirmation before sending full receipt text to OpenRouter.
+- API DTOs for receipts must expose `parseSource` and a prompt-free `aiParsingSummary` when available.
 
 ## External Integrations
 
@@ -45,6 +53,8 @@ Use this skill for Spring Boot backend work, persistence, REST APIs, security, s
 - Security: unauthorized endpoints return `401`.
 - Sync: import, idempotency, pagination failure, sync lock, `TAG_REMOVED`.
 - Parser and categorization integration boundaries.
+- OpenRouter KI parsing: valid JSON adoption, invalid JSON rejection, low-confidence rejection, sync-call limit, missing API key, disabled fallback, `FULL_TEXT` confirmation, and prompt/response snippet masking.
+- Parser rule suggestions: validation, edit, accept, reject, generated `parse_rule`, and migration export.
 - Settings: masked secret update semantics.
 - Settings/data maintenance: Paperless public URL/template, re-parse-all defaults, and reset safety.
 - Backup/restore: dry-run, incompatible manifest, rollback on failure.

@@ -37,8 +37,17 @@ Bonus fields must describe only what was newly earned in this receipt:
 - AI parsing is fallback only after rule-based parsing fails.
 - AI output must match the JSON schema in F-02.
 - Invalid AI JSON must not be trusted or persisted as parsed data.
+- Valid AI JSON may be adopted only when required fields, contiguous `position_index`, numeric/date parsing, sum tolerance `0.02`, and `ai_parsing_min_confidence` all pass.
+- Adopted AI parses must set `receipt.parse_source = AI`; valid rule-based parses must set `receipt.parse_source = RULE`.
+- The OpenRouter prompt should include minimized or explicitly confirmed full text, rule-parser partial output, and the rule-parser failure reason.
+- Automatic sync must respect `ai_parsing_sync_call_limit`; when the limit is reached the receipt remains `PARSE_ERROR` with a clear reason.
+- `FULL_TEXT` manual reparse requires explicit user confirmation.
+- AI parsing attempts must be logged in `ai_parsing_log` without storing full prompts or raw responses by default.
 - Tests must mock AI responses.
-- Automatic AI adaptation may create `parse_rule` entries, never `categorization_rule` entries.
+- AI may propose parser rules as `parse_rule_suggestion` entries, never as active `parse_rule` entries directly.
+- Parser rule suggestions must include trigger, problem description, solution rationale, validation status, and may become active `parse_rule` entries only after user acceptance.
+- AI parsing and parser rule suggestions must never create `categorization_rule` entries.
+- Parser rule suggestion validation must reject invalid regexes, no-match regexes, wrong extractions, and obvious tax/TSE/payment-line collisions.
 
 ## Corpus Rules
 
