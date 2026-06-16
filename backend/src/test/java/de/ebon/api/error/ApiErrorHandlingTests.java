@@ -97,6 +97,10 @@ class ApiErrorHandlingTests {
                 request).getBody().status()).isEqualTo(400);
         assertThat(handler.handleNotFound(new jakarta.persistence.EntityNotFoundException("Bon nicht gefunden."), request)
                 .getBody().message()).isEqualTo("Bon nicht gefunden.");
+        assertThat(handler.handleNoResource(
+                new org.springframework.web.servlet.resource.NoResourceFoundException(
+                        org.springframework.http.HttpMethod.GET, "/missing", "No static resource"),
+                request).getBody().status()).isEqualTo(404);
         assertThat(handler.handleConflict(new org.springframework.dao.DataIntegrityViolationException("x"), request)
                 .getBody().message()).isEqualTo("Datenkonflikt beim Speichern.");
         assertThat(handler.handleBadRequest(new IllegalArgumentException("Ungueltig"), request).getBody().message())

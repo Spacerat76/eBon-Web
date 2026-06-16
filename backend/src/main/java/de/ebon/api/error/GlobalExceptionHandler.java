@@ -8,15 +8,20 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     private final ApiErrorFactory apiErrorFactory;
 
@@ -63,6 +68,13 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.NOT_FOUND, exception.getMessage(), request);
     }
 
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiError> handleNoResource(
+            NoResourceFoundException exception,
+            HttpServletRequest request) {
+        return build(HttpStatus.NOT_FOUND, "Ressource nicht gefunden.", request);
+    }
+
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleConflict(
             DataIntegrityViolationException exception,
@@ -88,6 +100,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleUnexpected(
             Exception exception,
             HttpServletRequest request) {
+        LOGGER.error(
+                "Unexpected API error method={} path={}",
+                request.getMethod(),
+                request.getRequestURI(),
+                exception);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unerwarteter Fehler.", request);
     }
 

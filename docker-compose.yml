@@ -16,5 +16,56 @@ services:
       timeout: 5s
       retries: 5
 
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-ebon}
+      DB_USER: ${DB_USER:-ebon}
+      DB_PASSWORD: ${DB_PASSWORD:-change_me_dev_password}
+      APP_API_TOKEN: ${APP_API_TOKEN:-change_me_local_dev_token}
+      APP_OPENAPI_PUBLIC_ACCESS: ${APP_OPENAPI_PUBLIC_ACCESS:-false}
+      SPRINGDOC_API_DOCS_ENABLED: ${SPRINGDOC_API_DOCS_ENABLED:-true}
+      SPRINGDOC_SWAGGER_UI_ENABLED: ${SPRINGDOC_SWAGGER_UI_ENABLED:-true}
+      PAPERLESS_BASE_URL: ${PAPERLESS_BASE_URL:-http://localhost:8000}
+      PAPERLESS_PUBLIC_BASE_URL: ${PAPERLESS_PUBLIC_BASE_URL:-${PAPERLESS_BASE_URL:-http://localhost:8000}}
+      PAPERLESS_DOCUMENT_URL_TEMPLATE: ${PAPERLESS_DOCUMENT_URL_TEMPLATE:-}
+      PAPERLESS_API_TOKEN: ${PAPERLESS_API_TOKEN:-change_me_paperless_token}
+      PAPERLESS_EBON_TAG: ${PAPERLESS_EBON_TAG:-eBON}
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-flash-1.5}
+      SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-60}
+      SYNC_SCHEDULER_ENABLED: ${SYNC_SCHEDULER_ENABLED:-true}
+      SYNC_INITIAL_DELAY_MS: ${SYNC_INITIAL_DELAY_MS:-3600000}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_STRUCTURED_FORMAT: ${LOG_STRUCTURED_FORMAT:-logstash}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   db_data:

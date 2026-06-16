@@ -2,7 +2,7 @@
 
 eBon-Web is a single-user expense tracker for electronic receipts imported from Paperless-NGX.
 
-The project is built incrementally from `ebon-specification.md`. The current state includes the reproducible development environment, Docker database foundation, the Spring Boot backend with sync, parsing, categorization, DTOs, OpenAPI, and tests, plus the React/Vite frontend shell with dashboard foundation and API client.
+The project is built incrementally from `ebon-specification.md`. The current state includes the reproducible development environment, the Spring Boot backend with sync, parsing, categorization, DTOs, OpenAPI, backup/restore, and tests, plus the React/Vite frontend with dashboard, receipts, search, reports, settings, data maintenance, and backup UI. The full system can be started with Docker Compose.
 
 ## Prerequisites
 
@@ -86,11 +86,31 @@ This lets Testcontainers start PostgreSQL and Ryuk as sibling containers through
 
 After changing Devcontainer mounts or Docker access settings, rebuild the container with `Dev Containers: Rebuild Container`.
 
-## Current Docker Compose Scope
+## Docker Compose Full System
 
-The root `docker-compose.yml` currently starts only PostgreSQL. Backend and frontend development servers are run separately from Devcontainer terminals.
+The root `docker-compose.yml` starts PostgreSQL, builds the backend image, builds the frontend/nginx image, and wires `/api` from the frontend container to the backend container.
 
-Start the development database with:
+Start the full system from the repository root:
+
+```bash
+docker compose up --build
+```
+
+Open the frontend at:
+
+```text
+http://localhost:5173
+```
+
+The backend is also published at:
+
+```text
+http://localhost:8080
+```
+
+`FRONTEND_PORT` defaults to `5173` in `.env.example` so the full Compose frontend uses the same browser port as the Vite dev server. Set `FRONTEND_PORT=80` if you want a traditional web port and it is free on your host.
+
+If you only need the development database while running backend and frontend manually, start just the database:
 
 ```bash
 docker compose up db
@@ -114,7 +134,7 @@ The backend now uses PostgreSQL and runs Flyway migrations automatically at star
 docker compose up db
 ```
 
-`PAPERLESS_BASE_URL` defaults to `http://localhost:8000` in the backend configuration. If your Paperless-NGX instance is reachable elsewhere, override it in `.env` before starting the backend. For example, a LAN-hosted instance may use `http://paperless:8001`.
+`PAPERLESS_BASE_URL` defaults to `http://localhost:8000` in the backend configuration. If your Paperless-NGX instance is reachable elsewhere, override it in `.env` before starting the backend. For example, a LAN-hosted instance may use `http://paperless:8001` if that hostname is resolvable from the backend container.
 
 Smoke checks:
 
@@ -129,8 +149,10 @@ Expected behavior:
 
 - `GET /api/health` is public and returns `{ "status": "UP" }`.
 - Other endpoints require `Authorization: Bearer <APP_API_TOKEN>`.
-- `/v3/api-docs` and `/swagger-ui.html` are public in local development so the browser can load Swagger UI.
-- Set `APP_OPENAPI_PUBLIC_ACCESS=false` to protect OpenAPI and Swagger UI with the same bearer token.
+- `/v3/api-docs` and `/swagger-ui.html` can be public in local development so the browser can load Swagger UI.
+- `.env.example` sets `APP_OPENAPI_PUBLIC_ACCESS=false` for the full integration setup, so OpenAPI and Swagger UI are protected by the bearer token.
+- Set `APP_OPENAPI_PUBLIC_ACCESS=true` temporarily when you want to use Swagger UI directly in the browser during local development.
+- Set `SPRINGDOC_API_DOCS_ENABLED=false` and `SPRINGDOC_SWAGGER_UI_ENABLED=false` if OpenAPI and Swagger UI should be unavailable at runtime instead of merely protected.
 - Flyway creates the schema and seed data for default categories and application settings.
 
 Paperless sync endpoints are available in the backend:
@@ -142,6 +164,23 @@ curl -H "Authorization: Bearer change_me_local_dev_token" "http://localhost:8080
 ```
 
 The scheduled sync uses `SYNC_INTERVAL_MINUTES` and starts after `SYNC_INITIAL_DELAY_MS`. Set `SYNC_SCHEDULER_ENABLED=false` for local runs where Paperless-NGX should never be contacted automatically.
+
+## Paperless and OpenRouter Configuration
+
+Important `.env` values for real integration:
+
+- `APP_API_TOKEN`: local bearer token for the eBon-Web API and frontend header.
+- `PAPERLESS_BASE_URL`: backend/container-reachable Paperless-NGX API URL.
+- `PAPERLESS_PUBLIC_BASE_URL`: browser-reachable Paperless-NGX web URL for document links.
+- `PAPERLESS_DOCUMENT_URL_TEMPLATE`: optional explicit document link template, for example `http://paperless.local/documents/{paperlessDocumentId}/details`.
+- `PAPERLESS_API_TOKEN`: Paperless-NGX API token. Never put this into frontend source code.
+- `PAPERLESS_EBON_TAG`: Paperless tag name used for eBon sync.
+- `OPENROUTER_API_KEY`: optional. Without it, AI categorization remains disabled and uncertain items stay uncategorized.
+- `OPENROUTER_BASE_URL` and `OPENROUTER_MODEL`: optional OpenRouter endpoint/model configuration.
+- `APP_OPENAPI_PUBLIC_ACCESS`: `false` protects Swagger/OpenAPI; `true` is convenient for local browser testing.
+- `SPRINGDOC_API_DOCS_ENABLED` and `SPRINGDOC_SWAGGER_UI_ENABLED`: set both to `false` to disable OpenAPI and Swagger UI completely in a hardened runtime.
+
+`PAPERLESS_BASE_URL` and `PAPERLESS_PUBLIC_BASE_URL` may legitimately differ. For example, inside Docker the backend might reach Paperless as `http://paperless:8001`, while your browser opens Paperless as `http://192.168.178.155:8001`.
 
 Some dm eBons contain the branch address only as an image. The parser extracts the dm branch code from the text header and resolves it through `app.parser.dm-branch-mappings`. Use the base code before `/` when possible, so codes like `D482/1` and `D482/2` map to the same branch:
 
@@ -193,6 +232,43 @@ cd frontend
 npm run build
 ```
 
+## Smoke Test
+
+After `docker compose up --build`, run these checks from another terminal:
+
+```bash
+curl http://localhost:8080/api/health
+curl -i http://localhost:8080/api/system/ping
+curl -H "Authorization: Bearer $APP_API_TOKEN" http://localhost:8080/api/system/ping
+curl -H "Authorization: Bearer $APP_API_TOKEN" http://localhost:8080/api/settings
+```
+
+Expected behavior:
+
+- Health returns `{ "status": "UP" }` without auth.
+- Protected API endpoints return `401` without a bearer token.
+- Protected API endpoints return data with `Authorization: Bearer <APP_API_TOKEN>`.
+- The frontend opens at `http://localhost:5173`, accepts the local API token, and loads dashboard data through `/api`.
+- Paperless document links use `paperlessDocumentUrl` returned by the backend and never include API tokens.
+
+Manual full-flow smoke test:
+
+1. Open `http://localhost:5173`.
+2. Enter `APP_API_TOKEN` in the header.
+3. Check Dashboard, Bons, Suche, Reports, Einstellungen, and Backup tabs.
+4. In Einstellungen, test the Paperless connection after configuring a real Paperless URL/token.
+5. Trigger a manual sync only when the Paperless values are real and correct.
+6. Verify deleted receipts are hidden from default lists/reports unless an endpoint explicitly supports `includeDeleted=true`.
+
+## Data Maintenance Safety
+
+The settings UI contains local admin actions for maintenance:
+
+- Re-parse all receipts: keeps manual edits by default; overwriting manual edits must be selected explicitly.
+- Reset imported receipt data: deletes imported receipts, receipt items, sync logs, and related parser/AI details only after the exact confirmation text `DELETE_IMPORTED_RECEIPTS`.
+
+These actions are transactional backend operations intended for local administration. They keep categories, categorization rules, app settings, backups, and Flyway history intact.
+
 ## Version Notes
 
 The Devcontainer uses the target Java 25 image `mcr.microsoft.com/devcontainers/java:dev-25-jdk-bookworm`, Maven 3.9.16, Node.js 24.16.0 LTS, Docker CLI, and PostgreSQL 18. The backend Maven build is configured for Java 25 as well, so the container and build target now match.
@@ -201,6 +277,10 @@ The frontend stack is React/React DOM 19.2.7, Vite 8.0.16, `@vitejs/plugin-react
 
 PostgreSQL 18 volumes are mounted at `/var/lib/postgresql` rather than `/var/lib/postgresql/data`, matching the official image layout for PostgreSQL 18+.
 
+The root Compose frontend publishes nginx on `FRONTEND_PORT` with a default of `5173` instead of hardcoding port `80`. This keeps Devcontainer and full-system testing on the same browser port. Set `FRONTEND_PORT=80` for a production-like port mapping.
+
+Backend logs include a `traceId` and use Spring Boot structured console logging when `LOG_STRUCTURED_FORMAT` is set. The default example uses `logstash`; set `LOG_LEVEL=DEBUG` temporarily to include request method/path/status/duration logs without headers or secrets.
+
 The Devcontainer intentionally installs Maven, Node.js, and Docker CLI in `.devcontainer/Dockerfile` instead of using Devcontainer Features from `ghcr.io`. This avoids failures in environments where the Feature registry cannot resolve `ghcr.io/devcontainers/features/*`.
 
 ## Safety
@@ -208,3 +288,5 @@ The Devcontainer intentionally installs Maven, Node.js, and Docker CLI in `.devc
 - Do not commit `.env`.
 - Do not commit real Paperless-NGX or OpenRouter tokens.
 - Use `.env.example` only for safe placeholder values.
+- Do not commit private raw receipt texts or real backup ZIPs.
+- Do not put API tokens into frontend source code or Paperless document URLs.

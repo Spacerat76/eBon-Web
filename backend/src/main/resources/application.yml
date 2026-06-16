@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: ebon-backend
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
   config:
     import: optional:file:.env[.properties],optional:file:../.env[.properties]
   datasource:
@@ -50,12 +53,17 @@ app:
 
 springdoc:
   api-docs:
+    enabled: ${SPRINGDOC_API_DOCS_ENABLED:true}
     path: /v3/api-docs
   swagger-ui:
+    enabled: ${SPRINGDOC_SWAGGER_UI_ENABLED:true}
     path: /swagger-ui.html
 
 logging:
   level:
     root: ${LOG_LEVEL:INFO}
+  structured:
+    format:
+      console: ${LOG_STRUCTURED_FORMAT:logstash}
   pattern:
     level: "%5p [traceId:%X{traceId:-}]"
