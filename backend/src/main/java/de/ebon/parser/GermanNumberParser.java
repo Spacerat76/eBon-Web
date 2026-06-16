@@ -14,9 +14,14 @@ final class GermanNumberParser {
         String normalized = value.trim()
                 .replace("EUR", "")
                 .replace("*", "")
-                .replace(" ", "")
-                .replace(".", "")
-                .replace(",", ".");
+                .replace(" ", "");
+        int lastComma = normalized.lastIndexOf(',');
+        int lastDot = normalized.lastIndexOf('.');
+        if (lastComma >= 0) {
+            normalized = normalized.replace(".", "").replace(",", ".");
+        } else if (lastDot >= 0 && !normalized.matches("-?\\d+\\.\\d{2}")) {
+            normalized = normalized.replace(".", "");
+        }
         return new BigDecimal(normalized);
     }
 }

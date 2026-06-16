@@ -16,12 +16,14 @@ import org.springframework.stereotype.Component;
 @Component
 public class RuleBasedReceiptParser {
 
+    private static final String AMOUNT_PATTERN = "-?\\d{1,3}(?:\\.\\d{3})*,\\d{2}|-?\\d+,\\d{2}|-?\\d+\\.\\d{2}";
     private static final Pattern AMOUNT_AT_END = Pattern.compile(
-            "(?<amount>-?\\d{1,3}(?:\\.\\d{3})*,\\d{2}|-?\\d+,\\d{2})\\s*(?:[A-Z]|§?\\d)?\\s*\\*?$");
+            "(?<amount>" + AMOUNT_PATTERN + ")\\s*(?:[A-Z]|§?\\d)?\\s*\\*?$");
     private static final Pattern AMOUNT_BEFORE_EUR = Pattern.compile(
-            "(?<amount>-?\\d{1,3}(?:\\.\\d{3})*,\\d{2}|-?\\d+,\\d{2})\\s*EUR\\b",
+            "(?<amount>" + AMOUNT_PATTERN + ")\\s*EUR\\b",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern DATE_DOTTED = Pattern.compile("\\b(?<day>\\d{1,2})\\.(?<month>\\d{1,2})\\.(?<year>\\d{2,4})\\b");
+    private static final Pattern DATE_SLASH = Pattern.compile("\\b(?<day>\\d{1,2})/(?<month>\\d{1,2})/(?<year>\\d{2,4})\\b");
     private static final Pattern DATE_ISO = Pattern.compile("\\b(?<date>\\d{4}-\\d{2}-\\d{2})\\b");
     private static final Pattern TIME = Pattern.compile("\\b(?<hour>\\d{1,2}):(?<minute>\\d{2})(?::(?<second>\\d{2}))?\\b");
     private static final Pattern DM_HEADER_BRANCH = Pattern.compile(
@@ -40,10 +42,13 @@ public class RuleBasedReceiptParser {
             "(?<points>\\d{1,3}(?:\\.\\d{3})*|\\d+(?:,\\d+)?)\\s*(?:°P|Punkte|Punkt)",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern DM_ITEM_LINE = Pattern.compile(
-            "^(?:(?<quantity>\\d+)x\\s+(?<unitPrice>\\d+(?:,\\d+)?)\\s+)?(?<description>.+?)\\s+(?<total>-?\\d{1,3}(?:\\.\\d{3})*,\\d{2}|-?\\d+,\\d{2})\\s+(?<taxCode>§?\\d)\\s*$",
+            "^(?:(?<quantity>\\d+)x\\s+(?<unitPrice>\\d+(?:,\\d+|\\.\\d+)?)\\s+)?(?<description>.+?)\\s+(?<total>" + AMOUNT_PATTERN + ")\\s+(?<taxCode>§?\\d)\\s*$",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern PHARMACY_ITEM_LINE = Pattern.compile(
-            "^(?<description>.+?)\\s+1x\\s+(?<unitPrice>\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d+,\\d{2})\\s+(?<total>\\d{1,3}(?:\\.\\d{3})*,\\d{2}|\\d+,\\d{2})\\s+[A-Z]\\s*$",
+            "^(?<description>.+?)\\s+1x\\s+(?<unitPrice>" + AMOUNT_PATTERN + ")\\s+(?<total>" + AMOUNT_PATTERN + ")\\s+[A-Z]\\s*$",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern QUANTITY_ARTICLE_ITEM_LINE = Pattern.compile(
+            "^\\s*(?<quantity>\\d+)\\s+(?<description>.+?)\\s+(?<total>" + AMOUNT_PATTERN + ")\\s*$",
             Pattern.CASE_INSENSITIVE);
 
     private final ReceiptParseValidator validator = new ReceiptParseValidator();
@@ -95,6 +100,14 @@ public class RuleBasedReceiptParser {
                         Integer.parseInt(dottedMatcher.group("month")),
                         Integer.parseInt(dottedMatcher.group("day")));
             }
+
+            Matcher slashMatcher = DATE_SLASH.matcher(line);
+            if (slashMatcher.find()) {
+                return LocalDate.of(
+                        normalizeYear(slashMatcher.group("year")),
+                        Integer.parseInt(slashMatcher.group("month")),
+                        Integer.parseInt(slashMatcher.group("day")));
+            }
         }
         return null;
     }
@@ -135,6 +148,9 @@ public class RuleBasedReceiptParser {
             }
             if (upper.contains("EDEKA")) {
                 return "EDEKA";
+            }
+            if (upper.contains("MCDONALD") || upper.contains("MEDONALD")) {
+                return "McDonald's";
             }
         }
 
@@ -381,8 +397,18 @@ public class RuleBasedReceiptParser {
     private List<ParsedReceiptItem> parseItems(List<String> lines) {
         List<ParsedReceiptItem> items = new ArrayList<>();
         List<String> pendingDescriptionLines = new ArrayList<>();
+        boolean quantityArticleTable = hasQuantityArticleTable(lines);
 
         for (String line : lines) {
+            ParsedReceiptItem quantityArticleItem = quantityArticleTable
+                    ? parseQuantityArticleItemLine(line, items.size())
+                    : null;
+            if (quantityArticleItem != null) {
+                pendingDescriptionLines.clear();
+                items.add(quantityArticleItem);
+                continue;
+            }
+
             ParsedReceiptItem dmItem = parseDmItemLine(line, items.size());
             if (dmItem != null) {
                 pendingDescriptionLines.clear();
@@ -483,6 +509,41 @@ public class RuleBasedReceiptParser {
         }
 
         return items;
+    }
+
+    private boolean hasQuantityArticleTable(List<String> lines) {
+        return lines.stream()
+                .map(line -> line.toUpperCase(Locale.ROOT))
+                .anyMatch(upper -> upper.contains("ANZ") && upper.contains("ARTIKEL") && upper.contains("GESAMT"));
+    }
+
+    private ParsedReceiptItem parseQuantityArticleItemLine(String line, int positionIndex) {
+        if (isMetadataLine(line) || isTotalLine(line) || isPaymentDetailLine(line) || isTaxMarkerLine(line)) {
+            return null;
+        }
+        Matcher matcher = QUANTITY_ARTICLE_ITEM_LINE.matcher(line);
+        if (!matcher.matches()) {
+            return null;
+        }
+
+        BigDecimal quantity = GermanNumberParser.parse(matcher.group("quantity"));
+        BigDecimal totalPrice = GermanNumberParser.parse(matcher.group("total"));
+        BigDecimal unitPrice = quantity.signum() == 0
+                ? null
+                : totalPrice.divide(quantity, 2, RoundingMode.HALF_UP);
+        String description = cleanupDescription(matcher.group("description"));
+        if (description.isBlank()) {
+            return null;
+        }
+
+        return new ParsedReceiptItem(
+                positionIndex,
+                description,
+                quantity,
+                "Stk",
+                unitPrice,
+                totalPrice,
+                totalPrice.signum() < 0 ? totalPrice.abs() : null);
     }
 
     private QuantityDetails parsePipeQuantityDetailLine(String line) {
@@ -717,6 +778,7 @@ public class RuleBasedReceiptParser {
     private boolean shouldSkipAmountLine(String line) {
         String upper = line.toUpperCase(Locale.ROOT);
         return isTotalLine(line)
+                || isDateOrTimeLine(line)
                 || isTaxMarkerLine(line)
                 || isTaxTableLine(line)
                 || upper.contains("GEGEBEN")
@@ -738,7 +800,10 @@ public class RuleBasedReceiptParser {
                 || upper.startsWith("WERT:")
                 || upper.startsWith("NEUER WERT")
                 || upper.contains("VORTEIL")
-                || upper.contains("GUTHABEN");
+                || upper.contains("GUTHABEN")
+                || upper.contains("PAYBACK")
+                || upper.contains("PUNKTESTAND")
+                || upper.contains("PUNKTE");
     }
 
     private boolean isMetadataLine(String line) {
@@ -790,7 +855,10 @@ public class RuleBasedReceiptParser {
     }
 
     private boolean isDateOrTimeLine(String line) {
-        return DATE_DOTTED.matcher(line).find() || DATE_ISO.matcher(line).find() || TIME.matcher(line).find();
+        return DATE_DOTTED.matcher(line).find()
+                || DATE_SLASH.matcher(line).find()
+                || DATE_ISO.matcher(line).find()
+                || TIME.matcher(line).find();
     }
 
     private boolean isKnownStoreLine(String line) {
@@ -802,7 +870,9 @@ public class RuleBasedReceiptParser {
                 || upper.contains("DM.DE")
                 || upper.equals("DM")
                 || upper.startsWith("DM ")
-                || upper.contains("EDEKA");
+                || upper.contains("EDEKA")
+                || upper.contains("MCDONALD")
+                || upper.contains("MEDONALD");
     }
 
     private boolean isBranchLine(String line) {

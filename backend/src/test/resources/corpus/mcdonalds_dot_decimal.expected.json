@@ -1,0 +1,31 @@
+{
+  "receiptDate": "2026-06-05",
+  "receiptTime": "11:56:40",
+  "storeName": "McDonald's",
+  "storeBranch": "Breslauer Str. 2-4",
+  "totalAmount": 14.49,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Cheeseburger",
+      "quantity": 3,
+      "unit": "Stk",
+      "unitPrice": 2.50,
+      "totalPrice": 7.50,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Hamburger Royal TS",
+      "quantity": 1,
+      "unit": "Stk",
+      "unitPrice": 6.99,
+      "totalPrice": 6.99,
+      "discountAmount": null
+    }
+  ]
+}

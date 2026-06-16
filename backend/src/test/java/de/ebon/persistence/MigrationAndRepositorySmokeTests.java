@@ -191,6 +191,27 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         assertThat(items.get(26).getCategorySource()).isNull();
     }
 
+    // Verifies restaurant store context wins over grocery-oriented product-name rules such as hamburger buns.
+    @Test
+    void seededRulesCategorizeMcDonaldsReceiptAsGastronomy() {
+        Receipt receipt = new Receipt(4243, "raw paperless text");
+        receipt.setStoreName("McDonald's");
+        receipt.addItem(new ReceiptItem(0, "Cheeseburger", new BigDecimal("7.50")));
+        receipt.addItem(new ReceiptItem(1, "Hamburger Royal TS", new BigDecimal("6.99")));
+        receiptRepository.saveAndFlush(receipt);
+
+        categorizationService.categorizeReceipt(receipt.getId());
+
+        List<ReceiptItem> items = receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId());
+        assertThat(items).hasSize(2);
+        assertThat(items)
+                .extracting(item -> item.getCategory().getName())
+                .containsExactly("Gastronomie", "Gastronomie");
+        assertThat(items)
+                .extracting(ReceiptItem::getCategorySource)
+                .containsExactly(CategorySource.RULE, CategorySource.RULE);
+    }
+
     // Verifies repository persistence keeps receipt items and implements TAG_REMOVED as a soft delete.
     @Test
     void receiptRepositoryPersistsItemsAndSupportsSoftDelete() {
