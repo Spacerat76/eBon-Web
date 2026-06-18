@@ -1,13 +1,14 @@
 package de.ebon.parser;
 
-import java.util.Optional;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.stereotype.Component;
 
 @Component
+@ConditionalOnMissingBean(AiReceiptParsingClient.class)
 class NoopAiReceiptParsingClient implements AiReceiptParsingClient {
 
     @Override
-    public Optional<String> parseReceipt(String rawText) {
-        return Optional.empty();
+    public AiReceiptParsingClientResponse parseReceipt(AiReceiptParsingPrompt prompt, AiParsingSettings settings) {
+        return new AiReceiptParsingClientResponse("", settings.model(), null, null, null);
     }
 }

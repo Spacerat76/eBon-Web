@@ -2,6 +2,7 @@ package de.ebon.api.dto;
 
 import de.ebon.persistence.model.DeleteReason;
 import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.ParseSource;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -23,7 +24,9 @@ public record ReceiptDto(
         BigDecimal bonusPoints,
         String bonusType,
         ParseStatus parseStatus,
+        ParseSource parseSource,
         String parseErrorMessage,
+        AiParsingSummaryDto aiParsingSummary,
         OffsetDateTime deletedAt,
         DeleteReason deleteReason,
         String rawText,

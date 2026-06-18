@@ -1,5 +1,7 @@
 export type ParseStatus = "PENDING" | "PARSED" | "PARSE_ERROR" | "MANUALLY_EDITED";
 
+export type ParseSource = "RULE" | "AI" | "MANUAL_CORRECTED";
+
 export type SyncStatus = "SUCCESS" | "FAILED" | "RUNNING";
 
 export type CategorySource = "RULE" | "AI" | "MANUAL";
@@ -10,6 +12,30 @@ export type AiCategorizationRejectionReason =
   | "LOW_CONFIDENCE"
   | "UNKNOWN_CATEGORY"
   | "INVALID_RESPONSE";
+
+export type AiParsingTrigger =
+  | "SYNC_AUTO"
+  | "MANUAL_REPARSE"
+  | "MANUAL_REPARSE_FORCE_FULL_TEXT"
+  | "BULK_REPARSE"
+  | "SETTINGS_TEST";
+
+export type AiParsingStatus =
+  | "SUCCESS"
+  | "FAILED"
+  | "SKIPPED_LIMIT"
+  | "INVALID_RESPONSE"
+  | "LOW_CONFIDENCE"
+  | "DISABLED"
+  | "NO_API_KEY";
+
+export type ParseRuleType = "DATE_PATTERN" | "STORE_PATTERN" | "ITEM_PATTERN" | "TOTAL_PATTERN" | "BONUS_PATTERN";
+
+export type ParseRuleValidationStatus = "VALID" | "INVALID_REGEX" | "NO_MATCH" | "WRONG_EXTRACTION" | "COLLISION_RISK";
+
+export type ParseRuleSuggestionStatus = "OPEN" | "ACCEPTED" | "REJECTED";
+
+export type ReparseScope = "NONE" | "CURRENT_RECEIPT" | "PARSE_ERROR_BY_STORE" | "ALL_PARSE_ERROR";
 
 export interface ApiErrorResponse {
   status: number;
@@ -56,6 +82,83 @@ export interface AiSuggestionDTO {
   rejectionReason: AiCategorizationRejectionReason | null;
 }
 
+export interface AiParsingSummaryDTO {
+  lastStatus: AiParsingStatus;
+  lastTrigger: AiParsingTrigger;
+  modelUsed: string | null;
+  overallConfidence: number | null;
+  hasOpenRuleSuggestions: boolean;
+}
+
+export interface AiParsingLogDTO {
+  id: number;
+  receiptId: number | null;
+  trigger: AiParsingTrigger;
+  status: AiParsingStatus;
+  modelUsed: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  overallConfidence: number | null;
+  parseErrorBefore: string | null;
+  failureReason: string | null;
+  fieldConfidence: Record<string, unknown>;
+  warnings: string[];
+  promptSnippet: string | null;
+  responseSnippet: string | null;
+}
+
+export interface ParseRuleSuggestionDTO {
+  id: number;
+  receiptId: number | null;
+  aiParsingLogId: number;
+  storeName: string | null;
+  ruleType: ParseRuleType;
+  matchRegex: string;
+  extractGroup: string | null;
+  confidence: number | null;
+  trigger: AiParsingTrigger;
+  problemDescription: string;
+  solutionRationale: string;
+  validationStatus: ParseRuleValidationStatus;
+  validationMessage: string | null;
+  status: ParseRuleSuggestionStatus;
+  rejectionReason: string | null;
+  acceptedParseRuleId: number | null;
+}
+
+export interface ParseRuleSuggestionUpdateRequest {
+  storeName: string | null;
+  ruleType: ParseRuleType;
+  matchRegex: string;
+  extractGroup: string | null;
+  confidence: number | null;
+  problemDescription: string;
+  solutionRationale: string;
+}
+
+export interface ParseRuleSuggestionAcceptRequest {
+  suggestion: ParseRuleSuggestionUpdateRequest | null;
+  reparseScope: ReparseScope;
+}
+
+export interface MigrationDraftDTO {
+  filename: string;
+  sql: string;
+}
+
+export interface FixturePreviewDTO {
+  suggestedBaseName: string;
+  receiptText: string;
+  expectedJson: string;
+}
+
+export interface FixtureExportDTO {
+  directory: string;
+  textFilename: string;
+  expectedFilename: string;
+}
+
 export interface ReceiptItemDTO {
   id: number;
   receiptId: number;
@@ -88,7 +191,9 @@ export interface ReceiptDTO {
   bonusPoints: number | null;
   bonusType: string | null;
   parseStatus: ParseStatus;
+  parseSource: ParseSource | null;
   parseErrorMessage: string | null;
+  aiParsingSummary: AiParsingSummaryDTO | null;
   deletedAt: string | null;
   deleteReason: DeleteReason | null;
   rawText: string | null;
@@ -148,6 +253,14 @@ export interface SettingsDTO {
   openRouterBaseUrl: string | null;
   openRouterModel: string | null;
   aiCategorizationMinConfidence: number | null;
+  aiParsingFallbackEnabled: boolean | null;
+  aiParsingModel: string | null;
+  aiParsingMaxTokens: number | null;
+  aiParsingTemperature: number | null;
+  aiParsingMinConfidence: number | null;
+  aiParsingSyncCallLimit: number | null;
+  aiParsingTextMode: "MINIMIZED" | "FULL_TEXT" | null;
+  aiParsingStoreDebugSnippets: boolean | null;
   syncIntervalMinutes: number | null;
   currency: string | null;
 }

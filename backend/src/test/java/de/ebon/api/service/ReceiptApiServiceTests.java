@@ -10,6 +10,7 @@ import de.ebon.api.dto.ReceiptUpdateRequest;
 import de.ebon.categorization.CategorizationService;
 import de.ebon.config.PaperlessProperties;
 import de.ebon.parser.ParsedReceipt;
+import de.ebon.parser.ParseExecutionOptions;
 import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
@@ -384,7 +385,7 @@ class ReceiptApiServiceTests {
                         null,
                         List.of()),
                 null);
-        when(receiptParserService.parse(anyString())).thenReturn(parseResult);
+        when(receiptParserService.parse(eq(receipt), any(ParseExecutionOptions.class))).thenReturn(parseResult);
         when(receiptRepository.saveAndFlush(any(Receipt.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         ReceiptItem cleanItem = new ReceiptItem(0, "Bio Milch", new BigDecimal("9.99"));
@@ -395,7 +396,7 @@ class ReceiptApiServiceTests {
         ReceiptDto dto = service.reparseReceipt(receipt.getId(), true);
 
         assertThat(dto.storeBranch()).isEqualTo("Am Markt 1");
-        verify(receiptParserService).parse(receipt.getRawText());
+        verify(receiptParserService).parse(eq(receipt), any(ParseExecutionOptions.class));
         verify(categorizationService).categorizeReceipt(receipt.getId());
     }
 
@@ -427,7 +428,7 @@ class ReceiptApiServiceTests {
                 .thenReturn(List.of(firstItem(cleanReceipt)));
         when(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(manualReceipt.getId()))
                 .thenReturn(List.of(manualItem));
-        when(receiptParserService.parse(anyString())).thenReturn(parseResult);
+        when(receiptParserService.parse(eq(cleanReceipt), any(ParseExecutionOptions.class))).thenReturn(parseResult);
         when(receiptRepository.saveAndFlush(any(Receipt.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         DataMaintenanceResultDto result = service.reparseAllReceipts(false);

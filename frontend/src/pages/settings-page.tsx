@@ -17,8 +17,11 @@ import type {
   CategoryIconDTO,
   CategoryRequest,
   DataMaintenanceResultDTO,
+  PageResponse,
+  ParseRuleSuggestionDTO,
   RuleMatchField,
   RuleMatchType,
+  ReparseScope,
   SettingsDTO,
   SystemInfoDTO
 } from "@/lib/types";
@@ -28,7 +31,7 @@ interface SettingsPageProps {
   hasApiToken: boolean;
 }
 
-type SettingsTab = "general" | "categories" | "rules" | "backup";
+type SettingsTab = "general" | "categories" | "rules" | "parser" | "backup";
 
 const RESTORE_CONFIRMATION = "RESTORE_BACKUP";
 
@@ -42,6 +45,14 @@ const emptySettings: SettingsDTO = {
   openRouterBaseUrl: "",
   openRouterModel: "",
   aiCategorizationMinConfidence: 0.9,
+  aiParsingFallbackEnabled: true,
+  aiParsingModel: "google/gemini-flash-1.5",
+  aiParsingMaxTokens: 2500,
+  aiParsingTemperature: 0,
+  aiParsingMinConfidence: 0.9,
+  aiParsingSyncCallLimit: 25,
+  aiParsingTextMode: "MINIMIZED",
+  aiParsingStoreDebugSnippets: false,
   syncIntervalMinutes: 60,
   currency: "EUR"
 };
@@ -71,6 +82,7 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [categoryIcons, setCategoryIcons] = useState<CategoryIconDTO[]>([]);
   const [rules, setRules] = useState<CategorizationRuleDTO[]>([]);
+  const [parserSuggestions, setParserSuggestions] = useState<PageResponse<ParseRuleSuggestionDTO> | null>(null);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [categoryDraft, setCategoryDraft] = useState<CategoryRequest>(emptyCategory);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
@@ -98,18 +110,20 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
     setError(null);
 
     try {
-      const [settingsResponse, categoryResponse, ruleResponse, iconResponse, systemInfoResponse] = await Promise.all([
+      const [settingsResponse, categoryResponse, ruleResponse, iconResponse, systemInfoResponse, parserSuggestionResponse] = await Promise.all([
         apiClient.settings(),
         apiClient.categories(includeInactive),
         apiClient.rules(),
         apiClient.categoryIcons(),
-        apiClient.systemInfo()
+        apiClient.systemInfo(),
+        apiClient.parseRuleSuggestions({ status: "" })
       ]);
       setSettings(settingsResponse);
       setCategories(categoryResponse);
       setRules(ruleResponse);
       setCategoryIcons(iconResponse);
       setSystemInfo(systemInfoResponse);
+      setParserSuggestions(parserSuggestionResponse);
       if (categoryResponse.length && ruleDraft.categoryId === 0) {
         setRuleDraft((current) => ({ ...current, categoryId: categoryResponse[0].id }));
       }
@@ -386,6 +400,62 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
     }
   }
 
+  async function acceptParserSuggestion(suggestion: ParseRuleSuggestionDTO, reparseScope: ReparseScope) {
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.acceptParseRuleSuggestion(suggestion.id, {
+        suggestion: {
+          storeName: suggestion.storeName,
+          ruleType: suggestion.ruleType,
+          matchRegex: suggestion.matchRegex,
+          extractGroup: suggestion.extractGroup,
+          confidence: suggestion.confidence,
+          problemDescription: suggestion.problemDescription,
+          solutionRationale: suggestion.solutionRationale
+        },
+        reparseScope
+      });
+      await loadSettings();
+      setFeedback("Parser-Regelvorschlag übernommen.");
+    } catch (acceptError) {
+      setError(toUserMessage(acceptError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function rejectParserSuggestion(suggestion: ParseRuleSuggestionDTO) {
+    const reason = window.prompt("Ablehnungsgrund", "Nicht passend");
+    if (!reason) {
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await apiClient.rejectParseRuleSuggestion(suggestion.id, reason);
+      await loadSettings();
+      setFeedback("Parser-Regelvorschlag abgelehnt.");
+    } catch (rejectError) {
+      setError(toUserMessage(rejectError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function exportParserRules() {
+    setSaving(true);
+    setError(null);
+    try {
+      const draft = await apiClient.exportParseRuleSuggestionMigration();
+      setFeedback(`Migration erzeugt: ${draft.filename}`);
+    } catch (exportError) {
+      setError(toUserMessage(exportError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function editRule(rule: CategorizationRuleDTO) {
     setEditingRuleId(rule.id);
     setRulePreview(null);
@@ -420,6 +490,7 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
         <Button onClick={() => setTab("general")} size="sm" variant={tab === "general" ? "primary" : "secondary"}>Allgemein</Button>
         <Button onClick={() => setTab("categories")} size="sm" variant={tab === "categories" ? "primary" : "secondary"}>Kategorien</Button>
         <Button onClick={() => setTab("rules")} size="sm" variant={tab === "rules" ? "primary" : "secondary"}>Regeln</Button>
+        <Button onClick={() => setTab("parser")} size="sm" variant={tab === "parser" ? "primary" : "secondary"}>Parser-Vorschläge</Button>
         <Button onClick={() => setTab("backup")} size="sm" variant={tab === "backup" ? "primary" : "secondary"}>Backup</Button>
       </div>
 
@@ -479,6 +550,15 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
           ruleDraft={ruleDraft}
           rules={rules}
           saving={saving}
+        />
+      ) : null}
+      {!loading && tab === "parser" ? (
+        <ParserSuggestionSettings
+          onAccept={acceptParserSuggestion}
+          onExport={exportParserRules}
+          onReject={rejectParserSuggestion}
+          saving={saving}
+          suggestions={parserSuggestions?.content ?? []}
         />
       ) : null}
       {!loading && tab === "backup" ? (
@@ -612,7 +692,7 @@ function GeneralSettings({
           <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <div className="text-sm font-medium">KI-Konfidenz: {Math.round(confidence * 1000) / 10} %</div>
+                <div className="text-sm font-medium">KI-Kategorisierung: {Math.round(confidence * 1000) / 10} %</div>
               <div className="text-xs text-zinc-500 dark:text-zinc-400">Niedriger automatisiert mehr, höher lässt mehr Positionen ohne Kategorie offen. Abgelehnte KI-Vorschläge bleiben in der UI sichtbar.</div>
               </div>
               <Input className="md:w-32" max={1} min={0} onChange={(event) => onSettingsChange({ ...settings, aiCategorizationMinConfidence: Number(event.target.value) })} step={0.001} type="number" value={confidence} />
@@ -626,6 +706,59 @@ function GeneralSettings({
               type="range"
               value={confidence}
             />
+          </div>
+
+          <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+            <div className="mb-3">
+              <div className="text-sm font-medium">KI-Parsing-Fallback</div>
+              <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                Wird nur genutzt, wenn der Regelparser scheitert oder ein Reparse dies explizit auslöst.
+                FULL_TEXT sendet den vollständigen Bontext und benötigt beim manuellen Reparse eine Zusatzbestätigung.
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  checked={settings.aiParsingFallbackEnabled ?? true}
+                  onChange={(event) => onSettingsChange({ ...settings, aiParsingFallbackEnabled: event.target.checked })}
+                  type="checkbox"
+                />
+                KI-Parsing aktiv
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  checked={settings.aiParsingStoreDebugSnippets ?? false}
+                  onChange={(event) => onSettingsChange({ ...settings, aiParsingStoreDebugSnippets: event.target.checked })}
+                  type="checkbox"
+                />
+                Lokale Debug-Snippets speichern
+              </label>
+              <Field help="Separates Modell für Bon-Parsing. Leer lassen nutzt den gespeicherten Default." label="Parsing-Modell">
+                <Input onChange={(event) => onSettingsChange({ ...settings, aiParsingModel: event.target.value })} value={settings.aiParsingModel ?? ""} />
+              </Field>
+              <Field help="Maximale Antwortlänge für das KI-JSON." label="Parsing Max Tokens">
+                <Input min={1} onChange={(event) => onSettingsChange({ ...settings, aiParsingMaxTokens: Number(event.target.value) })} type="number" value={settings.aiParsingMaxTokens ?? 2500} />
+              </Field>
+              <Field help="0 ist deterministisch. Höhere Werte sind kreativer und für Parsing meist nicht sinnvoll." label="Parsing Temperature">
+                <Input max={2} min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingTemperature: Number(event.target.value) })} step={0.1} type="number" value={settings.aiParsingTemperature ?? 0} />
+              </Field>
+              <Field help="Unterhalb dieses Werts wird ein KI-Parse nicht automatisch übernommen." label="Parsing Mindest-Konfidenz">
+                <Input max={1} min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingMinConfidence: Number(event.target.value) })} step={0.001} type="number" value={settings.aiParsingMinConfidence ?? 0.9} />
+              </Field>
+              <Field help="Maximale KI-Parsing-Calls pro automatischem Sync-Lauf. 0 deaktiviert automatische Calls im Sync." label="Sync-Call-Limit">
+                <Input min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingSyncCallLimit: Number(event.target.value) })} type="number" value={settings.aiParsingSyncCallLimit ?? 25} />
+              </Field>
+              <Field help="MINIMIZED entfernt technische Zahlungs-/TSE-Blöcke. FULL_TEXT sendet den vollständigen Bontext." label="Textmodus">
+                <select
+                  className={selectClassName}
+                  onChange={(event) => onSettingsChange({ ...settings, aiParsingTextMode: event.target.value as "MINIMIZED" | "FULL_TEXT" })}
+                  value={settings.aiParsingTextMode ?? "MINIMIZED"}
+                >
+                  <option value="MINIMIZED">MINIMIZED</option>
+                  <option value="FULL_TEXT">FULL_TEXT</option>
+                </select>
+              </Field>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -824,6 +957,81 @@ function BackupSettings({
         </Card>
       ) : null}
     </div>
+  );
+}
+
+function ParserSuggestionSettings({
+  onAccept,
+  onExport,
+  onReject,
+  saving,
+  suggestions
+}: {
+  onAccept: (suggestion: ParseRuleSuggestionDTO, reparseScope: ReparseScope) => void;
+  onExport: () => void;
+  onReject: (suggestion: ParseRuleSuggestionDTO) => void;
+  saving: boolean;
+  suggestions: ParseRuleSuggestionDTO[];
+}) {
+  const [scopeById, setScopeById] = useState<Record<number, ReparseScope>>({});
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <CardTitle>Parser-Regelvorschläge</CardTitle>
+        <Button disabled={saving} onClick={onExport} size="sm" variant="secondary">
+          <Download className="h-4 w-4" />
+          Migration exportieren
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {!suggestions.length ? <div className="rounded-md border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">Keine Parser-Regelvorschläge</div> : null}
+        {suggestions.map((suggestion) => {
+          const scope = scopeById[suggestion.id] ?? "NONE";
+          return (
+            <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800" key={suggestion.id}>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <Badge tone={suggestion.status === "OPEN" ? "blue" : suggestion.status === "ACCEPTED" ? "green" : "red"}>{suggestion.status}</Badge>
+                <Badge tone={suggestion.validationStatus === "VALID" ? "green" : "yellow"}>{suggestion.validationStatus}</Badge>
+                <span className="font-medium">{suggestion.storeName ?? "Generisch"} · {suggestion.ruleType}</span>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <div>
+                  <div className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Auslöser / Problem</div>
+                  <p className="mt-1 text-zinc-700 dark:text-zinc-200">{suggestion.problemDescription}</p>
+                </div>
+                <div>
+                  <div className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Lösungsbegründung</div>
+                  <p className="mt-1 text-zinc-700 dark:text-zinc-200">{suggestion.solutionRationale}</p>
+                </div>
+              </div>
+              <pre className="mt-3 overflow-auto rounded-md bg-zinc-950 p-2 text-xs text-zinc-50">{suggestion.matchRegex}</pre>
+              {suggestion.validationMessage ? <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">{suggestion.validationMessage}</div> : null}
+              {suggestion.status === "OPEN" ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <select
+                    className={selectClassName}
+                    onChange={(event) => setScopeById((current) => ({ ...current, [suggestion.id]: event.target.value as ReparseScope }))}
+                    value={scope}
+                  >
+                    <option value="NONE">Kein sofortiger Reparse</option>
+                    <option value="CURRENT_RECEIPT">Aktueller Bon</option>
+                    <option value="PARSE_ERROR_BY_STORE">Parse-Fehler gleicher Store</option>
+                    <option value="ALL_PARSE_ERROR">Alle Parse-Fehler</option>
+                  </select>
+                  <Button disabled={saving || suggestion.validationStatus !== "VALID"} onClick={() => onAccept(suggestion, scope)} size="sm">
+                    Übernehmen
+                  </Button>
+                  <Button disabled={saving} onClick={() => onReject(suggestion)} size="sm" variant="danger">
+                    Ablehnen
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 

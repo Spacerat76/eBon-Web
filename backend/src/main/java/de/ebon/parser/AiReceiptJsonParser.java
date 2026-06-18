@@ -5,6 +5,9 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.ParseRuleType;
+import de.ebon.persistence.model.ParseSource;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -20,9 +23,25 @@ class AiReceiptJsonParser {
     }
 
     ReceiptParseResult parse(String json) {
+        return parseWithMetadata(json, BigDecimal.ZERO).parseResult();
+    }
+
+    AiReceiptJsonParseResult parseWithMetadata(String json, BigDecimal minConfidence) {
         try {
             JsonNode root = objectMapper.readTree(json);
             List<ParsedReceiptItem> items = parseItems(required(root, "items"));
+            BigDecimal overallConfidence = nullableDecimal(root, "overallConfidence");
+            if (overallConfidence == null || overallConfidence.compareTo(minConfidence) < 0) {
+                return new AiReceiptJsonParseResult(
+                        new ReceiptParseResult(
+                                ParseStatus.PARSE_ERROR,
+                                null,
+                                "KI-Konfidenz ist zu niedrig oder fehlt."),
+                        overallConfidence,
+                        optionalJson(root, "fieldConfidence"),
+                        optionalJson(root, "warnings"),
+                        parseRuleSuggestions(root));
+            }
             ParsedReceipt receipt = new ParsedReceipt(
                     parseDate(root, "receiptDate"),
                     parseTime(root, "receiptTime"),
@@ -34,12 +53,30 @@ class AiReceiptJsonParser {
                     nullableDecimal(root, "bonusPoints"),
                     nullableText(root, "bonusType"),
                     items);
-            return validator.validate(receipt);
+            ReceiptParseResult parseResult = validator.validate(receipt);
+            if (parseResult.parsed()) {
+                parseResult = parseResult.withParseSource(ParseSource.AI);
+            }
+            return new AiReceiptJsonParseResult(
+                    parseResult,
+                    overallConfidence,
+                    optionalJson(root, "fieldConfidence"),
+                    optionalJson(root, "warnings"),
+                    parseRuleSuggestions(root));
         } catch (RuntimeException exception) {
-            return new ReceiptParseResult(null, null, "KI-JSON entspricht nicht dem erwarteten Parser-Schema.");
+            return invalidResult();
         } catch (Exception exception) {
-            return new ReceiptParseResult(null, null, "KI-JSON entspricht nicht dem erwarteten Parser-Schema.");
+            return invalidResult();
         }
+    }
+
+    private AiReceiptJsonParseResult invalidResult() {
+        return new AiReceiptJsonParseResult(
+                new ReceiptParseResult(ParseStatus.PARSE_ERROR, null, "KI-JSON entspricht nicht dem erwarteten Parser-Schema."),
+                null,
+                null,
+                null,
+                List.of());
     }
 
     private List<ParsedReceiptItem> parseItems(JsonNode itemsNode) {
@@ -118,6 +155,36 @@ class AiReceiptJsonParser {
             return null;
         }
         return new BigDecimal(value.asString());
+    }
+
+    private List<AiParseRuleSuggestionCandidate> parseRuleSuggestions(JsonNode root) {
+        JsonNode suggestionsNode = root.get("parseRuleSuggestions");
+        if (isMissingOrNull(suggestionsNode) || suggestionsNode.size() == 0) {
+            return List.of();
+        }
+
+        List<AiParseRuleSuggestionCandidate> suggestions = new ArrayList<>();
+        for (int index = 0; index < suggestionsNode.size(); index++) {
+            JsonNode node = suggestionsNode.get(index);
+            try {
+                suggestions.add(new AiParseRuleSuggestionCandidate(
+                        ParseRuleType.valueOf(requiredText(node, "ruleType")),
+                        nullableText(node, "storeName"),
+                        requiredText(node, "matchRegex"),
+                        nullableText(node, "extractGroup"),
+                        nullableDecimal(node, "confidence"),
+                        requiredText(node, "problemDescription"),
+                        requiredText(node, "solutionRationale")));
+            } catch (RuntimeException ignored) {
+                // Invalid suggestions must not block otherwise valid AI parsing.
+            }
+        }
+        return suggestions;
+    }
+
+    private String optionalJson(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return isMissingOrNull(value) ? null : value.toString();
     }
 
     private boolean isMissingOrNull(JsonNode value) {

@@ -1,12 +1,19 @@
 package de.ebon.parser;
 
 import de.ebon.config.ReceiptParserProperties;
+import de.ebon.persistence.model.ParseRule;
+import de.ebon.persistence.model.ParseRuleType;
 import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.RuleSource;
+import de.ebon.persistence.repository.ParseRuleRepository;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class RuleBasedReceiptParserEdgeTests {
 
@@ -279,5 +286,63 @@ class RuleBasedReceiptParserEdgeTests {
         assertThat(result.receipt().items().getFirst().description())
                 .isEqualTo("BEXSEROINJEKTIONSSUSP FER ISU 1X0.5ml");
         assertThat(result.receipt().items().getFirst().unitPrice()).isEqualByComparingTo("122.52");
+    }
+
+    // Verifies accepted parse_rule rows can act as item-parser fallback after a user approves an AI suggestion.
+    @Test
+    void usesActiveDatabaseItemRulesAsFallback() {
+        ParseRuleRepository parseRuleRepository = mock(ParseRuleRepository.class);
+        ParseRule itemRule = new ParseRule(
+                "REWE",
+                ParseRuleType.ITEM_PATTERN,
+                "^#\\s*(?<description>.+?)\\s*::\\s*(?<total>\\d+,\\d{2})\\s*::$",
+                null,
+                RuleSource.AI_ADAPTED);
+        when(parseRuleRepository.findByActiveTrueAndRuleTypeOrderByStoreNameAsc(ParseRuleType.ITEM_PATTERN))
+                .thenReturn(List.of(itemRule));
+        RuleBasedReceiptParser parserWithDbRules = new RuleBasedReceiptParser(
+                new ReceiptParserProperties(),
+                parseRuleRepository);
+
+        ReceiptParseResult result = parserWithDbRules.parse("""
+                REWE
+                18.06.2026
+                # Spezialartikel :: 4,20 ::
+                SUMME EUR 4,20
+                """);
+
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().items()).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.description()).isEqualTo("Spezialartikel");
+                    assertThat(item.totalPrice()).isEqualByComparingTo("4.20");
+                });
+    }
+
+    // Verifies accepted parse_rule rows can fill missing totals without replacing the existing parser first.
+    @Test
+    void usesActiveDatabaseTotalRulesAsFallback() {
+        ParseRuleRepository parseRuleRepository = mock(ParseRuleRepository.class);
+        ParseRule totalRule = new ParseRule(
+                "REWE",
+                ParseRuleType.TOTAL_PATTERN,
+                "^ZAHLBETRAG==(?<total>\\d+,\\d{2})$",
+                null,
+                RuleSource.AI_ADAPTED);
+        when(parseRuleRepository.findByActiveTrueAndRuleTypeOrderByStoreNameAsc(ParseRuleType.TOTAL_PATTERN))
+                .thenReturn(List.of(totalRule));
+        RuleBasedReceiptParser parserWithDbRules = new RuleBasedReceiptParser(
+                new ReceiptParserProperties(),
+                parseRuleRepository);
+
+        ReceiptParseResult result = parserWithDbRules.parse("""
+                REWE
+                18.06.2026
+                ARTIKEL A 1,00
+                ZAHLBETRAG==1,00
+                """);
+
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().totalAmount()).isEqualByComparingTo("1.00");
     }
 }

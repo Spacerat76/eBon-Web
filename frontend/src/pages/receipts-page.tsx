@@ -34,10 +34,12 @@ import { formatCurrency, formatDate, formatDateTime, formatDateTimeParts, format
 import { cn } from "@/lib/utils";
 import type {
   CategoryDTO,
+  AiParsingLogDTO,
   AiCategorizationRejectionReason,
   CategorySource,
   PageResponse,
   ParseStatus,
+  ParseRuleSuggestionDTO,
   ReceiptDTO,
   ReceiptItemDTO,
   ReceiptItemUpdateRequest,
@@ -110,6 +112,8 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
   const [receipts, setReceipts] = useState<PageResponse<ReceiptDTO> | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptDTO | null>(null);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [aiParsingLogs, setAiParsingLogs] = useState<AiParsingLogDTO[]>([]);
+  const [parseRuleSuggestions, setParseRuleSuggestions] = useState<ParseRuleSuggestionDTO[]>([]);
   const [draft, setDraft] = useState<ReceiptDraft | null>(null);
   const [listLoading, setListLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -182,12 +186,20 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     setError(null);
 
     try {
-      const response = await apiClient.receipt(selectedReceiptId);
+      const [response, logs, suggestions] = await Promise.all([
+        apiClient.receipt(selectedReceiptId),
+        apiClient.aiParsingLog(selectedReceiptId),
+        apiClient.parseRuleSuggestions({ size: 50 })
+      ]);
       setSelectedReceipt(response);
+      setAiParsingLogs(logs);
+      setParseRuleSuggestions(suggestions.content.filter((suggestion) => suggestion.receiptId === selectedReceiptId));
       setDraft(toDraft(response));
       setOverwriteManualEdits(false);
     } catch (loadError) {
       setSelectedReceipt(null);
+      setAiParsingLogs([]);
+      setParseRuleSuggestions([]);
       setDraft(null);
       setError(toUserMessage(loadError));
     } finally {
@@ -394,6 +406,8 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
           onSetOverwriteManualEdits={setOverwriteManualEdits}
           overwriteManualEdits={overwriteManualEdits}
           receipt={selectedReceipt}
+          aiParsingLogs={aiParsingLogs}
+          parseRuleSuggestions={parseRuleSuggestions}
           reparsing={reparsing}
           saving={saving}
         />
@@ -585,6 +599,8 @@ function ReceiptDetailPanel({
   onSetOverwriteManualEdits,
   overwriteManualEdits,
   receipt,
+  aiParsingLogs,
+  parseRuleSuggestions,
   reparsing,
   saving
 }: {
@@ -606,6 +622,8 @@ function ReceiptDetailPanel({
   onSetOverwriteManualEdits: (overwrite: boolean) => void;
   overwriteManualEdits: boolean;
   receipt: ReceiptDTO | null;
+  aiParsingLogs: AiParsingLogDTO[];
+  parseRuleSuggestions: ParseRuleSuggestionDTO[];
   reparsing: boolean;
   saving: boolean;
 }) {
@@ -738,6 +756,8 @@ function ReceiptDetailPanel({
         </CardContent>
       </Card>
 
+      <AiParsingPanel logs={aiParsingLogs} receipt={receipt} suggestions={parseRuleSuggestions} />
+
       <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <CardTitle>Positionen</CardTitle>
@@ -789,6 +809,8 @@ function ReceiptMetadata({ receipt }: { receipt: ReceiptDTO }) {
         <p className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Status</p>
         <div className="mt-1 flex flex-wrap gap-1">
           <ParseStatusBadge status={receipt.parseStatus} />
+          {receipt.parseSource === "AI" ? <Badge tone="blue">per KI geparst</Badge> : null}
+          {receipt.parseSource === "RULE" ? <Badge>Regelparser</Badge> : null}
           {receipt.deleteReason ? <DeleteReasonBadge reason={receipt.deleteReason} /> : null}
         </div>
       </div>
@@ -800,6 +822,79 @@ function ReceiptMetadata({ receipt }: { receipt: ReceiptDTO }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function AiParsingPanel({
+  logs,
+  receipt,
+  suggestions
+}: {
+  logs: AiParsingLogDTO[];
+  receipt: ReceiptDTO;
+  suggestions: ParseRuleSuggestionDTO[];
+}) {
+  if (!logs.length && !suggestions.length && receipt.parseSource !== "AI" && !receipt.aiParsingSummary) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>KI-Parsing</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex flex-wrap gap-2 text-sm">
+          {receipt.parseSource === "AI" ? <Badge tone="blue">per KI geparst</Badge> : null}
+          {receipt.aiParsingSummary ? (
+            <>
+              <Badge tone={receipt.aiParsingSummary.lastStatus === "SUCCESS" ? "green" : "yellow"}>{aiParsingStatusLabel(receipt.aiParsingSummary.lastStatus)}</Badge>
+              {receipt.aiParsingSummary.overallConfidence == null ? null : <Badge>{formatPercent(receipt.aiParsingSummary.overallConfidence * 100)}</Badge>}
+              {receipt.aiParsingSummary.hasOpenRuleSuggestions ? <Badge tone="yellow">Offene Regelvorschläge</Badge> : null}
+            </>
+          ) : null}
+        </div>
+
+        {logs.length ? (
+          <details>
+            <summary className="cursor-pointer text-sm font-medium text-zinc-700 dark:text-zinc-200">Technisches Log anzeigen</summary>
+            <div className="mt-3 space-y-2">
+              {logs.map((log) => (
+                <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800" key={log.id}>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge tone={log.status === "SUCCESS" ? "green" : "yellow"}>{aiParsingStatusLabel(log.status)}</Badge>
+                    <Badge>{log.trigger}</Badge>
+                    {log.modelUsed ? <Badge>{log.modelUsed}</Badge> : null}
+                  </div>
+                  <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                    {formatDateTime(log.startedAt)} · {log.durationMs == null ? "Dauer unbekannt" : `${log.durationMs} ms`}
+                  </div>
+                  {log.failureReason ? <div className="mt-2 text-sm text-amber-700 dark:text-amber-300">{log.failureReason}</div> : null}
+                  {log.warnings.length ? <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Warnungen: {log.warnings.join("; ")}</div> : null}
+                </div>
+              ))}
+            </div>
+          </details>
+        ) : null}
+
+        {suggestions.length ? (
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Parser-Regelvorschläge</div>
+            {suggestions.map((suggestion) => (
+              <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800" key={suggestion.id}>
+                <div className="flex flex-wrap gap-2">
+                  <Badge tone={suggestion.status === "OPEN" ? "blue" : suggestion.status === "ACCEPTED" ? "green" : "red"}>{suggestion.status}</Badge>
+                  <Badge tone={suggestion.validationStatus === "VALID" ? "green" : "yellow"}>{suggestion.validationStatus}</Badge>
+                  <span className="font-medium">{suggestion.ruleType}</span>
+                </div>
+                <div className="mt-2 text-zinc-700 dark:text-zinc-200">{suggestion.problemDescription}</div>
+                <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{suggestion.solutionRationale}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1245,6 +1340,18 @@ function rejectionReasonLabel(reason: AiCategorizationRejectionReason | null): s
   }
 
   return "Nicht automatisch übernommen.";
+}
+
+function aiParsingStatusLabel(status: AiParsingLogDTO["status"]): string {
+  return {
+    SUCCESS: "KI-Parse übernommen",
+    FAILED: "KI-Parse fehlgeschlagen",
+    SKIPPED_LIMIT: "Sync-Limit erreicht",
+    INVALID_RESPONSE: "KI-Antwort ungültig",
+    LOW_CONFIDENCE: "Konfidenz zu niedrig",
+    DISABLED: "KI-Parsing deaktiviert",
+    NO_API_KEY: "API-Key fehlt"
+  }[status];
 }
 
 function toUserMessage(error: unknown): string {

@@ -64,6 +64,10 @@ public class ParseRule {
         this.source = source;
     }
 
+    public void updateConfidence(BigDecimal confidence) {
+        this.confidence = confidence;
+    }
+
     @PrePersist
     void prePersist() {
         if (createdAt == null) {
@@ -73,5 +77,29 @@ public class ParseRule {
 
     public Long getId() {
         return id;
+    }
+
+    public String getStoreName() {
+        return storeName;
+    }
+
+    public ParseRuleType getRuleType() {
+        return ruleType;
+    }
+
+    public String getMatchRegex() {
+        return matchRegex;
+    }
+
+    public String getExtractGroup() {
+        return extractGroup;
+    }
+
+    public BigDecimal getConfidence() {
+        return confidence;
+    }
+
+    public RuleSource getSource() {
+        return source;
     }
 }

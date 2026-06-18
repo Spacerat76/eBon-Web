@@ -1,6 +1,7 @@
 package de.ebon.api.service;
 
 import de.ebon.api.dto.AiSuggestionDto;
+import de.ebon.api.dto.AiParsingSummaryDto;
 import de.ebon.api.dto.PageResponse;
 import de.ebon.api.dto.DataMaintenanceResultDto;
 import de.ebon.api.dto.ReceiptDto;
@@ -13,15 +14,21 @@ import de.ebon.config.PaperlessProperties;
 import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
+import de.ebon.parser.AiParsingTextMode;
+import de.ebon.parser.ParseExecutionOptions;
 import de.ebon.persistence.model.AiCategorizationLog;
+import de.ebon.persistence.model.AiParsingLog;
 import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.DeleteReason;
+import de.ebon.persistence.model.ParseRuleSuggestionStatus;
 import de.ebon.persistence.model.ParseStatus;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
+import de.ebon.persistence.repository.AiParsingLogRepository;
 import de.ebon.persistence.repository.AppSettingRepository;
 import de.ebon.persistence.repository.CategoryRepository;
+import de.ebon.persistence.repository.ParseRuleSuggestionRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
 import jakarta.persistence.EntityNotFoundException;
@@ -37,6 +44,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -50,6 +58,8 @@ public class ReceiptApiService {
     private final ReceiptItemRepository receiptItemRepository;
     private final CategoryRepository categoryRepository;
     private final AiCategorizationLogRepository aiCategorizationLogRepository;
+    private final AiParsingLogRepository aiParsingLogRepository;
+    private final ParseRuleSuggestionRepository parseRuleSuggestionRepository;
     private final AppSettingRepository appSettingRepository;
     private final PaperlessProperties paperlessProperties;
     private final CategorizationService categorizationService;
@@ -66,10 +76,39 @@ public class ReceiptApiService {
             CategorizationService categorizationService,
             ReceiptParserService receiptParserService,
             ReceiptParseApplier receiptParseApplier) {
+        this(
+                receiptRepository,
+                receiptItemRepository,
+                categoryRepository,
+                aiCategorizationLogRepository,
+                null,
+                null,
+                appSettingRepository,
+                paperlessProperties,
+                categorizationService,
+                receiptParserService,
+                receiptParseApplier);
+    }
+
+    @Autowired
+    public ReceiptApiService(
+            ReceiptRepository receiptRepository,
+            ReceiptItemRepository receiptItemRepository,
+            CategoryRepository categoryRepository,
+            AiCategorizationLogRepository aiCategorizationLogRepository,
+            AiParsingLogRepository aiParsingLogRepository,
+            ParseRuleSuggestionRepository parseRuleSuggestionRepository,
+            AppSettingRepository appSettingRepository,
+            PaperlessProperties paperlessProperties,
+            CategorizationService categorizationService,
+            ReceiptParserService receiptParserService,
+            ReceiptParseApplier receiptParseApplier) {
         this.receiptRepository = receiptRepository;
         this.receiptItemRepository = receiptItemRepository;
         this.categoryRepository = categoryRepository;
         this.aiCategorizationLogRepository = aiCategorizationLogRepository;
+        this.aiParsingLogRepository = aiParsingLogRepository;
+        this.parseRuleSuggestionRepository = parseRuleSuggestionRepository;
         this.appSettingRepository = appSettingRepository;
         this.paperlessProperties = paperlessProperties;
         this.categorizationService = categorizationService;
@@ -176,6 +215,16 @@ public class ReceiptApiService {
 
     @Transactional
     public ReceiptDto reparseReceipt(Long id, boolean overwriteManualEdits) {
+        return reparseReceipt(id, overwriteManualEdits, true, null, false);
+    }
+
+    @Transactional
+    public ReceiptDto reparseReceipt(
+            Long id,
+            boolean overwriteManualEdits,
+            boolean useAiFallback,
+            AiParsingTextMode aiTextMode,
+            boolean confirmFullText) {
         Receipt receipt = activeReceipt(id);
         if (hasManualEdits(receipt) && !overwriteManualEdits) {
             throw new ResponseStatusException(
@@ -183,7 +232,7 @@ public class ReceiptApiService {
                     "Bon enthaelt manuell editierte Positionen. overwriteManualEdits=true ist erforderlich.");
         }
 
-        reparseReceipt(receipt);
+        reparseReceipt(receipt, ParseExecutionOptions.manual(useAiFallback, aiTextMode, confirmFullText));
         return getReceipt(id);
     }
 
@@ -198,7 +247,7 @@ public class ReceiptApiService {
                 skippedManualReceipts++;
                 continue;
             }
-            reparseReceipt(receipt);
+            reparseReceipt(receipt, ParseExecutionOptions.bulk());
             processedReceipts++;
         }
 
@@ -211,8 +260,8 @@ public class ReceiptApiService {
                 0);
     }
 
-    private void reparseReceipt(Receipt receipt) {
-        ReceiptParseResult parseResult = receiptParserService.parse(receipt.getRawText());
+    private void reparseReceipt(Receipt receipt, ParseExecutionOptions options) {
+        ReceiptParseResult parseResult = receiptParserService.parse(receipt, options);
         receipt.clearItems();
         receiptRepository.saveAndFlush(receipt);
         receiptParseApplier.apply(receipt, parseResult);
@@ -358,7 +407,9 @@ public class ReceiptApiService {
                 receipt.getBonusPoints(),
                 receipt.getBonusType(),
                 receipt.getParseStatus(),
+                receipt.getParseSource(),
                 receipt.getParseErrorMessage(),
+                aiParsingSummary(receipt.getId()),
                 receipt.getDeletedAt(),
                 receipt.getDeleteReason(),
                 includeRawText ? receipt.getRawText() : null,
@@ -401,6 +452,22 @@ public class ReceiptApiService {
                 suggestedCategory == null ? log.getSuggestedCategoryName() : suggestedCategory.getName(),
                 log.getAiConfidence(),
                 log.getRejectionReason());
+    }
+
+    private AiParsingSummaryDto aiParsingSummary(Long receiptId) {
+        if (aiParsingLogRepository == null || parseRuleSuggestionRepository == null) {
+            return null;
+        }
+        return aiParsingLogRepository.findFirstByReceipt_IdOrderByStartedAtDesc(receiptId)
+                .map(log -> new AiParsingSummaryDto(
+                        log.getStatus(),
+                        log.getTrigger(),
+                        log.getModelUsed(),
+                        log.getOverallConfidence(),
+                        parseRuleSuggestionRepository.countByReceipt_IdAndStatus(
+                                receiptId,
+                                ParseRuleSuggestionStatus.OPEN) > 0))
+                .orElse(null);
     }
 
     private String safeReceiptSort(String sortBy) {

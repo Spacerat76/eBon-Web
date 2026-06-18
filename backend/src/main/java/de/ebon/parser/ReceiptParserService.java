@@ -1,45 +1,48 @@
 package de.ebon.parser;
 
-import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.ParseSource;
+import de.ebon.persistence.model.Receipt;
 import java.util.Optional;
+import java.util.function.Function;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ReceiptParserService {
 
     private final RuleBasedReceiptParser ruleBasedReceiptParser;
-    private final AiReceiptParsingClient aiReceiptParsingClient;
-    private final AiReceiptJsonParser aiReceiptJsonParser;
+    private final AiParsingFallbackService aiParsingFallbackService;
 
+    @Autowired
     public ReceiptParserService(
             RuleBasedReceiptParser ruleBasedReceiptParser,
-            AiReceiptParsingClient aiReceiptParsingClient,
-            AiReceiptJsonParser aiReceiptJsonParser) {
+            AiParsingFallbackService aiParsingFallbackService) {
         this.ruleBasedReceiptParser = ruleBasedReceiptParser;
-        this.aiReceiptParsingClient = aiReceiptParsingClient;
-        this.aiReceiptJsonParser = aiReceiptJsonParser;
+        this.aiParsingFallbackService = aiParsingFallbackService;
+    }
+
+    ReceiptParserService(
+            RuleBasedReceiptParser ruleBasedReceiptParser,
+            Function<String, Optional<String>> ignoredAiClient,
+            AiReceiptJsonParser ignoredAiReceiptJsonParser) {
+        this.ruleBasedReceiptParser = ruleBasedReceiptParser;
+        this.aiParsingFallbackService = null;
     }
 
     public ReceiptParseResult parse(String rawText) {
         ReceiptParseResult ruleResult = ruleBasedReceiptParser.parse(rawText);
+        return ruleResult.parsed() ? ruleResult.withParseSource(ParseSource.RULE) : ruleResult;
+    }
+
+    public ReceiptParseResult parse(Receipt receipt, ParseExecutionOptions options) {
+        ReceiptParseResult ruleResult = parse(receipt.getRawText());
         if (ruleResult.parsed()) {
             return ruleResult;
         }
+        return aiParsingFallbackService == null ? ruleResult : aiParsingFallbackService.tryFallback(receipt, ruleResult, options);
+    }
 
-        Optional<String> aiJson = aiReceiptParsingClient.parseReceipt(rawText);
-        if (aiJson.isEmpty()) {
-            return ruleResult;
-        }
-
-        ReceiptParseResult aiResult = aiReceiptJsonParser.parse(aiJson.orElseThrow());
-        if (aiResult.parseStatus() == ParseStatus.PARSED) {
-            return aiResult;
-        }
-
-        ParsedReceipt partialReceipt = ruleResult.receipt() == null ? aiResult.receipt() : ruleResult.receipt();
-        String message = aiResult.errorMessage() == null
-                ? "KI-JSON entspricht nicht dem erwarteten Parser-Schema."
-                : aiResult.errorMessage();
-        return new ReceiptParseResult(ParseStatus.PARSE_ERROR, partialReceipt, message);
+    public AiParsingBudget newSyncAiParsingBudget() {
+        return aiParsingFallbackService == null ? AiParsingBudget.unlimited() : aiParsingFallbackService.newSyncBudget();
     }
 }

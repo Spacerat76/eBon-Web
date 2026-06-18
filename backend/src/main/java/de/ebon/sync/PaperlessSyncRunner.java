@@ -7,6 +7,8 @@ import de.ebon.paperless.PaperlessDocument;
 import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
+import de.ebon.parser.AiParsingBudget;
+import de.ebon.parser.ParseExecutionOptions;
 import de.ebon.persistence.model.DeleteReason;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.SyncLog;
@@ -66,7 +68,7 @@ class PaperlessSyncRunner {
                             (first, ignored) -> first,
                             LinkedHashMap::new));
 
-            int newDocumentsCount = importNewDocuments(syncLog, documentsById);
+            int newDocumentsCount = importNewDocuments(syncLog, documentsById, receiptParserService.newSyncAiParsingBudget());
             int removedDocumentsCount = documentsById.isEmpty()
                     ? 0
                     : markReceiptsMissingFromPaperless(syncLog, documentsById.keySet());
@@ -79,15 +81,17 @@ class PaperlessSyncRunner {
         }
     }
 
-    private int importNewDocuments(SyncLog syncLog, Map<Integer, PaperlessDocument> documentsById) {
+    private int importNewDocuments(SyncLog syncLog, Map<Integer, PaperlessDocument> documentsById, AiParsingBudget aiBudget) {
         int imported = 0;
         for (PaperlessDocument document : documentsById.values()) {
             if (receiptRepository.countByPaperlessDocumentId(document.id()) > 0) {
                 continue;
             }
 
-            Receipt receipt = new Receipt(document.id(), document.content() == null ? "" : document.content());
-            ReceiptParseResult parseResult = receiptParserService.parse(receipt.getRawText());
+            Receipt receipt = receiptRepository.saveAndFlush(new Receipt(
+                    document.id(),
+                    document.content() == null ? "" : document.content()));
+            ReceiptParseResult parseResult = receiptParserService.parse(receipt, ParseExecutionOptions.sync(aiBudget));
             receiptParseApplier.apply(receipt, parseResult);
             Receipt savedReceipt = receiptRepository.saveAndFlush(receipt);
             categorizationService.categorizeReceipt(savedReceipt.getId());

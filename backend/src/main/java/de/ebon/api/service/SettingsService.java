@@ -4,10 +4,14 @@ import de.ebon.api.dto.SettingsConnectionTestRequest;
 import de.ebon.api.dto.SettingsConnectionTestResponse;
 import de.ebon.api.dto.SettingsDto;
 import de.ebon.config.AiCategorizationProperties;
+import de.ebon.config.AiParsingProperties;
 import de.ebon.config.PaperlessProperties;
+import de.ebon.parser.AiParsingTextMode;
 import de.ebon.persistence.model.AppSetting;
 import de.ebon.persistence.repository.AppSettingRepository;
 import java.math.BigDecimal;
+import java.util.Locale;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,10 +20,12 @@ public class SettingsService {
 
     private static final String MASK = "********";
     private static final BigDecimal DEFAULT_AI_CONFIDENCE = new BigDecimal("0.900");
+    private static final BigDecimal DEFAULT_AI_PARSING_CONFIDENCE = new BigDecimal("0.900");
 
     private final AppSettingRepository appSettingRepository;
     private final PaperlessProperties paperlessProperties;
     private final AiCategorizationProperties aiProperties;
+    private final AiParsingProperties aiParsingProperties;
     private final SettingsConnectionTester connectionTester;
 
     public SettingsService(
@@ -27,9 +33,25 @@ public class SettingsService {
             PaperlessProperties paperlessProperties,
             AiCategorizationProperties aiProperties,
             SettingsConnectionTester connectionTester) {
+        this(
+                appSettingRepository,
+                paperlessProperties,
+                aiProperties,
+                new AiParsingProperties(),
+                connectionTester);
+    }
+
+    @Autowired
+    public SettingsService(
+            AppSettingRepository appSettingRepository,
+            PaperlessProperties paperlessProperties,
+            AiCategorizationProperties aiProperties,
+            AiParsingProperties aiParsingProperties,
+            SettingsConnectionTester connectionTester) {
         this.appSettingRepository = appSettingRepository;
         this.paperlessProperties = paperlessProperties;
         this.aiProperties = aiProperties;
+        this.aiParsingProperties = aiParsingProperties;
         this.connectionTester = connectionTester;
     }
 
@@ -47,6 +69,14 @@ public class SettingsService {
                 value("openrouter_base_url", aiProperties.getOpenrouterBaseUrl()),
                 value("openrouter_model", value("ai_model", aiProperties.getModel())),
                 confidence(),
+                booleanValue("ai_parsing_fallback_enabled", aiParsingProperties.isFallbackEnabled()),
+                value("ai_parsing_model", aiParsingProperties.getModel()),
+                integerValue("ai_parsing_max_tokens", aiParsingProperties.getMaxTokens()),
+                doubleValue("ai_parsing_temperature", aiParsingProperties.getTemperature()),
+                decimalValue("ai_parsing_min_confidence", DEFAULT_AI_PARSING_CONFIDENCE),
+                integerValue("ai_parsing_sync_call_limit", aiParsingProperties.getSyncCallLimit()),
+                enumValue("ai_parsing_text_mode", aiParsingProperties.getTextMode().name(), AiParsingTextMode.class),
+                booleanValue("ai_parsing_store_debug_snippets", aiParsingProperties.isStoreDebugSnippets()),
                 integerValue("sync_interval_minutes", 60),
                 value("currency", "EUR"));
     }
@@ -65,6 +95,34 @@ public class SettingsService {
             save("ai_categorization_min_confidence",
                     request.aiCategorizationMinConfidence().toPlainString(),
                     "Minimale KI-Konfidenz fuer automatische Kategorisierung");
+        }
+        if (request.aiParsingFallbackEnabled() != null) {
+            save("ai_parsing_fallback_enabled",
+                    request.aiParsingFallbackEnabled().toString(),
+                    "OpenRouter KI-Parsing-Fallback aktivieren");
+        }
+        saveIfPresent("ai_parsing_model", request.aiParsingModel(), "OpenRouter Modell fuer KI-Parsing");
+        if (request.aiParsingMaxTokens() != null) {
+            save("ai_parsing_max_tokens", request.aiParsingMaxTokens().toString(), "Max Tokens fuer KI-Parsing");
+        }
+        if (request.aiParsingTemperature() != null) {
+            save("ai_parsing_temperature", request.aiParsingTemperature().toString(), "Temperature fuer KI-Parsing");
+        }
+        if (request.aiParsingMinConfidence() != null) {
+            save("ai_parsing_min_confidence",
+                    request.aiParsingMinConfidence().toPlainString(),
+                    "Minimale KI-Konfidenz fuer automatische Parser-Uebernahme");
+        }
+        if (request.aiParsingSyncCallLimit() != null) {
+            save("ai_parsing_sync_call_limit",
+                    request.aiParsingSyncCallLimit().toString(),
+                    "Maximale KI-Parsing-Calls pro Sync-Lauf");
+        }
+        saveIfPresent("ai_parsing_text_mode", request.aiParsingTextMode(), "Textmodus fuer KI-Parsing");
+        if (request.aiParsingStoreDebugSnippets() != null) {
+            save("ai_parsing_store_debug_snippets",
+                    request.aiParsingStoreDebugSnippets().toString(),
+                    "Nur lokale Entwicklung: gekuerzte und maskierte KI-Prompt-/Antwort-Snippets speichern");
         }
         if (request.syncIntervalMinutes() != null) {
             save("sync_interval_minutes", request.syncIntervalMinutes().toString(), "Sync-Intervall in Minuten");
@@ -105,14 +163,40 @@ public class SettingsService {
         }
     }
 
-    private BigDecimal confidence() {
+    private double doubleValue(String key, double fallback) {
         try {
-            BigDecimal value = new BigDecimal(value("ai_categorization_min_confidence", DEFAULT_AI_CONFIDENCE.toPlainString()));
+            return Double.parseDouble(value(key, Double.toString(fallback)));
+        } catch (NumberFormatException exception) {
+            return fallback;
+        }
+    }
+
+    private boolean booleanValue(String key, boolean fallback) {
+        String value = value(key, Boolean.toString(fallback));
+        return "true".equalsIgnoreCase(value) || "1".equals(value);
+    }
+
+    private BigDecimal confidence() {
+        return decimalValue("ai_categorization_min_confidence", DEFAULT_AI_CONFIDENCE);
+    }
+
+    private BigDecimal decimalValue(String key, BigDecimal fallback) {
+        try {
+            BigDecimal value = new BigDecimal(value(key, fallback.toPlainString()));
             return value.compareTo(BigDecimal.ZERO) < 0 || value.compareTo(BigDecimal.ONE) > 0
-                    ? DEFAULT_AI_CONFIDENCE
+                    ? fallback
                     : value;
         } catch (RuntimeException exception) {
-            return DEFAULT_AI_CONFIDENCE;
+            return fallback;
+        }
+    }
+
+    private <E extends Enum<E>> String enumValue(String key, String fallback, Class<E> enumType) {
+        String value = value(key, fallback);
+        try {
+            return Enum.valueOf(enumType, value.toUpperCase(Locale.ROOT)).name();
+        } catch (RuntimeException exception) {
+            return fallback;
         }
     }
 

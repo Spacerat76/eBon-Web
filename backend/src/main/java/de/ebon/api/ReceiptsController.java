@@ -6,6 +6,7 @@ import de.ebon.api.dto.ReceiptItemCreateRequest;
 import de.ebon.api.dto.ReceiptItemDto;
 import de.ebon.api.dto.ReceiptUpdateRequest;
 import de.ebon.api.service.ReceiptApiService;
+import de.ebon.parser.AiParsingTextMode;
 import de.ebon.persistence.model.ParseStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -71,8 +72,11 @@ public class ReceiptsController {
     @Operation(summary = "Bon erneut parsen")
     public ReceiptDto reparseReceipt(
             @PathVariable Long id,
-            @RequestParam(defaultValue = "false") boolean overwriteManualEdits) {
-        return receiptApiService.reparseReceipt(id, overwriteManualEdits);
+            @RequestParam(defaultValue = "false") boolean overwriteManualEdits,
+            @RequestParam(defaultValue = "true") boolean useAiFallback,
+            @RequestParam(required = false) AiParsingTextMode aiTextMode,
+            @RequestParam(defaultValue = "false") boolean confirmFullText) {
+        return receiptApiService.reparseReceipt(id, overwriteManualEdits, useAiFallback, aiTextMode, confirmFullText);
     }
 
     @DeleteMapping("/api/receipts/{id}")

@@ -41,6 +41,15 @@ app:
     model: ${OPENROUTER_MODEL:google/gemini-flash-1.5}
     max-tokens: ${OPENROUTER_MAX_TOKENS:500}
     temperature: ${OPENROUTER_TEMPERATURE:0.1}
+    parsing:
+      fallback-enabled: ${AI_PARSING_FALLBACK_ENABLED:true}
+      model: ${OPENROUTER_PARSING_MODEL:${OPENROUTER_MODEL:google/gemini-flash-1.5}}
+      max-tokens: ${OPENROUTER_PARSING_MAX_TOKENS:2500}
+      temperature: ${OPENROUTER_PARSING_TEMPERATURE:0.0}
+      min-confidence: ${AI_PARSING_MIN_CONFIDENCE:0.900}
+      sync-call-limit: ${AI_PARSING_SYNC_CALL_LIMIT:25}
+      text-mode: ${AI_PARSING_TEXT_MODE:MINIMIZED}
+      store-debug-snippets: ${AI_PARSING_STORE_DEBUG_SNIPPETS:false}
   parser:
     dm-branch-mappings:
       D482: Am Reuschenberger Markt 3, 41466 Neuss

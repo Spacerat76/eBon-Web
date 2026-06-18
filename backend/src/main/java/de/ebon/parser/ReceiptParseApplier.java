@@ -27,7 +27,8 @@ public class ReceiptParseApplier {
                 parsedReceipt == null ? "EUR" : parsedReceipt.currency(),
                 parsedReceipt == null ? null : parsedReceipt.bonusBalance(),
                 parsedReceipt == null ? null : parsedReceipt.bonusPoints(),
-                parsedReceipt == null ? null : limitText(parsedReceipt.bonusType(), MAX_BONUS_TYPE_LENGTH));
+                parsedReceipt == null ? null : limitText(parsedReceipt.bonusType(), MAX_BONUS_TYPE_LENGTH),
+                parseResult.parseSource());
 
         if (parsedReceipt == null) {
             return;

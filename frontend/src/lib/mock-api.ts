@@ -73,6 +73,21 @@ export async function mockRequest<T>(path: string, init: RequestInit = {}): Prom
   if (/^\/receipts\/\d+\/reparse$/.test(url.pathname) && method === "POST") {
     return receipts[0] as T;
   }
+  if (/^\/receipts\/\d+\/ai-parsing-log$/.test(url.pathname)) {
+    return aiParsingLogs as T;
+  }
+  if (url.pathname === "/parser/rule-suggestions") {
+    return page(parseRuleSuggestions, Number(url.searchParams.get("page") ?? 0), Number(url.searchParams.get("size") ?? 20)) as T;
+  }
+  if (/^\/parser\/rule-suggestions\/\d+\/accept$/.test(url.pathname) && method === "POST") {
+    return { ...parseRuleSuggestions[0], status: "ACCEPTED", acceptedParseRuleId: 99 } as T;
+  }
+  if (/^\/parser\/rule-suggestions\/\d+\/reject$/.test(url.pathname) && method === "POST") {
+    return { ...parseRuleSuggestions[0], status: "REJECTED", rejectionReason: "Mock-Ablehnung" } as T;
+  }
+  if (url.pathname === "/parser/rule-suggestions/export-migration" && method === "POST") {
+    return { filename: "V_next__add_ai_adapted_parse_rules.sql", sql: "-- mock migration" } as T;
+  }
   if (url.pathname === "/search") {
     return page(searchResults, 0, 20) as T;
   }
@@ -198,7 +213,9 @@ const receipts: ReceiptDTO[] = [
     bonusPoints: 21,
     bonusType: "REWE Bonus",
     parseStatus: "PARSED",
+    parseSource: "RULE",
     parseErrorMessage: null,
+    aiParsingSummary: null,
     deletedAt: null,
     deleteReason: null,
     rawText: "REWE Mock Bon",
@@ -252,7 +269,15 @@ const receipts: ReceiptDTO[] = [
     bonusPoints: 9,
     bonusType: "PAYBACK",
     parseStatus: "PARSED",
+    parseSource: "AI",
     parseErrorMessage: null,
+    aiParsingSummary: {
+      lastStatus: "SUCCESS",
+      lastTrigger: "MANUAL_REPARSE",
+      modelUsed: "google/gemini-flash-1.5",
+      overallConfidence: 0.94,
+      hasOpenRuleSuggestions: true
+    },
     deletedAt: null,
     deleteReason: null,
     rawText: "dm Mock Bon",
@@ -286,9 +311,58 @@ const settings: SettingsDTO = {
   openRouterBaseUrl: "https://openrouter.ai/api/v1",
   openRouterModel: "google/gemini-flash-1.5",
   aiCategorizationMinConfidence: 0.9,
+  aiParsingFallbackEnabled: true,
+  aiParsingModel: "google/gemini-flash-1.5",
+  aiParsingMaxTokens: 2500,
+  aiParsingTemperature: 0,
+  aiParsingMinConfidence: 0.9,
+  aiParsingSyncCallLimit: 25,
+  aiParsingTextMode: "MINIMIZED",
+  aiParsingStoreDebugSnippets: false,
   syncIntervalMinutes: 60,
   currency: "EUR"
 };
+
+const aiParsingLogs = [
+  {
+    id: 1,
+    receiptId: 2,
+    trigger: "MANUAL_REPARSE",
+    status: "SUCCESS",
+    modelUsed: "google/gemini-flash-1.5",
+    startedAt: "2026-06-16T08:00:00Z",
+    finishedAt: "2026-06-16T08:00:02Z",
+    durationMs: 2100,
+    overallConfidence: 0.94,
+    parseErrorBefore: "total_amount fehlt.",
+    failureReason: null,
+    fieldConfidence: { receiptDate: 0.98, items: 0.93 },
+    warnings: ["storeBranch unsicher"],
+    promptSnippet: null,
+    responseSnippet: null
+  }
+];
+
+const parseRuleSuggestions = [
+  {
+    id: 1,
+    receiptId: 2,
+    aiParsingLogId: 1,
+    storeName: "dm",
+    ruleType: "ITEM_PATTERN",
+    matchRegex: "^(?<description>.+?)\\s+(?<total>\\d+,\\d{2})\\s+\\d$",
+    extractGroup: "description,total",
+    confidence: 0.91,
+    trigger: "MANUAL_REPARSE",
+    problemDescription: "Regelparser erkannte eine dm-Positionszeile nicht.",
+    solutionRationale: "Die Regel extrahiert Beschreibung und Betrag aus der Positionszeile.",
+    validationStatus: "VALID",
+    validationMessage: null,
+    status: "OPEN",
+    rejectionReason: null,
+    acceptedParseRuleId: null
+  }
+];
 
 const rules: CategorizationRuleDTO[] = [
   {

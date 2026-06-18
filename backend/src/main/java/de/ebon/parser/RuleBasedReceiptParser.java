@@ -1,6 +1,9 @@
 package de.ebon.parser;
 
 import de.ebon.config.ReceiptParserProperties;
+import de.ebon.persistence.model.ParseRule;
+import de.ebon.persistence.model.ParseRuleType;
+import de.ebon.persistence.repository.ParseRuleRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -10,6 +13,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -53,14 +57,20 @@ public class RuleBasedReceiptParser {
 
     private final ReceiptParseValidator validator = new ReceiptParseValidator();
     private final ReceiptParserProperties parserProperties;
+    private final ParseRuleRepository parseRuleRepository;
 
     public RuleBasedReceiptParser() {
-        this(new ReceiptParserProperties());
+        this(new ReceiptParserProperties(), null);
+    }
+
+    public RuleBasedReceiptParser(ReceiptParserProperties parserProperties) {
+        this(parserProperties, null);
     }
 
     @Autowired
-    public RuleBasedReceiptParser(ReceiptParserProperties parserProperties) {
+    public RuleBasedReceiptParser(ReceiptParserProperties parserProperties, ParseRuleRepository parseRuleRepository) {
         this.parserProperties = parserProperties == null ? new ReceiptParserProperties() : parserProperties;
+        this.parseRuleRepository = parseRuleRepository;
     }
 
     public ReceiptParseResult parse(String rawText) {
@@ -71,43 +81,58 @@ public class RuleBasedReceiptParser {
                         .filter(line -> !line.isBlank())
                         .toList();
 
+        String storeName = parseStoreName(lines);
         ParsedReceipt receipt = new ParsedReceipt(
                 parseDate(lines),
                 parseTime(lines),
-                parseStoreName(lines),
+                storeName,
                 parseStoreBranch(lines),
-                parseTotal(lines),
+                parseTotal(lines, storeName),
                 "EUR",
                 parseBonusBalance(lines),
                 parseBonusPoints(lines),
                 parseBonusType(lines),
-                parseItems(lines));
+                parseItems(lines, storeName));
 
         return validator.validate(receipt);
     }
 
     private LocalDate parseDate(List<String> lines) {
         for (String line : lines) {
-            Matcher isoMatcher = DATE_ISO.matcher(line);
-            if (isoMatcher.find()) {
-                return LocalDate.parse(isoMatcher.group("date"));
+            LocalDate date = parseDateValue(line);
+            if (date != null) {
+                return date;
             }
+        }
 
-            Matcher dottedMatcher = DATE_DOTTED.matcher(line);
-            if (dottedMatcher.find()) {
-                return LocalDate.of(
-                        normalizeYear(dottedMatcher.group("year")),
-                        Integer.parseInt(dottedMatcher.group("month")),
-                        Integer.parseInt(dottedMatcher.group("day")));
-            }
+        String dynamicDate = firstDynamicTextMatch(
+                lines,
+                ParseRuleType.DATE_PATTERN,
+                null,
+                List.of("date", "value"));
+        return dynamicDate == null ? null : parseDateValue(dynamicDate);
+    }
 
-            Matcher slashMatcher = DATE_SLASH.matcher(line);
-            if (slashMatcher.find()) {
-                return LocalDate.of(
-                        normalizeYear(slashMatcher.group("year")),
-                        Integer.parseInt(slashMatcher.group("month")),
-                        Integer.parseInt(slashMatcher.group("day")));
-            }
+    private LocalDate parseDateValue(String value) {
+        Matcher isoMatcher = DATE_ISO.matcher(value);
+        if (isoMatcher.find()) {
+            return LocalDate.parse(isoMatcher.group("date"));
+        }
+
+        Matcher dottedMatcher = DATE_DOTTED.matcher(value);
+        if (dottedMatcher.find()) {
+            return LocalDate.of(
+                    normalizeYear(dottedMatcher.group("year")),
+                    Integer.parseInt(dottedMatcher.group("month")),
+                    Integer.parseInt(dottedMatcher.group("day")));
+        }
+
+        Matcher slashMatcher = DATE_SLASH.matcher(value);
+        if (slashMatcher.find()) {
+            return LocalDate.of(
+                    normalizeYear(slashMatcher.group("year")),
+                    Integer.parseInt(slashMatcher.group("month")),
+                    Integer.parseInt(slashMatcher.group("day")));
         }
         return null;
     }
@@ -152,6 +177,15 @@ public class RuleBasedReceiptParser {
             if (upper.contains("MCDONALD") || upper.contains("MEDONALD")) {
                 return "McDonald's";
             }
+        }
+
+        String dynamicStore = firstDynamicTextMatch(
+                lines,
+                ParseRuleType.STORE_PATTERN,
+                null,
+                List.of("store", "name", "value"));
+        if (dynamicStore != null) {
+            return dynamicStore;
         }
 
         return lines.stream()
@@ -217,7 +251,7 @@ public class RuleBasedReceiptParser {
                 .trim();
     }
 
-    private BigDecimal parseTotal(List<String> lines) {
+    private BigDecimal parseTotal(List<String> lines, String storeName) {
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
             if (!isFinalPayableLine(line)) {
@@ -249,7 +283,24 @@ public class RuleBasedReceiptParser {
                 return GermanNumberParser.parse(matcher.group("amount"));
             }
         }
-        return null;
+
+        String dynamicTotal = firstDynamicTextMatch(
+                lines,
+                ParseRuleType.TOTAL_PATTERN,
+                storeName,
+                List.of("total", "amount", "value"));
+        if (dynamicTotal == null) {
+            return null;
+        }
+        BigDecimal extractedAmount = extractAmount(dynamicTotal);
+        if (extractedAmount != null) {
+            return extractedAmount;
+        }
+        try {
+            return GermanNumberParser.parse(dynamicTotal);
+        } catch (RuntimeException exception) {
+            return null;
+        }
     }
 
     private BigDecimal amountOnLineOrFollowing(List<String> lines, int lineIndex) {
@@ -394,10 +445,11 @@ public class RuleBasedReceiptParser {
         return null;
     }
 
-    private List<ParsedReceiptItem> parseItems(List<String> lines) {
+    private List<ParsedReceiptItem> parseItems(List<String> lines, String storeName) {
         List<ParsedReceiptItem> items = new ArrayList<>();
         List<String> pendingDescriptionLines = new ArrayList<>();
         boolean quantityArticleTable = hasQuantityArticleTable(lines);
+        List<ParseRule> dynamicTotalRules = activeRules(ParseRuleType.TOTAL_PATTERN, storeName);
 
         for (String line : lines) {
             ParsedReceiptItem quantityArticleItem = quantityArticleTable
@@ -447,6 +499,11 @@ public class RuleBasedReceiptParser {
                 } else {
                     pendingDescriptionLines.add(line);
                 }
+                continue;
+            }
+
+            if (isDynamicTotalLine(line, dynamicTotalRules)) {
+                pendingDescriptionLines.clear();
                 continue;
             }
 
@@ -508,7 +565,67 @@ public class RuleBasedReceiptParser {
             }
         }
 
+        return items.isEmpty() ? parseDynamicItems(lines, storeName) : items;
+    }
+
+    private List<ParsedReceiptItem> parseDynamicItems(List<String> lines, String storeName) {
+        List<ParsedReceiptItem> items = new ArrayList<>();
+        List<ParseRule> rules = activeRules(ParseRuleType.ITEM_PATTERN, storeName);
+        for (String line : lines) {
+            if (isMetadataLine(line) || isTotalLine(line) || isPaymentDetailLine(line)) {
+                continue;
+            }
+            for (ParseRule rule : rules) {
+                ParsedReceiptItem item = parseDynamicItemLine(line, rule, items.size());
+                if (item != null) {
+                    items.add(item);
+                    break;
+                }
+            }
+        }
         return items;
+    }
+
+    private ParsedReceiptItem parseDynamicItemLine(String line, ParseRule rule, int positionIndex) {
+        Matcher matcher = matcher(rule, line);
+        if (matcher == null || !matcher.find()) {
+            return null;
+        }
+
+        String amountText = firstGroupValue(matcher, List.of("total", "amount", "price"));
+        BigDecimal totalPrice = amountText == null ? extractAmount(matcher.group()) : parseAmount(amountText);
+        if (totalPrice == null) {
+            return null;
+        }
+
+        String description = firstGroupValue(matcher, List.of("description", "item", "name"));
+        if (description == null) {
+            description = groupValue(matcher, rule.getExtractGroup());
+        }
+        if (description == null || description.isBlank()) {
+            description = cleanupDescription(AMOUNT_AT_END.matcher(matcher.group()).replaceFirst(""));
+        } else {
+            description = cleanupDescription(description);
+        }
+        if (description.isBlank()) {
+            return null;
+        }
+
+        BigDecimal quantity = parseAmount(firstGroupValue(matcher, List.of("quantity")));
+        String unitText = firstGroupValue(matcher, List.of("unit"));
+        String unit = unitText == null ? null : normalizeUnit(unitText);
+        BigDecimal unitPrice = parseAmount(firstGroupValue(matcher, List.of("unitPrice", "unit_price")));
+        BigDecimal discountAmount = totalPrice.signum() < 0 || description.toUpperCase(Locale.ROOT).contains("RABATT")
+                ? totalPrice.abs()
+                : null;
+        return new ParsedReceiptItem(
+                positionIndex,
+                description,
+                quantity,
+                unit,
+                unitPrice,
+                totalPrice,
+                discountAmount);
     }
 
     private boolean hasQuantityArticleTable(List<String> lines) {
@@ -1010,6 +1127,99 @@ public class RuleBasedReceiptParser {
 
     private boolean isPznLine(String line) {
         return line.trim().matches("(?:PZN:\\s*)?\\d{8}");
+    }
+
+    private boolean isDynamicTotalLine(String line, List<ParseRule> rules) {
+        return rules.stream()
+                .map(rule -> matcher(rule, line))
+                .anyMatch(matcher -> matcher != null && matcher.find());
+    }
+
+    private String firstDynamicTextMatch(
+            List<String> lines,
+            ParseRuleType ruleType,
+            String storeName,
+            List<String> fallbackGroups) {
+        List<String> candidates = new ArrayList<>(lines);
+        if (!lines.isEmpty()) {
+            candidates.add(String.join("\n", lines));
+        }
+        for (ParseRule rule : activeRules(ruleType, storeName)) {
+            for (String candidate : candidates) {
+                Matcher matcher = matcher(rule, candidate);
+                if (matcher != null && matcher.find()) {
+                    String configuredValue = groupValue(matcher, rule.getExtractGroup());
+                    if (configuredValue != null) {
+                        return configuredValue;
+                    }
+                    String fallbackValue = firstGroupValue(matcher, fallbackGroups);
+                    if (fallbackValue != null) {
+                        return fallbackValue;
+                    }
+                    return matcher.group();
+                }
+            }
+        }
+        return null;
+    }
+
+    private List<ParseRule> activeRules(ParseRuleType ruleType, String storeName) {
+        if (parseRuleRepository == null) {
+            return List.of();
+        }
+        return parseRuleRepository.findByActiveTrueAndRuleTypeOrderByStoreNameAsc(ruleType).stream()
+                .filter(rule -> appliesToStore(rule, storeName))
+                .toList();
+    }
+
+    private boolean appliesToStore(ParseRule rule, String storeName) {
+        return rule.getStoreName() == null
+                || rule.getStoreName().isBlank()
+                || storeName == null
+                || rule.getStoreName().equalsIgnoreCase(storeName);
+    }
+
+    private Matcher matcher(ParseRule rule, String value) {
+        try {
+            return Pattern.compile(rule.getMatchRegex(), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(value);
+        } catch (PatternSyntaxException exception) {
+            return null;
+        }
+    }
+
+    private String firstGroupValue(Matcher matcher, List<String> groupNames) {
+        for (String groupName : groupNames) {
+            String value = groupValue(matcher, groupName);
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String groupValue(Matcher matcher, String groupName) {
+        if (groupName == null || groupName.isBlank()) {
+            return null;
+        }
+        try {
+            String value = groupName.matches("\\d+")
+                    ? matcher.group(Integer.parseInt(groupName))
+                    : matcher.group(groupName);
+            return value == null || value.isBlank() ? null : value.trim();
+        } catch (RuntimeException exception) {
+            return null;
+        }
+    }
+
+    private BigDecimal parseAmount(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return GermanNumberParser.parse(value);
+        } catch (RuntimeException exception) {
+            return null;
+        }
     }
 
     private record QuantityDetails(BigDecimal quantity, String unit, BigDecimal unitPrice) {

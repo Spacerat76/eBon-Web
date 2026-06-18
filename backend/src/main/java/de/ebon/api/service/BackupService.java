@@ -336,6 +336,8 @@ public class BackupService {
         Set<String> categoryIds = ids(rowsByTable, "categories");
         Set<String> receiptIds = ids(rowsByTable, "receipts");
         Set<String> receiptItemIds = ids(rowsByTable, "receipt_items");
+        Set<String> aiParsingLogIds = ids(rowsByTable, "ai_parsing_log");
+        Set<String> parseRuleIds = ids(rowsByTable, "parse_rules");
         Set<String> syncLogIds = ids(rowsByTable, "sync_log");
 
         validateReference(rowsByTable, "categorization_rules", "category_id", categoryIds, false, errors);
@@ -344,6 +346,10 @@ public class BackupService {
         validateReference(rowsByTable, "ai_categorization_log", "receipt_item_id", receiptItemIds, false, errors);
         validateReference(rowsByTable, "ai_categorization_log", "assigned_category_id", categoryIds, true, errors);
         validateReference(rowsByTable, "ai_categorization_log", "suggested_category_id", categoryIds, true, errors);
+        validateReference(rowsByTable, "ai_parsing_log", "receipt_id", receiptIds, true, errors);
+        validateReference(rowsByTable, "parse_rule_suggestions", "ai_parsing_log_id", aiParsingLogIds, false, errors);
+        validateReference(rowsByTable, "parse_rule_suggestions", "receipt_id", receiptIds, true, errors);
+        validateReference(rowsByTable, "parse_rule_suggestions", "accepted_parse_rule_id", parseRuleIds, true, errors);
         validateReference(rowsByTable, "sync_log_entry", "sync_log_id", syncLogIds, false, errors);
         validateReference(rowsByTable, "sync_log_entry", "receipt_id", receiptIds, true, errors);
     }
@@ -418,6 +424,8 @@ public class BackupService {
     private void deleteExistingData() {
         List.of(
                 "sync_log_entry",
+                "parse_rule_suggestion",
+                "ai_parsing_log",
                 "ai_categorization_log",
                 "receipt_item",
                 "sync_log",
@@ -496,7 +504,8 @@ public class BackupService {
                         col("store_branch", "varchar"), col("total_amount", "numeric"), col("currency", "varchar"),
                         col("raw_text", "text"), col("bonus_balance", "numeric"), col("bonus_points", "numeric"),
                         col("bonus_type", "varchar"), col("parse_status", "varchar"), col("parse_error_message", "text"),
-                        col("updated_at", "timestamptz"), col("deleted_at", "timestamptz"), col("delete_reason", "varchar"))),
+                        col("parse_source", "varchar"), col("updated_at", "timestamptz"), col("deleted_at", "timestamptz"),
+                        col("delete_reason", "varchar"))),
                 table("receipt_items", "receipt_item", "receipt_items.json", "id", "id", List.of(
                         col("id", "bigint"), col("receipt_id", "bigint"), col("position_index", "integer"),
                         col("description", "varchar"), col("quantity", "numeric"), col("unit", "varchar"),
@@ -509,6 +518,25 @@ public class BackupService {
                         col("ai_confidence", "numeric"), col("model_used", "varchar"), col("created_at", "timestamptz"),
                         col("suggested_category_id", "bigint"), col("suggested_category_name", "varchar"),
                         col("rejection_reason", "varchar"))),
+                table("ai_parsing_log", "ai_parsing_log", "ai_parsing_log.json", "id", "id", List.of(
+                        col("id", "bigint"), col("receipt_id", "bigint"), col("trigger", "varchar"),
+                        col("status", "varchar"), col("model_used", "varchar"), col("started_at", "timestamptz"),
+                        col("finished_at", "timestamptz"), col("duration_ms", "integer"),
+                        col("prompt_tokens", "integer"), col("completion_tokens", "integer"),
+                        col("total_tokens", "integer"), col("parse_error_before", "text"),
+                        col("failure_reason", "text"), col("overall_confidence", "numeric"),
+                        col("field_confidence_json", "jsonb"), col("warnings_json", "jsonb"),
+                        col("prompt_snippet", "text"), col("response_snippet", "text"),
+                        col("created_at", "timestamptz"))),
+                table("parse_rule_suggestions", "parse_rule_suggestion", "parse_rule_suggestions.json", "id", "id", List.of(
+                        col("id", "bigint"), col("ai_parsing_log_id", "bigint"), col("receipt_id", "bigint"),
+                        col("store_name", "varchar"), col("rule_type", "varchar"), col("match_regex", "varchar"),
+                        col("extract_group", "varchar"), col("confidence", "numeric"), col("trigger", "varchar"),
+                        col("problem_description", "text"), col("solution_rationale", "text"),
+                        col("validation_status", "varchar"), col("validation_message", "text"),
+                        col("status", "varchar"), col("rejection_reason", "text"),
+                        col("accepted_parse_rule_id", "bigint"), col("created_at", "timestamptz"),
+                        col("updated_at", "timestamptz"))),
                 table("sync_log", "sync_log", "sync_log.json", "id", "id", List.of(
                         col("id", "bigint"), col("started_at", "timestamptz"), col("finished_at", "timestamptz"),
                         col("status", "varchar"), col("new_documents_count", "integer"),

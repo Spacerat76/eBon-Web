@@ -71,6 +71,10 @@ public class Receipt {
     @Column(name = "parse_status", nullable = false, length = 32)
     private ParseStatus parseStatus = ParseStatus.PENDING;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "parse_source", length = 32)
+    private ParseSource parseSource;
+
     @Column(name = "parse_error_message", columnDefinition = "text")
     private String parseErrorMessage;
 
@@ -132,8 +136,37 @@ public class Receipt {
             BigDecimal bonusBalance,
             BigDecimal bonusPoints,
             String bonusType) {
+        applyParseResult(
+                parseStatus,
+                parseErrorMessage,
+                receiptDate,
+                receiptTime,
+                storeName,
+                storeBranch,
+                totalAmount,
+                currency,
+                bonusBalance,
+                bonusPoints,
+                bonusType,
+                null);
+    }
+
+    public void applyParseResult(
+            ParseStatus parseStatus,
+            String parseErrorMessage,
+            LocalDate receiptDate,
+            LocalTime receiptTime,
+            String storeName,
+            String storeBranch,
+            BigDecimal totalAmount,
+            String currency,
+            BigDecimal bonusBalance,
+            BigDecimal bonusPoints,
+            String bonusType,
+            ParseSource parseSource) {
         this.parseStatus = parseStatus;
         this.parseErrorMessage = parseErrorMessage;
+        this.parseSource = parseSource;
         this.receiptDate = receiptDate;
         this.receiptTime = receiptTime;
         this.storeName = storeName;
@@ -169,6 +202,7 @@ public class Receipt {
 
     public void markManuallyEdited() {
         parseStatus = ParseStatus.MANUALLY_EDITED;
+        parseSource = ParseSource.MANUAL_CORRECTED;
         parseErrorMessage = null;
     }
 
@@ -207,6 +241,10 @@ public class Receipt {
 
     public ParseStatus getParseStatus() {
         return parseStatus;
+    }
+
+    public ParseSource getParseSource() {
+        return parseSource;
     }
 
     public String getRawText() {

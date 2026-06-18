@@ -1,5 +1,6 @@
 import type {
   ApiErrorResponse,
+  AiParsingLogDTO,
   BackupRestoreResultDTO,
   BackupValidationReportDTO,
   BonusReportDTO,
@@ -15,7 +16,12 @@ import type {
   DashboardDTO,
   DataMaintenanceResultDTO,
   MessageResponse,
+  MigrationDraftDTO,
   PageResponse,
+  ParseRuleSuggestionAcceptRequest,
+  ParseRuleSuggestionDTO,
+  ParseRuleSuggestionStatus,
+  ParseRuleSuggestionUpdateRequest,
   ReceiptDTO,
   ReceiptItemCreateRequest,
   ReceiptItemDTO,
@@ -110,10 +116,25 @@ export class ApiClient {
     });
   }
 
-  reparseReceipt(id: number, overwriteManualEdits: boolean): Promise<ReceiptDTO> {
-    return this.request(`/receipts/${id}/reparse?overwriteManualEdits=${overwriteManualEdits ? "true" : "false"}`, {
+  reparseReceipt(
+    id: number,
+    overwriteManualEdits: boolean,
+    useAiFallback = true,
+    aiTextMode?: "MINIMIZED" | "FULL_TEXT" | null,
+    confirmFullText = false
+  ): Promise<ReceiptDTO> {
+    return this.request(`/receipts/${id}/reparse?${toQuery({
+      overwriteManualEdits: overwriteManualEdits ? "true" : "false",
+      useAiFallback: useAiFallback ? "true" : "false",
+      aiTextMode: aiTextMode || undefined,
+      confirmFullText: confirmFullText ? "true" : "false"
+    })}`, {
       method: "POST"
     });
+  }
+
+  aiParsingLog(receiptId: number): Promise<AiParsingLogDTO[]> {
+    return this.request(`/receipts/${receiptId}/ai-parsing-log`);
   }
 
   deleteReceipt(id: number): Promise<void> {
@@ -265,6 +286,47 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify(request)
     });
+  }
+
+  parseRuleSuggestions(params: {
+    page?: number;
+    size?: number;
+    status?: ParseRuleSuggestionStatus | "";
+    store?: string;
+    validationStatus?: string;
+  } = {}): Promise<PageResponse<ParseRuleSuggestionDTO>> {
+    return this.request(`/parser/rule-suggestions?${toQuery({
+      page: params.page ?? 0,
+      size: params.size ?? 20,
+      status: params.status || undefined,
+      store: params.store || undefined,
+      validationStatus: params.validationStatus || undefined
+    })}`);
+  }
+
+  updateParseRuleSuggestion(id: number, request: ParseRuleSuggestionUpdateRequest): Promise<ParseRuleSuggestionDTO> {
+    return this.request(`/parser/rule-suggestions/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(request)
+    });
+  }
+
+  acceptParseRuleSuggestion(id: number, request: ParseRuleSuggestionAcceptRequest): Promise<ParseRuleSuggestionDTO> {
+    return this.request(`/parser/rule-suggestions/${id}/accept`, {
+      method: "POST",
+      body: JSON.stringify(request)
+    });
+  }
+
+  rejectParseRuleSuggestion(id: number, rejectionReason: string): Promise<ParseRuleSuggestionDTO> {
+    return this.request(`/parser/rule-suggestions/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ rejectionReason })
+    });
+  }
+
+  exportParseRuleSuggestionMigration(): Promise<MigrationDraftDTO> {
+    return this.request("/parser/rule-suggestions/export-migration", { method: "POST" });
   }
 
   reparseAllReceipts(overwriteManualEdits: boolean): Promise<DataMaintenanceResultDTO> {
