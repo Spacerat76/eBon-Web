@@ -30,6 +30,13 @@ Use this skill for Spring Boot backend work, persistence, REST APIs, security, s
 - KI-generated parser rules must be stored as `parse_rule_suggestion` first. They become active `parse_rule` rows only after explicit user acceptance.
 - Accepted parser rule suggestions must remain audit-linked to the generated `parse_rule` and may be exported as Flyway migration drafts.
 - Backup/restore must include `ai_parsing_log` and `parse_rule_suggestion`, while preserving the default rule that full prompts and raw KI responses are not exported.
+- Product assignment uses product families and variants. Do not collapse variants with different sizes, units, or package structures into one variant.
+- Product rules are separate from `categorization_rule`; a product family default category may fill only empty categories and must not overwrite existing or manual categories.
+- A `receipt_item` may have at most one product assignment in Phase 15. Store `NO_PRODUCT` for pure discounts, coupons, payment lines, and rounding differences.
+- Product assignment sources and statuses must distinguish rule, KI, manual, trusted history, review-needed, rejected, confirmed, auto-assigned, and no-product states.
+- Trusted product history must not be built from KI-only matches. Count manual assignments, accepted suggestions/rules, and rule-based automatic matches.
+- Imported-receipts reset must keep product families, variants, and product rules. Product-data reset must be a separate explicit, confirmed operation.
+- Product price exclusions must be audit-friendly and reversible so outliers do not silently distort reports.
 
 ## API and Settings Rules
 
@@ -40,6 +47,10 @@ Use this skill for Spring Boot backend work, persistence, REST APIs, security, s
 - Settings must expose separate KI parsing controls: enabled flag, parsing model, max tokens, temperature, minimum confidence, sync call limit, text mode, and local debug-snippet flag.
 - Manual reparse with KI text mode `FULL_TEXT` must require explicit confirmation before sending full receipt text to OpenRouter.
 - API DTOs for receipts must expose `parseSource` and a prompt-free `aiParsingSummary` when available.
+- Receipt item DTOs must expose product family, product variant, assignment source/status, confidence, and computed unit price when Phase 15 fields are present.
+- Product APIs must provide previews before retroactive rule application, merge/split, bulk reassignment, and product-data reset.
+- Product price report APIs must support family-level unit-price comparison and variant-level concrete price comparison, with `store_name` and `store_name + store_branch` grouping options.
+- Product KI assignment uses existing KI categorization/OpenRouter settings in Phase 15; do not add separate product KI sync limits unless the specification changes.
 
 ## External Integrations
 
@@ -59,6 +70,10 @@ Use this skill for Spring Boot backend work, persistence, REST APIs, security, s
 - Settings/data maintenance: Paperless public URL/template, re-parse-all defaults, and reset safety.
 - Backup/restore: dry-run, incompatible manifest, rollback on failure.
 - API validation and error format.
+- Product data model: family/variant migrations, size/unit/package normalization, and one-product-per-item constraints.
+- Product assignment: rule, trusted history, KI mock, review-needed fallback, `NO_PRODUCT`, default-category fill without overwrites.
+- Product maintenance: previewed retroactive apply, merge/split, reset safety, reversible price-exclusion handling.
+- Product reports: effective paid price, optional regular price when derivable, unit conversion, multi-pack handling, last/minimum/average/median calculations.
 
 ## Verification
 

@@ -4,7 +4,7 @@ Use this skill for receipt parsing, parser rules, parser tests, AI parsing fallb
 
 ## Read First
 
-- `ebon-specification.md` sections F-02, F-13, 17.2, 17.3.
+- `ebon-specification.md` sections F-02, F-13, F-19, 17.2, 17.3 when parser output affects product assignment.
 - `AGENTS.md`.
 
 ## Parser Contract
@@ -31,6 +31,9 @@ Bonus fields must describe only what was newly earned in this receipt:
 - Merge multi-line item descriptions into one `description`.
 - Keep `position_index` contiguous and unique per receipt.
 - Sum of item totals may differ from receipt total by at most `0.02`.
+- Preserve parsed quantity, unit, unit price, total price, discounts, deposits, and package-like text as faithfully as possible because product assignment and unit-price reports depend on them.
+- Do not infer product families or variants inside the receipt parser. Product assignment is a later workflow after parsing and categorization.
+- Keep pure discounts, coupons, payment lines, deposits, and bags as receipt items when they appear as positions; Phase 15 decides whether they are products or `NO_PRODUCT`.
 
 ## AI Fallback Rules
 

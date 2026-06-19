@@ -192,6 +192,14 @@ Die Datei `.env.example` dokumentiert alle erforderlichen Umgebungsvariablen mit
 | `unit_price` | NUMERIC(10,2) | NULL | Einzelpreis |
 | `total_price` | NUMERIC(10,2) | NOT NULL | Gesamtpreis der Position |
 | `discount_amount` | NUMERIC(10,2) | NULL | Rabattbetrag (sofern erkennbar) |
+| `product_family_id` | BIGINT | FK → product_family.id, NULL | Zugeordnete Produktfamilie für Phase-15-Preisvergleiche |
+| `product_variant_id` | BIGINT | FK → product_variant.id, NULL | Zugeordnete Produktvariante; NULL, wenn nur Familie bekannt oder kein Produkt |
+| `product_assignment_source` | VARCHAR(32) | NULL | Enum: `RULE`, `AI`, `MANUAL`, `HISTORY`; nur gesetzt, wenn Produktzuordnung gesetzt ist |
+| `product_assignment_status` | VARCHAR(32) | NULL | Enum: `CONFIRMED`, `AUTO_ASSIGNED`, `NEEDS_REVIEW`, `REJECTED`, `NO_PRODUCT`; NULL vor Phase-15-Zuordnung |
+| `product_assignment_confidence` | NUMERIC(4,3) | NULL | Konfidenz der automatischen Produktzuordnung |
+| `product_assignment_updated_at` | TIMESTAMPTZ | NULL | Zeitpunkt der letzten Produktzuordnungsänderung |
+| `exclude_from_product_price_comparison` | BOOLEAN | NOT NULL, DEFAULT FALSE | Einzelne Preisbeobachtung aus Produktpreisvergleichen ausschließen |
+| `product_price_exclusion_reason` | TEXT | NULL | Begründung für Ausschluss aus Produktpreisvergleichen |
 | `category_id` | BIGINT | FK → category.id, NULL | Zugewiesene Kategorie |
 | `category_source` | VARCHAR(32) | NULL | Enum: `RULE`, `AI`, `MANUAL`; nur gesetzt, wenn `category_id` gesetzt ist |
 | `is_manually_edited` | BOOLEAN | NOT NULL, DEFAULT FALSE | Wurde die Position manuell bearbeitet |
@@ -208,6 +216,42 @@ Die Datei `.env.example` dokumentiert alle erforderlichen Umgebungsvariablen mit
 | `is_active` | BOOLEAN | NOT NULL, DEFAULT TRUE | Aktiv-Status; Kategorien werden standardmäßig deaktiviert statt physisch gelöscht |
 | `sort_order` | INTEGER | NOT NULL, DEFAULT 0 | Sortierreihenfolge in der UI |
 
+#### 4.1.3a `product_family` (Produktfamilie)
+
+Eine Produktfamilie beschreibt ein fachlich vergleichbares Produkt auf Mengenebene, z.B. `Coca Cola Zero`. Marke wird nicht separat gespeichert, sondern bleibt Teil des Namens.
+
+| Spalte | Typ | Constraints | Beschreibung |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Interne ID |
+| `name` | VARCHAR(255) | UNIQUE, NOT NULL | Anzeigename der Produktfamilie |
+| `default_category_id` | BIGINT | FK → category.id, NULL | Optionale Standard-Kategorie; darf nur leere Kategorien füllen |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT TRUE | Aktiv-Status |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Erstellungszeitpunkt |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update |
+
+`default_category_id` darf niemals bestehende oder manuell gesetzte Kategorien an `receipt_item` überschreiben.
+
+#### 4.1.3b `product_variant` (Produktvariante)
+
+Eine Produktvariante beschreibt das konkrete Gebinde oder die konkrete Kaufvariante, z.B. `Coca Cola Zero 0,33l Flasche`. Unterschiedliche Größen, Einheiten oder Packungsstrukturen sind unterschiedliche Varianten.
+
+| Spalte | Typ | Constraints | Beschreibung |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Interne ID |
+| `product_family_id` | BIGINT | FK → product_family.id, NOT NULL | Zugehörige Produktfamilie |
+| `name` | VARCHAR(255) | NOT NULL | Anzeigename der Variante |
+| `unit_quantity` | NUMERIC(12,4) | NULL | Einzelgebinde-Menge, z.B. `0.3300` |
+| `unit` | VARCHAR(32) | NULL | Einheit, z.B. `l`, `ml`, `kg`, `g`, `piece` |
+| `package_quantity` | NUMERIC(10,3) | NULL | Packungsanzahl, z.B. `6` bei `6x0,33l` |
+| `package_description` | VARCHAR(128) | NULL | Verpackung/Gebinde, z.B. `Flasche`, `Dose`, `Packung` |
+| `total_quantity` | NUMERIC(12,4) | NULL | Gesamtmenge für Preisvergleich, z.B. `1.9800` bei `6x0,33l` |
+| `gtin` | VARCHAR(32) | NULL | Optional vorbereitet; keine externe Produktdatenbank-Abfrage in Phase 15 |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT TRUE | Aktiv-Status |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Erstellungszeitpunkt |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update |
+
+Bekannte Einheiten werden normalisiert: `ml/l` nach Liter, `g/kg` nach Kilogramm und Stückzahlen nach `€/Stück`. Unbekannte Einheiten dürfen gespeichert werden, sind aber nicht automatisch mit bekannten Einheiten vergleichbar.
+
 #### 4.1.4 `categorization_rule` (Kategorisierungsregel)
 
 | Spalte | Typ | Constraints | Beschreibung |
@@ -222,6 +266,25 @@ Die Datei `.env.example` dokumentiert alle erforderlichen Umgebungsvariablen mit
 | `created_at` | TIMESTAMPTZ | NOT NULL | Erstellungszeitpunkt |
 
 Regeln werden in absteigender Priorität (niedrigster `priority`-Wert zuerst) geprüft. Die erste passende Regel gewinnt.
+
+#### 4.1.4a `product_rule` (Produktzuordnungsregel)
+
+Produktregeln ordnen Bon-Positionstexte einer Produktfamilie und optional einer Produktvariante zu. Sie bleiben strikt von `categorization_rule` getrennt.
+
+| Spalte | Typ | Constraints | Beschreibung |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Interne ID |
+| `product_family_id` | BIGINT | FK → product_family.id, NOT NULL | Ziel-Produktfamilie |
+| `product_variant_id` | BIGINT | FK → product_variant.id, NULL | Ziel-Variante; NULL bedeutet nur Familienzuordnung |
+| `store_name` | VARCHAR(255) | NULL | Optionaler Store-Kontext; NULL = globale Regel |
+| `match_type` | VARCHAR(32) | NOT NULL | Enum: `CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `EXACT`, `REGEX` |
+| `match_value` | VARCHAR(512) | NOT NULL | Suchwert gegen `receipt_item.description` (case-insensitive) |
+| `priority` | INTEGER | NOT NULL, DEFAULT 100 | Niedrigere Zahl = höhere Priorität; store-spezifische Regeln dürfen globale Regeln übersteuern |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT TRUE | Regel aktiv/inaktiv |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Erstellungszeitpunkt |
+| `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update |
+
+Beim Speichern oder Ändern einer Regel wird eine Vorschau angeboten. Rückwirkende Anwendung auf bestehende Positionen erfolgt nur nach expliziter Bestätigung.
 
 #### 4.1.5 `ai_categorization_log` (KI-Kategorisierungslog)
 
@@ -299,7 +362,7 @@ Vorschläge werden nie automatisch aktiv. Sie müssen in der UI geprüft und kö
 | `description` | TEXT | NULL | Beschreibung der Einstellung |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update |
 
-Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_temperature`, `ai_categorization_min_confidence`, `ai_parsing_fallback_enabled`, `ai_parsing_model`, `ai_parsing_max_tokens`, `ai_parsing_temperature`, `ai_parsing_min_confidence`, `ai_parsing_sync_call_limit`, `ai_parsing_text_mode`, `ai_parsing_store_debug_snippets`.
+Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_temperature`, `ai_categorization_min_confidence`, `ai_parsing_fallback_enabled`, `ai_parsing_model`, `ai_parsing_max_tokens`, `ai_parsing_temperature`, `ai_parsing_min_confidence`, `ai_parsing_sync_call_limit`, `ai_parsing_text_mode`, `ai_parsing_store_debug_snippets`, `product_history_min_confirmed_matches`, `product_history_min_variant_share`.
 
 #### 4.1.7 `parse_rule` (Parsing-Regel, automatisch gelernt)
 
@@ -351,6 +414,16 @@ Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_t
 - `receipt_item.receipt_id` – INDEX
 - `receipt_item.description` – GIN-Index für Volltextsuche (PostgreSQL `tsvector`)
 - `receipt_item.category_id` – INDEX
+- `receipt_item.product_family_id` – INDEX
+- `receipt_item.product_variant_id` – INDEX
+- `receipt_item.product_assignment_status` – INDEX
+- `receipt_item.exclude_from_product_price_comparison` – INDEX
+- `product_family.name` – UNIQUE INDEX
+- `product_variant.product_family_id` – INDEX
+- `product_variant.gtin` – INDEX (nullable)
+- `product_rule.priority` – INDEX
+- `product_rule.store_name` – INDEX
+- `product_rule.is_active` – INDEX
 - `categorization_rule.priority` – INDEX
 - `ai_parsing_log.receipt_id` – INDEX
 - `ai_parsing_log.trigger` – INDEX
@@ -376,18 +449,7 @@ Initiale Schlüssel: `sync_interval_minutes`, `ai_model`, `ai_max_tokens`, `ai_t
 |---|---|---|
 | `/api/documents/?tags__name__iexact={TAG}&page_size=100&ordering=-created` | GET | Alle Dokumente mit exakt passendem konfiguriertem Tag abrufen (case-insensitive, paginiert). `{TAG}` = Wert der Umgebungsvariable `PAPERLESS_EBON_TAG`. |
 | `/api/documents/{id}/` | GET | Metadaten eines einzelnen Dokuments |
-
-### 5.2 OpenRouter.ai API
-
-**Basis-URL:** konfigurierbar via `OPENROUTER_BASE_URL`, Standard `https://openrouter.ai/api/v1`
-**Authentifizierung:** Bearer-Token (`Authorization: Bearer <OPENROUTER_API_KEY>`)
-
-| Verwendeter Endpoint | Methode | Beschreibung |
-|---|---|---|
-| `/chat/completions` | POST | KI-Kategorisierung und KI-Parsing-Fallback |
-
-Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturierte Ausgaben über `response_format`/JSON-Schema anfordern. Unabhängig davon validiert das Backend jede Antwort lokal gegen das erwartete Schema. OpenRouter-Verbindungstests dürfen keine echten Bon-Daten senden.
-| `/api/documents/{id}/download/` | GET | Download des Dokuments (nicht verwendet) |
+| `/api/documents/{id}/download/` | GET | Download des Dokuments; nicht verwendet |
 
 Die Applikation verwendet ausschließlich den Textinhalt (`content`-Feld) aus dem Dokument-Metadaten-Response. Kein direkter Download von PDFs.
 
@@ -409,35 +471,30 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 
 ### 5.2 OpenRouter.ai API
 
-**Basis-URL:** `https://openrouter.ai/api/v1`  
-**Authentifizierung:** `Authorization: Bearer <OPENROUTER_API_KEY>`  
+**Basis-URL:** konfigurierbar via `OPENROUTER_BASE_URL`, Standard `https://openrouter.ai/api/v1`
+
+**Authentifizierung:** Bearer-Token (`Authorization: Bearer <OPENROUTER_API_KEY>`)
 **Verwendeter Endpoint:** `POST /chat/completions` (OpenAI-kompatibel)
 
-**Request-Body:**
+OpenRouter wird für drei getrennte Workflows verwendet:
 
-```json
-{
-  "model": "<konfigurierbar, z.B. google/gemini-flash-1.5>",
-  "messages": [
-    {
-      "role": "system",
-      "content": "Du bist ein Assistent zur Kategorisierung von Supermarkt-Einkaufspositionen. Antworte ausschließlich mit dem Namen der Kategorie aus der gegebenen Liste. Keine weiteren Erklärungen."
-    },
-    {
-      "role": "user",
-      "content": "Kategorisiere folgende Einkaufsposition:\nArtikel: '<description>'\nGeschäft: '<store_name>'\n\nVerfügbare Kategorien:\n<kommagetrennte Kategorieliste>\n\nAntworte nur mit dem Kategorienamen."
-    }
-  ],
-  "max_tokens": 50,
-  "temperature": 0.1
-}
-```
+- KI-Kategorisierung (F-03)
+- KI-Parsing-Fallback (F-02)
+- KI-Produktzuordnung (F-19), ohne vollständige Bon-Rohtexte
 
-**Response-Verarbeitung:**
+Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturierte Ausgaben über `response_format`/JSON-Schema anfordern. Unabhängig davon validiert das Backend jede Antwort lokal gegen das erwartete Schema. OpenRouter-Verbindungstests dürfen keine echten Bon-Daten senden.
 
-- Die Antwort wird aus `choices[0].message.content` extrahiert.
-- Der Text wird bereinigt (Trim, Lowercase-Vergleich) und mit bekannten Kategorienamen abgeglichen.
-- Bei keinem Treffer: `category_id = NULL`, `category_source = NULL`, Logzeile als Warnung.
+**KI-Kategorisierung und KI-Produktzuordnung:**
+
+- Gesendet werden nur positionsbezogene Daten wie Beschreibung, Store, Preis, Menge und verfügbare Zieloptionen.
+- Die Antwort wird gegen bekannte Kategorien bzw. Produktfamilien/-varianten abgeglichen.
+- Bei keinem sicheren Treffer bleibt die Kategorie bzw. Produktzuordnung offen und wird strukturiert protokolliert.
+
+**KI-Parsing-Fallback:**
+
+- Der Prompt enthält minimierten oder explizit bestätigten vollständigen Bontext, Regelparser-Teilparse, Fehlergrund, Pflichtfelder, Summenvalidierung, Bonusdefinition und die Anweisung, ausschließlich JSON zurückzugeben.
+- Optional darf die KI Parser-Regelvorschläge liefern.
+- Vollständige Prompts und Rohantworten werden standardmäßig nicht gespeichert.
 - Es werden maximal **3 Retry-Versuche** bei HTTP-5xx-Fehlern unternommen (exponential backoff: 1s, 2s, 4s).
 
 ---
@@ -466,14 +523,16 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
   - Gesamtbetrag (`total_amount`)
 - **F-02.3:** Der Parser verwendet **primär** reguläre Ausdrücke und strukturbasiertes Parsen (regelbasiert). Der Parser ist erweiterbar für verschiedene Bon-Formate (Store-spezifische Parser als Strategy-Pattern).
 - **F-02.3a:** Schlägt das regelbasierte Parsing fehl (kein vollständiger Parse möglich), kann ein **KI-Fallback** über OpenRouter.ai durchgeführt werden. Der Fallback ist über `ai_parsing_fallback_enabled` konfigurierbar, standardmäßig aktiv und läuft nur, wenn ein OpenRouter API-Key verfügbar ist. Für manuelle Reparse-Aufrufe kann der Nutzer den KI-Fallback explizit verwenden oder deaktivieren.
-- **F-02.3b:** Der OpenRouter-Parsing-Fallback folgt einem kontrollierten Hybrid-Ansatz: Ein KI-Ergebnis darf den aktuellen Bon automatisch als `PARSED` speichern, aber nur wenn Schema, Pflichtfelder, fortlaufende Positionen, Zahlenformate, Summentoleranz `0.02` und `ai_parsing_min_confidence` erfüllt sind. Erfolgreiche KI-Parses setzen `receipt.parse_source = AI`.
-- **F-02.3c:** Der Prompt enthält den minimierten oder vollständigen `raw_text`, den Regelparser-Teilparse und den Fehlergrund des Regelparsers. Die KI muss ein vollständiges finales JSON liefern. Teilantworten oder Antworten außerhalb des Schemas werden nicht als `PARSED` übernommen.
-- **F-02.3d:** Der KI-Fallback kann optionale Parser-Regelvorschläge liefern. Diese werden in `parse_rule_suggestion` gespeichert, aber nicht automatisch aktiviert. Neue Regeln werden erst nach Nutzerprüfung/-bearbeitung als aktive `parse_rule` mit `source = AI_ADAPTED` übernommen. Diese Rule-Adaptation erzeugt keine `categorization_rule`-Einträge.
+- **F-02.3b:** Der OpenRouter-Parsing-Fallback folgt einem kontrollierten Hybrid-Ansatz: Ein KI-Ergebnis darf den aktuellen Bon automatisch als `PARSED` speichern, aber nur wenn JSON syntaktisch valide ist, das Schema erfüllt ist, Pflichtfelder vorhanden sind, `overallConfidence >= ai_parsing_min_confidence` gilt, `receiptDate`, `storeName`, `totalAmount` valide sind, mindestens eine Position mit `description` und `totalPrice` existiert, `positionIndex` fortlaufend ist, Zahlenformate korrekt normalisiert sind und die Summentoleranz `0.02` erfüllt ist. Erfolgreiche KI-Parses setzen `receipt.parse_source = AI`.
+- **F-02.3c:** Der Prompt enthält den minimierten oder vollständigen `raw_text`, den Regelparser-Teilparse, den Fehlergrund des Regelparsers, Pflichtfelder, Summenvalidierung, die Bonusdefinition („nur im Einkauf neu gesammelt") und die Anweisung, ausschließlich JSON zurückzugeben. Die KI muss ein vollständiges finales JSON liefern. Teilantworten oder Antworten außerhalb des Schemas werden nicht als `PARSED` übernommen.
+- **F-02.3d:** Der KI-Fallback kann optionale Parser-Regelvorschläge liefern. Diese werden vor Speicherung validiert: Regex syntaktisch valide, Regex passt auf den Beispiel-Bon, erwartetes Feld wird extrahiert, keine offensichtlichen Steuer-, TSE-, Signatur- oder Zahlungszeilen als Item-Kandidaten. Invalide Vorschläge verhindern keinen ansonsten validen KI-Parse. Vorschläge werden in `parse_rule_suggestion` gespeichert, aber nicht automatisch aktiviert. Neue Regeln werden erst nach Nutzerprüfung/-bearbeitung als aktive `parse_rule` mit `source = AI_ADAPTED` übernommen. Diese Rule-Adaptation erzeugt keine `categorization_rule`-Einträge.
 - **F-02.3e:** Der KI-Fallback für Parsing muss ein festes JSON-Schema liefern. Antworten außerhalb des Schemas werden verworfen und führen zu `PARSE_ERROR`, außer ein gültiger Teilparse kann nach F-02.5 gespeichert werden. Jeder Versuch wird in `ai_parsing_log` protokolliert.
 - **F-02.3f:** Automatische KI-Parsing-Calls im Sync sind pro Sync-Lauf begrenzt (`ai_parsing_sync_call_limit`, Standard `25`). Wird das Limit erreicht, bleibt der Bon `PARSE_ERROR` mit einer klaren Meldung, dass der KI-Fallback wegen Limit übersprungen wurde.
 - **F-02.3g:** Für den an OpenRouter gesendeten Text gibt es `ai_parsing_text_mode`: `MINIMIZED` (Standard) entfernt offensichtliche Zahlungs-, Steuer-, TSE-, Signatur- und Metadatenblöcke soweit möglich; `FULL_TEXT` sendet den vollständigen Paperless-Text. `FULL_TEXT` bei manuellem Reparse verlangt eine ausdrückliche Bestätigung in der UI.
 - **F-02.3h:** Wenn ein späterer Regelparser-Reparse vollständig und valide ist, darf er ein früheres KI-Parsergebnis ersetzen und `receipt.parse_source = RULE` setzen. Manuelle Edits dürfen dabei nicht still überschrieben werden, soweit sie im jeweiligen Datenmodell abgebildet sind.
 - **F-02.3i:** Wenn ein Bon die Filialadresse nicht als Text enthält (z.B. Adresse nur als Grafik im dm-eBon), darf der Parser eine aus dem Text extrahierte Filial-ID über eine konfigurierbare Mapping-Tabelle auf `store_branch` auflösen. Ist kein Mapping vorhanden, bleibt ein technischer, eindeutig nachvollziehbarer Fallback wie `Filiale <Code>` zulässig.
+- **F-02.3j:** KI-Parsing und KI-Kategorisierung bleiben getrennte Workflows mit getrennten Logs und getrennten UI-Flows. KI-Parsing darf keine `categorization_rule` erzeugen.
+- **F-02.3k:** Keine Modell-Fallback-Kette ist Teil der ersten Umsetzung. Das konfigurierte Parsing-Modell wird verwendet; Fehler werden transparent in `ai_parsing_log` protokolliert.
 - **F-02.4:** Der Parser extrahiert aus dem `raw_text` zusätzlich folgende Bonus-Felder:
   - `bonus_balance`: In diesem Einkauf neu gesammeltes Bonusguthaben, nicht das aktuelle Bonuskonto-/Punkteguthaben
   - `bonus_points`: In diesem Einkauf neu gesammelte Payback-Punkte oder ähnliche Punktesysteme (mit Typ-Angabe)
@@ -562,6 +621,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
   - Positions-Beschreibung (Volltextsuche, PostgreSQL `tsvector`)
   - Datum von / Datum bis (`receipt_date`)
   - Kategorie (exakt, Mehrfachauswahl)
+  - Produktfamilie und Produktvariante (exakt, Mehrfachauswahl)
   - Betrag von / Betrag bis (`total_price` der Position)
 - **F-04.2:** Suchergebnisse werden paginiert zurückgegeben (Standard: 20 pro Seite, konfigurierbar bis 100).
 - **F-04.3:** Suchergebnisse können nach Datum, Betrag oder Geschäftsname sortiert werden (auf- und absteigend).
@@ -580,17 +640,19 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
   | Kombinierter Report | Kategorie + Zeitraum oder Geschäft + Zeitraum |
   | Top-Artikel | Häufigste/teuerste Positionen im Zeitraum |
   | Bonusübersicht | Neu gesammeltes Bonusguthaben und neu gesammelte Punkte aggregiert nach Typ und Geschäft |
+  | Produktfamilie | Preis- und Mengenvergleich pro Produktfamilie |
+  | Produktvariante | Konkreter Variantenpreis, Einheitenpreis und Verlauf |
 
-- **F-05.3:** Alle Reports unterstützen Filterung nach: Zeitraum (von/bis), Geschäft, Kategorie.
+- **F-05.3:** Alle Reports unterstützen Filterung nach: Zeitraum (von/bis), Geschäft, Kategorie. Produktreports unterstützen zusätzlich Produktfamilie, Produktvariante und Store-Gruppierung (`store_name` oder `store_name + store_branch`).
 - **F-05.4:** Report-Daten werden als JSON über die API geliefert und im Frontend als Balkendiagramm, Kreisdiagramm oder Tabelle dargestellt.
-- **F-05.5:** Reports können als CSV-Datei exportiert werden.
+- **F-05.5:** Reports können als CSV-Datei exportiert werden. CSV-Exports enthalten, soweit verfügbar, Produktfamilie, Produktvariante, Einheitenpreis, Zuordnungsquelle und Zuordnungsstatus.
 
 ### F-06: Manuelles Editieren
 
 - **F-06.1:** Der Nutzer kann folgende Felder eines Bons manuell bearbeiten:
   - `receipt_date`, `receipt_time`, `store_name`, `store_branch`, `total_amount`, `bonus_balance`, `bonus_points`, `bonus_type`
 - **F-06.2:** Der Nutzer kann folgende Felder einer Bon-Position manuell bearbeiten:
-  - `description`, `quantity`, `unit`, `unit_price`, `total_price`, `discount_amount`, `category_id`
+  - `description`, `quantity`, `unit`, `unit_price`, `total_price`, `discount_amount`, `category_id`, `product_family_id`, `product_variant_id`
 - **F-06.3:** Nach manuellem Editieren wird `is_manually_edited = TRUE` und `parse_status = MANUALLY_EDITED` gesetzt.
 - **F-06.4:** Positionen mit `is_manually_edited = TRUE` werden beim Re-Parse **nicht automatisch überschrieben**. Re-Parse erzeugt stattdessen einen **Konflikthinweis** und fordert explizite Bestätigung, bevor eine Überschreibung geschieht. **Standard: keine Überschreibung** manuell editierter Felder.
 - **F-06.5:** Einzelne Positionen können gelöscht werden.
@@ -640,6 +702,7 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
   - OpenRouter API-Key und Modell-Auswahl (mit Verbindungstest)
   - Mindest-Konfidenz für automatische KI-Kategorisierung (`ai_categorization_min_confidence`, Standard `0.900`, Wertebereich `0.000` bis `1.000`)
   - OpenRouter KI-Parsing-Fallback: global aktiv/inaktiv (Default aktiv), separates Parsing-Modell, Max Tokens, Temperature, Mindest-Konfidenz (`ai_parsing_min_confidence`, Standard `0.900`), Sync-Call-Limit (Default `25`), Textmodus (`MINIMIZED`/`FULL_TEXT`) und lokales Debug-Snippet-Verhalten
+  - Produkt-Historie-Defaults: Mindestanzahl bestätigter Treffer (`product_history_min_confirmed_matches`, Default `3`) und Mindestanteil derselben Variante (`product_history_min_variant_share`, Default `0.900`)
   - Sync-Intervall (Minuten)
   - Anzuzeigende Währung
 - **F-11.2:** Sensible Felder (API-Keys) werden bei der Anzeige maskiert. Maskierte Platzhalterwerte dürfen beim Speichern nicht als neue Secrets persistiert werden. Klartext-Secrets werden ausschließlich beim initialen Setzen oder expliziten Ersetzen übertragen.
@@ -647,17 +710,20 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 - **F-11.4:** Secrets in `app_settings` müssen in Logs, Fehlerantworten, Backup-Metadaten und UI-Responses maskiert werden. Für lokale Single-User-Deployments ist Speicherung im Klartext in der Datenbank zulässig, aber die Implementierung muss zentral über einen `SecretValue`/Maskierungsmechanismus erfolgen, damit spätere Verschlüsselung möglich bleibt.
 - **F-11.5:** Einstellungen enthalten einen administrativen Bereich „Datenwartung" mit:
   - Re-Parse aller Bons, standardmäßig ohne Überschreiben manueller Änderungen.
-  - Reset aller importierten Bon-Daten für ein vollständiges erneutes Einlesen aus Paperless-NGX. Der Reset löscht `receipt`, `receipt_item` und zugehörige KI-/Sync-Detaildaten, behält aber Kategorien, Kategorisierungsregeln, App-Einstellungen und Flyway-Migrationen. Die Aktion ist destruktiv und verlangt eine deutliche Bestätigung.
+  - Reset aller importierten Bon-Daten für ein vollständiges erneutes Einlesen aus Paperless-NGX. Der Reset löscht `receipt`, `receipt_item` und zugehörige KI-/Sync-Detaildaten, behält aber Kategorien, Kategorisierungsregeln, Produktstammdaten, Produktregeln, App-Einstellungen und Flyway-Migrationen. Die Aktion ist destruktiv und verlangt eine deutliche Bestätigung.
+  - Separater Produktdaten-Reset für Produktfamilien, Varianten, Produktregeln, Reviewstatus und Preis-Ausschlüsse. Diese Aktion ist getrennt vom Bon-Daten-Reset, transaktional und verlangt eine eigene deutliche Bestätigung.
 
 ### F-12: Test-Suite
 
-- **F-12.1:** Für fachlich kritische Backend-Komponenten existieren automatisierte Tests. Priorität haben Parser, OpenRouter-KI-Parsing-Fallback, Sync, Kategorisierung, Backup/Restore, Settings/Secret-Masking und API-Fehlerbehandlung.
+- **F-12.1:** Für fachlich kritische Backend-Komponenten existieren automatisierte Tests. Priorität haben Parser, OpenRouter-KI-Parsing-Fallback, Sync, Kategorisierung, Produktzuordnung, Produktpreisreports, Backup/Restore, Settings/Secret-Masking und API-Fehlerbehandlung.
 - **F-12.2:** Verwendete Test-Frameworks: **JUnit 5**, **Mockito** (Mocking), **Cucumber** (BDD/Akzeptanztests für Parsing und Kategorisierung).
 - **F-12.3:** Testabdeckung wird über JaCoCo gemessen; Ziel: ≥ 80 % Zeilenabdeckung für Service-Klassen und ≥ 90 % Branch-Coverage für Parser-Klassen.
 - **F-12.4:** Cucumber-Feature-Files definieren Akzeptanzkriterien für:
   - Bon-Parsing (regelbasiert und KI-Fallback)
   - KI-Parsing-Log und Parser-Regelvorschläge
   - Kategorisierung (Regeln + KI)
+  - Produktzuordnung (Regeln, Historie, KI-Vorschläge, Review)
+  - Produktpreisvergleich (Einheitenpreise, Mehrfachpackungen, Ausreißer)
   - Sync-Verhalten (inkl. TAG_REMOVED)
   - Re-Parse-Konfliktauflösung
 - **F-12.5:** Tests werden automatisch im CI-Build (`mvn verify`) ausgeführt.
@@ -744,6 +810,35 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 - **F-18.11:** Die Anwendung zeigt eine konsistente Software-Version in UI und Backend an.
 - **F-18.12:** Die Versionsinformation wird zentral aus Build-/Projektmetadaten abgeleitet und in Backup-Manifest, OpenAPI-Info, UI-Footer oder Settings-Bereich sowie optional Docker-Labels verwendet.
 
+### F-19: Produktzuordnung und Produktpreisvergleich
+
+- **F-19.1:** Die Anwendung führt eine Produktschicht oberhalb der Bon-Positionen ein. Mehrere unterschiedliche Bontexte können derselben Produktfamilie und, wenn eindeutig, derselben Produktvariante zugeordnet werden. Beispiel: `CC Zero` und `Coca Cola Zero` können dieselbe Produktfamilie meinen; `Coca Cola Zero 0,33l` und `Coca Cola Zero 0,5l` sind unterschiedliche Varianten.
+- **F-19.2:** Das Produktmodell besteht aus Produktfamilie und Produktvariante. Eine Produktfamilie beschreibt das vergleichbare Produkt auf Mengenebene, z.B. `Coca Cola Zero`. Eine Produktvariante beschreibt das konkrete Gebinde oder die konkrete Kaufvariante, z.B. `Coca Cola Zero 0,33l Flasche`.
+- **F-19.3:** Marke wird nicht als eigenes Feld modelliert, sondern bleibt Teil des Produktnamens. Pfand und Tüten können eigene Produktfamilien/Varianten sein.
+- **F-19.4:** Eine `receipt_item` darf maximal eine Produktzuordnung besitzen. Mehrfachprodukt-Zuordnung oder Aufsplitten einer einzelnen Bon-Position in mehrere Produktanteile ist nicht Teil von Phase 15.
+- **F-19.5:** Varianten mit unterschiedlicher Größe, Einheit oder Packungsstruktur dürfen nicht automatisch zusammengeführt werden. Mehrfachpackungen speichern Einzelgebinde und Packungsgröße, z.B. `6x0,33l`, damit Variante und Gesamtmenge auswertbar bleiben.
+- **F-19.6:** Externe Produktdatenbanken und Barcode-Scan-Workflows sind nicht Teil von Phase 15. EAN/GTIN kann als optionales Feld vorbereitet werden.
+- **F-19.7:** Produktregeln bleiben getrennt von Kategorisierungsregeln. Eine Produktregel setzt Produktfamilie und optional Variante. Eine Produktfamilie darf über `default_category_id` nur leere Kategorien füllen und niemals bestehende oder manuelle Kategorien überschreiben.
+- **F-19.8:** Produktzuordnung läuft nach Parsing und Kategorisierung automatisch. Reihenfolge: Produktregel/Synonym, klare Historie, KI-Fallback, sonst `NEEDS_REVIEW` oder `NO_PRODUCT` je nach erkannter Positionsart.
+- **F-19.9:** Produktregeln matchen gegen `receipt_item.description`, können global oder optional auf `store_name` eingeschränkt sein, und verwenden Match-Typen analog zu Kategorisierungsregeln: `CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `EXACT`, `REGEX`. Store-spezifische Regeln dürfen globale Regeln übersteuern.
+- **F-19.10:** Beim Speichern einer Produktregel kann der Nutzer wählen, ob sie nur künftig oder auch auf bestehende Positionen angewendet wird. Vor rückwirkendem Anwenden zeigt das Backend eine Vorschau mit Anzahl betroffener Positionen, Stores, Zeitraum und geplanter Änderung. Rückwirkende Anwendung erfolgt nur nach expliziter Bestätigung.
+- **F-19.11:** Klare Historie darf eine automatische Variantenzuordnung stützen, wenn aus dem Bontext keine Variante sicher erkennbar ist. Defaults: mindestens `3` frühere vertrauenswürdige Treffer für denselben normalisierten Positions-/Store-Kontext und mindestens `90 %` dieselbe Variante. Diese Schwellen sind über `app_settings` konfigurierbar.
+- **F-19.12:** Als vertrauenswürdige Historie zählen manuelle Zuordnungen, akzeptierte Vorschläge/Regeln und regelbasierte automatische Treffer. Reine KI-Treffer dürfen nicht allein klare Historie für spätere automatische Variantenentscheidungen begründen.
+- **F-19.13:** KI-Produktzuordnung orientiert sich an der bestehenden KI-Kategorisierung und nutzt in Phase 15 deren OpenRouter-Konfiguration. Es gibt kein separates Produkt-KI-Sync-Call-Limit. Gesendet werden dürfen normalisierte Positionsdaten, Store, Preis und Menge; vollständige Bon-Rohtexte dürfen nicht gesendet werden. Vollständige Prompts und Rohantworten werden standardmäßig nicht gespeichert.
+- **F-19.14:** KI darf Produktfamilie und Variante automatisch setzen, wenn Konfidenz, erkannte Einheit, Größe und Preislogik plausibel sind. Unsichere KI-Ergebnisse erhalten `product_assignment_status = NEEDS_REVIEW`.
+- **F-19.15:** Reine Rabatte, Coupons, Zahlungszeilen und Rundungsdifferenzen werden standardmäßig als `NO_PRODUCT` geführt. Pfand und Tüten werden nicht pauschal ausgeschlossen und können normale Produktfamilien sein.
+- **F-19.16:** Phase 15b stellt eine Prüfliste „Produktzuordnung prüfen" bereit. Sie zeigt Positionen mit `NEEDS_REVIEW`, niedriger oder widersprüchlicher Konfidenz, unklarer Größe, Konflikten zwischen Regel/Historie/KI und auffälligen Preisen. Standardsortierung ist nach Nutzen: häufige und teure Positionen zuerst.
+- **F-19.17:** Die Prüfliste unterstützt Filter nach Unsicherheit, Store, Produktfamilie, Kategorie, Zeitraum, Zuordnungsquelle und Status. Jeder Eintrag zeigt Bon-Datum, Store/Filiale, Positionsbeschreibung, Menge/Einheit/Preis, vorgeschlagene Familie/Variante, Konfidenz, Begründung und mögliche rückwirkende Auswirkungen.
+- **F-19.18:** Der Nutzer kann Vorschläge akzeptieren, korrigieren, ablehnen, neue Produktfamilien/Varianten anlegen, die Zuordnung entfernen, als `NO_PRODUCT` markieren oder aus einer manuellen Zuordnung eine Produktregel mit Vorschau erstellen.
+- **F-19.19:** Korrektur-Workflows sind Pflicht: Produktfamilien/Varianten zusammenführen, falsch zusammengelegte Einträge trennen, einzelne Bon-Positionen umhängen oder Zuordnungen entfernen. Historisch wirkende Änderungen benötigen immer Vorschau und Bestätigung und müssen transaktional sein.
+- **F-19.20:** Beim Reparse werden Produktzuordnungen neu abgeleitet. Bestätigte Zuordnungen sollen bestmöglich übertragen werden, wenn Beschreibung, Preis und Menge plausibel passen. Konflikte werden sichtbar gemacht, nicht still überschrieben.
+- **F-19.21:** Produktpreisreports verwenden bestätigte und automatisch zugeordnete Preisbeobachtungen. Positionen mit `NEEDS_REVIEW`, `REJECTED`, `NO_PRODUCT` oder `exclude_from_product_price_comparison = true` werden nicht still in Vergleichszahlen gemischt.
+- **F-19.22:** Produktfamilienreports vergleichen normalisierte Einheitenpreise, z.B. `€/l`, `€/kg` oder `€/Stück`, und können nach `store_name` oder `store_name + store_branch` gruppieren. Ein eigenes Store-Stammdatenmodell ist nicht Teil von Phase 15.
+- **F-19.23:** Produktvariantenreports zeigen konkreten Positionspreis, Einheitenpreis, letzten bekannten Preis je Store, historisches Minimum, Durchschnitt, Median, Preisverlauf und zugrunde liegende Bon-Positionen.
+- **F-19.24:** Standardpreislogik ist der effektiv gezahlte Preis inklusive Rabatten und Aktionen. Ein regulärer Preis ohne Rabatt wird zusätzlich nur angezeigt, wenn er aus `unit_price`, `discount_amount` oder erkennbaren Rabattpositionen sicher ableitbar ist.
+- **F-19.25:** Auffällige Preise werden markiert. Der Nutzer kann einzelne Preisbeobachtungen vom Produktpreisvergleich ausschließen und wieder einschließen. Ausschlüsse bleiben auditierbar und reversibel.
+- **F-19.26:** Suche, Reports und CSV-Exports werden um Produktfamilie, Produktvariante, Einheitenpreis, Zuordnungsquelle, Zuordnungsstatus und Ausschlussstatus erweitert.
+
 ---
 
 ## 7. Use Cases
@@ -761,7 +856,8 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 4. Neue Dokumente: Anlegen eines `receipt`-Eintrags mit `raw_text = content`, `parse_status = PENDING`.
 5. **Tag-Entfernung prüfen:** Nach vollständigem erfolgreichem Abruf aller Paperless-Seiten werden alle aktiven `receipt`-Einträge, deren `paperless_document_id` nicht mehr im Paperless-Ergebnis vorkommt, per Soft-Delete markiert (Grund `TAG_REMOVED`). Die Entfernung wird in `sync_log_entry` protokolliert und als INFO geloggt.
 6. Das System startet den Parsing-Prozess (F-02) für alle neuen Receipts.
-7. Der Sync-Status und Sync-Log werden aktualisiert.
+7. Nach Parsing und Kategorisierung startet das System die Produktzuordnung (F-19) für alle neuen Positionen.
+8. Der Sync-Status und Sync-Log werden aktualisiert.
 
 **Alternativer Ablauf – Paperless-NGX nicht erreichbar:**
 - Das System markiert den Sync als fehlgeschlagen, schreibt einen Logeintrag. Kein Datenverlust.
@@ -907,7 +1003,8 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 6. Backend löscht alle bestehenden `receipt_item` für diesen Bon (respektiert `overwriteManualEdits`-Flag).
 7. Backend parst `raw_text` erneut und legt neue Positionen an.
 8. Kategorisierung (F-03) wird für alle neuen Positionen erneut ausgeführt.
-9. UI zeigt aktualisierte Bon-Detailansicht.
+9. Produktzuordnung (F-19) wird für alle neuen Positionen erneut ausgeführt. Bestätigte alte Zuordnungen werden bestmöglich übertragen, wenn Beschreibung, Preis und Menge plausibel passen; Konflikte werden sichtbar.
+10. UI zeigt aktualisierte Bon-Detailansicht.
 
 ---
 
@@ -1009,6 +1106,70 @@ Die Tag-Filterung erfolgt via Query-Parameter `tags__name__iexact={TAG}`, wobei 
 7. Optional exportiert der Nutzer akzeptierte Regeln als Flyway-Migrationsentwurf.
 
 **Alternative:** Nutzer lehnt den Vorschlag mit Begründung ab. Der Vorschlag bleibt als `REJECTED` gespeichert, damit dieselbe Idee nicht blind erneut vorgeschlagen wird.
+
+---
+
+### UC-16: Produktzuordnung prüfen
+
+**Akteur:** Nutzer
+
+**Vorbedingung:** Mindestens eine `receipt_item` hat `product_assignment_status = NEEDS_REVIEW` oder einen Produktzuordnungskonflikt.
+
+**Auslöser:** Nutzer öffnet den Bereich „Produkte" → „Produktzuordnung prüfen".
+
+**Hauptablauf:**
+1. Frontend lädt die Review-Queue mit Filtern für Unsicherheit, Store, Produktfamilie, Kategorie, Zeitraum, Quelle und Status.
+2. Backend liefert paginierte Einträge, standardmäßig nach Nutzen sortiert (häufige/teure Positionen zuerst).
+3. Nutzer öffnet einen Eintrag und sieht Bon-Datum, Store, Positionsbeschreibung, Menge, Preis, vorgeschlagene Familie/Variante, Konfidenz und Begründung.
+4. Nutzer akzeptiert den Vorschlag, korrigiert Familie/Variante, legt neue Stammdaten an, lehnt ab oder markiert die Position als `NO_PRODUCT`.
+5. Backend speichert die Entscheidung mit Quelle/Status, aktualisiert die Position und füllt optional eine leere Kategorie über `product_family.default_category_id`.
+6. UI aktualisiert die Review-Queue und zeigt eine Erfolgsmeldung.
+
+**Nachbedingung:** Die geprüfte Position ist `CONFIRMED`, `REJECTED` oder `NO_PRODUCT` und bleibt auditierbar.
+
+---
+
+### UC-17: Produktstammdaten und Produktregeln pflegen
+
+**Akteur:** Nutzer
+
+**Vorbedingung:** Produktbereich oder Produktverwaltung ist geöffnet.
+
+**Auslöser:** Nutzer erstellt oder bearbeitet Produktfamilien, Varianten oder Regeln.
+
+**Hauptablauf:**
+1. Nutzer legt eine Produktfamilie an oder bearbeitet Name, Aktivstatus und optionale Standard-Kategorie.
+2. Nutzer legt Varianten mit Einheit, Menge, Packungsstruktur und optionaler GTIN an.
+3. Nutzer erstellt oder bearbeitet Produktregeln gegen Positionsbeschreibungen, optional mit Store-Kontext.
+4. Backend berechnet vor dem Speichern oder Anwenden eine Vorschau betroffener historischer Positionen.
+5. Nutzer entscheidet zwischen „nur künftig" und „auf bestehende Positionen anwenden".
+6. Backend wendet bestätigte rückwirkende Änderungen transaktional an.
+
+**Korrekturabläufe:**
+- Produktfamilien oder Varianten können zusammengeführt werden.
+- Falsch zusammengelegte Familien oder Varianten können getrennt werden.
+- Einzelne Positionen können auf eine andere Familie/Variante gesetzt oder aus der Produktzuordnung entfernt werden.
+- Jede historisch wirkende Änderung zeigt vor Ausführung eine Vorschau und verlangt Bestätigung.
+
+---
+
+### UC-18: Produktpreisvergleich ansehen und exportieren
+
+**Akteur:** Nutzer
+
+**Vorbedingung:** Es existieren Produktzuordnungen mit Preisbeobachtungen.
+
+**Auslöser:** Nutzer öffnet eine Produktfamilie, Produktvariante oder den Produktreport.
+
+**Hauptablauf:**
+1. Nutzer wählt Produktfamilie oder Produktvariante, Zeitraum und Store-Gruppierung (`store_name` oder `store_name + store_branch`).
+2. Backend berechnet letzten bekannten Preis, historisches Minimum, Durchschnitt, Median, Verlauf und zugrunde liegende Preisbeobachtungen.
+3. Familienreports normalisieren auf `€/l`, `€/kg` oder `€/Stück`; Variantenreports zeigen zusätzlich den konkreten Positionspreis.
+4. UI zeigt Diagramm, Tabelle und Links zu den zugrunde liegenden Bon-Positionen.
+5. Nutzer kann auffällige Beobachtungen ausschließen oder wieder einschließen.
+6. Nutzer exportiert die Ansicht als CSV.
+
+**Nachbedingung:** Produktpreise sind nachvollziehbar nach Store, Zeitraum und Einheit vergleichbar. Ausgeschlossene Beobachtungen bleiben sichtbar und reversibel.
 
 ---
 
@@ -1121,7 +1282,7 @@ Query-Parameter für `GET /api/receipts`:
 |---|---|---|
 | GET | `/api/search` | Suche über Bons und Positionen |
 
-Query-Parameter: `q`, `store`, `dateFrom`, `dateTo`, `categoryIds` (kommagetrennt), `uncategorizedOnly`, `amountMin`, `amountMax`, `page`, `size`, `sortBy`, `sortDir`.
+Query-Parameter: `q`, `store`, `dateFrom`, `dateTo`, `categoryIds` (kommagetrennt), `productFamilyIds` (kommagetrennt), `productVariantIds` (kommagetrennt), `uncategorizedOnly`, `amountMin`, `amountMax`, `page`, `size`, `sortBy`, `sortDir`.
 
 #### Reports
 
@@ -1132,11 +1293,16 @@ Query-Parameter: `q`, `store`, `dateFrom`, `dateTo`, `categoryIds` (kommagetrenn
 | GET | `/api/reports/by-store` | Ausgaben gruppiert nach Geschäft |
 | GET | `/api/reports/top-items` | Häufigste/teuerste Positionen |
 | GET | `/api/reports/bonus` | Neu gesammeltes Bonusguthaben und neu gesammelte Punkte aggregiert |
+| GET | `/api/reports/products/families/{id}` | Produktfamilien-Preisvergleich |
+| GET | `/api/reports/products/variants/{id}` | Produktvarianten-Preisvergleich |
+| GET | `/api/reports/products/top` | Häufige/teure Produkte und einfache Preisänderungen |
 | GET | `/api/reports/by-category/export` | CSV-Export |
 | GET | `/api/reports/by-period/export` | CSV-Export |
 | GET | `/api/reports/by-store/export` | CSV-Export |
+| GET | `/api/reports/products/families/{id}/export` | Produktfamilien-CSV-Export |
+| GET | `/api/reports/products/variants/{id}/export` | Produktvarianten-CSV-Export |
 
-Gemeinsame Query-Parameter: `dateFrom`, `dateTo`, `categoryIds`, `store`, `groupBy` (`day`/`week`/`month`/`year`).
+Gemeinsame Query-Parameter: `dateFrom`, `dateTo`, `categoryIds`, `productFamilyIds`, `productVariantIds`, `store`, `groupBy` (`day`/`week`/`month`/`year`). Produktpreisreports unterstützen zusätzlich `storeGrouping` (`STORE` oder `STORE_BRANCH`), `includeExcluded`, `page` und `size` für Preisbeobachtungen.
 
 #### Backup & Restore
 
@@ -1159,11 +1325,17 @@ Gemeinsame Query-Parameter: `dateFrom`, `dateTo`, `categoryIds`, `store`, `group
 | Methode | Pfad | Beschreibung |
 |---|---|---|
 | POST | `/api/admin/data-reset/imported-receipts` | Importierte Bon-Daten löschen, Kategorien/Regeln/Einstellungen behalten |
+| POST | `/api/admin/data-reset/products` | Produktstammdaten, Produktregeln, Zuordnungen und Preis-Ausschlüsse separat zurücksetzen |
 | POST | `/api/admin/reparse/bulk` | Bulk-Reparse für ausgewählte Bons, gleiche Stores oder alle `PARSE_ERROR`-Bons |
 
 Body für `/api/admin/data-reset/imported-receipts`:
 ```json
 { "confirmation": "DELETE_IMPORTED_RECEIPTS" }
+```
+
+Body für `/api/admin/data-reset/products`:
+```json
+{ "confirmation": "DELETE_PRODUCT_DATA" }
 ```
 
 Body für `/api/admin/reparse/bulk`:
@@ -1190,6 +1362,40 @@ Body für `/api/admin/reparse/bulk`:
 | POST | `/api/parser/rule-suggestions/export-migration` | Aus akzeptierten Parser-Regeln einen Flyway-Migrationsentwurf exportieren |
 | POST | `/api/parser/fixtures/preview` | Anonymisierte Fixture-Vorschau aus KI-Parsing-Log erzeugen |
 | POST | `/api/parser/fixtures/export` | Anonymisiertes Fixture lokal außerhalb des Test-Corpus exportieren |
+
+#### Produkte
+
+| Methode | Pfad | Beschreibung |
+|---|---|---|
+| GET | `/api/products/families` | Produktfamilien paginiert abrufen |
+| POST | `/api/products/families` | Produktfamilie anlegen |
+| GET | `/api/products/families/{id}` | Produktfamilie im Detail abrufen |
+| PUT | `/api/products/families/{id}` | Produktfamilie aktualisieren |
+| PATCH | `/api/products/families/{id}` | Produktfamilie teilweise aktualisieren, z.B. aktivieren/deaktivieren |
+| POST | `/api/products/families/{id}/merge` | Produktfamilie mit anderer Familie zusammenführen, mit Vorschau/Bestätigung |
+| POST | `/api/products/families/{id}/split` | Produktfamilie trennen, mit Vorschau/Bestätigung |
+| GET | `/api/products/variants` | Produktvarianten paginiert abrufen |
+| POST | `/api/products/variants` | Produktvariante anlegen |
+| GET | `/api/products/variants/{id}` | Produktvariante im Detail abrufen |
+| PUT | `/api/products/variants/{id}` | Produktvariante aktualisieren |
+| PATCH | `/api/products/variants/{id}` | Produktvariante teilweise aktualisieren |
+| POST | `/api/products/variants/{id}/merge` | Produktvariante mit anderer Variante zusammenführen, mit Vorschau/Bestätigung |
+| POST | `/api/products/variants/{id}/split` | Produktvariante trennen, mit Vorschau/Bestätigung |
+| GET | `/api/products/rules` | Produktregeln sortiert/paginiert abrufen |
+| POST | `/api/products/rules` | Produktregel anlegen |
+| PUT | `/api/products/rules/{id}` | Produktregel aktualisieren |
+| DELETE | `/api/products/rules/{id}` | Produktregel löschen |
+| POST | `/api/products/rules/preview` | Vorschau betroffener Positionen berechnen |
+| POST | `/api/products/rules/{id}/apply` | Produktregel auf bestehende Positionen anwenden |
+| GET | `/api/products/review` | Produkt-Review-Queue paginiert abrufen |
+| POST | `/api/products/review/{receiptItemId}/accept` | Produktvorschlag akzeptieren |
+| POST | `/api/products/review/{receiptItemId}/correct` | Produktzuordnung korrigieren |
+| POST | `/api/products/review/{receiptItemId}/reject` | Produktvorschlag ablehnen |
+| POST | `/api/products/review/{receiptItemId}/no-product` | Position als `NO_PRODUCT` markieren |
+| DELETE | `/api/products/review/{receiptItemId}/assignment` | Produktzuordnung entfernen |
+| POST | `/api/products/assignments/run` | Produktzuordnung für Bon oder offene Positionen neu ausführen |
+| POST | `/api/products/price-observations/{receiptItemId}/exclude` | Preisbeobachtung ausschließen |
+| POST | `/api/products/price-observations/{receiptItemId}/include` | Preisbeobachtung wieder einschließen |
 
 Body für `/api/settings/test-connection`:
 ```json
@@ -1306,6 +1512,17 @@ Validierung:
   "categoryId": 2,
   "categoryName": "Lebensmittel",
   "categorySource": "RULE",
+  "productFamilyId": 20,
+  "productFamilyName": "Coca Cola Zero",
+  "productVariantId": 31,
+  "productVariantName": "Coca Cola Zero 0,33l Flasche",
+  "productAssignmentSource": "RULE",
+  "productAssignmentStatus": "AUTO_ASSIGNED",
+  "productAssignmentConfidence": 0.980,
+  "computedUnitPrice": 1.52,
+  "computedUnit": "l",
+  "excludeFromProductPriceComparison": false,
+  "productPriceExclusionReason": null,
   "isManuallyEdited": false,
   "aiSuggestion": {
     "categoryId": 3,
@@ -1323,6 +1540,10 @@ Validierung:
 - `quantity`: optional, `> 0`
 - `categorySource`: `RULE`, `AI`, `MANUAL` oder `null`; `AI` nur zusammen mit gesetzter `categoryId`, `null` bedeutet „Ohne Kategorie"
 - `aiSuggestion`: optionaler letzter nicht übernommener KI-Vorschlag für diese Position; nur anzeigen, wenn `categoryId = NULL`. `rejectionReason`: `LOW_CONFIDENCE`, `UNKNOWN_CATEGORY`, `INVALID_RESPONSE` oder `null`.
+- `productAssignmentSource`: `RULE`, `AI`, `MANUAL`, `HISTORY` oder `null`; nur zusammen mit Produktzuordnung oder `NO_PRODUCT`-Status.
+- `productAssignmentStatus`: `CONFIRMED`, `AUTO_ASSIGNED`, `NEEDS_REVIEW`, `REJECTED`, `NO_PRODUCT` oder `null`.
+- `computedUnitPrice`: aus effektiv gezahltem Preis und normalisierter Menge berechneter Einheitenpreis; `null`, wenn Einheit unbekannt oder nicht vergleichbar ist.
+- `excludeFromProductPriceComparison`: ausgeschlossene Beobachtungen bleiben sichtbar, fließen aber nicht in Produktpreisvergleichszahlen ein.
 
 ### SearchResultDTO
 
@@ -1336,6 +1557,14 @@ Validierung:
   "totalPrice": 1.49,
   "categoryId": 2,
   "categoryName": "Lebensmittel",
+  "productFamilyId": 20,
+  "productFamilyName": "Bio Milch",
+  "productVariantId": 33,
+  "productVariantName": "Bio Milch 1l",
+  "productAssignmentSource": "MANUAL",
+  "productAssignmentStatus": "CONFIRMED",
+  "unitPrice": 1.49,
+  "normalizedUnit": "l",
   "highlights": ["Bio Milch"]
 }
 ```
@@ -1374,6 +1603,8 @@ Validierung:
   "aiParsingSyncCallLimit": 25,
   "aiParsingTextMode": "MINIMIZED",
   "aiParsingStoreDebugSnippets": false,
+  "productHistoryMinConfirmedMatches": 3,
+  "productHistoryMinVariantShare": 0.900,
   "syncIntervalMinutes": 60,
   "currency": "EUR"
 }
@@ -1387,6 +1618,8 @@ Validierung:
 - `aiParsingSyncCallLimit`: Integer `>= 0`, Default `25`; `0` bedeutet kein automatischer KI-Parsing-Fallback im Sync
 - `aiParsingTextMode`: `MINIMIZED` oder `FULL_TEXT`; `FULL_TEXT` darf in manuellen Reparse-Flows nur nach ausdrücklicher Bestätigung verwendet werden
 - `aiParsingStoreDebugSnippets`: nur für lokale Entwicklung; bei `true` dürfen gekürzte/maskierte Prompt-/Antwort-Snippets gespeichert werden, niemals vollständige Rohdaten oder Secrets
+- `productHistoryMinConfirmedMatches`: Integer `>= 1`, Default `3`
+- `productHistoryMinVariantShare`: `0.000` bis `1.000`, Default `0.900`
 
 ### AiParsingLogDTO
 
@@ -1435,6 +1668,96 @@ Validierung:
 
 Beim Akzeptieren eines Vorschlags muss die UI eine Reparse-Auswahl anbieten: aktueller Bon, gleicher Store, alle `PARSE_ERROR`-Bons oder keine sofortige Anwendung.
 
+### ProductFamilyDTO
+
+```json
+{
+  "id": 20,
+  "name": "Coca Cola Zero",
+  "defaultCategoryId": 4,
+  "defaultCategoryName": "Getränke",
+  "isActive": true,
+  "variantCount": 3,
+  "assignedItemsCount": 42
+}
+```
+
+### ProductVariantDTO
+
+```json
+{
+  "id": 31,
+  "productFamilyId": 20,
+  "productFamilyName": "Coca Cola Zero",
+  "name": "Coca Cola Zero 0,33l Flasche",
+  "unitQuantity": 0.33,
+  "unit": "l",
+  "packageQuantity": 1,
+  "packageDescription": "Flasche",
+  "totalQuantity": 0.33,
+  "gtin": null,
+  "isActive": true,
+  "assignedItemsCount": 18
+}
+```
+
+Validierung:
+
+- `unit` kann bekannte Einheiten (`ml`, `l`, `g`, `kg`, `piece`) oder eine freie Einheit enthalten.
+- `totalQuantity` muss zur Packungsstruktur passen, wenn `unitQuantity` und `packageQuantity` gesetzt sind.
+- Unterschiedliche Größen, Einheiten oder Packungsstrukturen dürfen nicht automatisch zusammengeführt werden.
+
+### ProductReviewItemDTO
+
+```json
+{
+  "receiptItemId": 10,
+  "receiptId": 1,
+  "receiptDate": "2026-05-26",
+  "storeName": "REWE",
+  "storeBranch": "Berlin Mitte",
+  "description": "CC Zero",
+  "quantity": 1.0,
+  "unit": "Stk",
+  "totalPrice": 0.99,
+  "suggestedProductFamilyId": 20,
+  "suggestedProductFamilyName": "Coca Cola Zero",
+  "suggestedProductVariantId": 31,
+  "suggestedProductVariantName": "Coca Cola Zero 0,33l Flasche",
+  "confidence": 0.870,
+  "source": "AI",
+  "status": "NEEDS_REVIEW",
+  "reason": "Beschreibung passt, Größe unsicher",
+  "affectedHistoricalItemsCount": 12
+}
+```
+
+### ProductPriceReportDTO
+
+```json
+{
+  "productFamilyId": 20,
+  "productVariantId": 31,
+  "name": "Coca Cola Zero 0,33l Flasche",
+  "storeGrouping": "STORE",
+  "normalizedUnit": "l",
+  "stores": [
+    {
+      "storeName": "REWE",
+      "storeBranch": null,
+      "lastPrice": 0.99,
+      "lastUnitPrice": 3.00,
+      "historicalMinimum": 0.79,
+      "historicalMinimumUnitPrice": 2.39,
+      "averageUnitPrice": 2.81,
+      "medianUnitPrice": 2.75,
+      "observationsCount": 8
+    }
+  ],
+  "observations": []
+}
+```
+
 ---
 
 ## 9. UI-Spezifikation (Frontend)
@@ -1446,6 +1769,7 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 - Bons (Bon-Liste)
 - Suche
 - Reports
+- Produkte
 - Einstellungen (Untermenü: Kategorien, Regeln, Allgemein, Backup)
 
 ### 9.2 Seiten & Komponenten
@@ -1476,20 +1800,22 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 - Parse-Fehler zeigen, ob der KI-Parsing-Fallback versucht wurde, deaktiviert war, wegen fehlendem API-Key nicht verfügbar war, wegen Sync-Limit übersprungen wurde, invalides JSON geliefert hat oder wegen niedriger Konfidenz nicht übernommen wurde.
 - KI-Parsing-Logs sind kompakt sichtbar (Trigger, Status, Modell, Zeitpunkt, Dauer, Grund) und technisch aufklappbar (Warnungen, Feld-Konfidenzen, Fehlgrund). Prompt- und Rohantwortdaten werden im Normalbetrieb nicht angezeigt.
 - Bonbezogene Parser-Regelvorschläge werden im Bon-Detail angezeigt. Für jeden Vorschlag muss sichtbar sein, welches Problem ihn ausgelöst hat und warum die Regel dieses Problem lösen soll.
-- Positionstabelle: Beschreibung, Menge, Einheit, Einzelpreis, Gesamtpreis, Rabatt, Kategorie (Chip mit Farbe), Quelle-Badge.
+- Positionstabelle: Beschreibung, Menge, Einheit, Einzelpreis, Gesamtpreis, Rabatt, Kategorie (Chip mit Farbe), Quelle-Badge, Produktfamilie, Produktvariante, Produktzuordnungsquelle/-status und berechneter Einheitenpreis.
+- Produktzuordnungen sind kompakt korrigierbar. Unsichere Zuordnungen zeigen `NEEDS_REVIEW`; `NO_PRODUCT` wird als eigener Status dargestellt und nicht mit Kategorien verwechselt.
 - Im Editiermodus: Inline-Editierung aller Felder, Dropdown für Kategorie, Buttons „Position löschen" / „Position hinzufügen". Speichern/Abbrechen bleibt beim Scrollen sichtbar und klickbar (z.B. Sticky Action-Bar), damit lange Bons nicht nach oben zurückscrollen müssen.
 - Rohtextansicht (ausklappbar): `raw_text` in Monospace-Font.
 
 #### 9.2.4 Suche
 
-- Suchleiste (Freitext) + erweiterbare Filteroptionen (Seitenleiste oder Accordion).
+- Suchleiste (Freitext) + erweiterbare Filteroptionen (Seitenleiste oder Accordion), inkl. Produktfamilie und Produktvariante.
 - Ergebnisliste mit Hervorhebung der Trefferwörter.
+- Ergebnisliste zeigt, soweit vorhanden, Produktfamilie, Variante, Einheitenpreis und Produktzuordnungsstatus.
 - Paginierung unten.
 
 #### 9.2.5 Reports
 
-- Tab-Auswahl: Kategorie / Zeitraum / Geschäft / Top-Artikel / Bonus.
-- Filterleiste: Zeitraumauswahl (Schnellauswahl + Datepicker), Kategorie-Mehrfachauswahl.
+- Tab-Auswahl: Kategorie / Zeitraum / Geschäft / Top-Artikel / Bonus / Produkte.
+- Filterleiste: Zeitraumauswahl (Schnellauswahl + Datepicker), Kategorie-Mehrfachauswahl, Produktfamilie und Produktvariante.
 - Diagramm (Recharts: Bar oder Pie) + Datentabelle.
 - CSV-Export-Button.
 
@@ -1500,6 +1826,8 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 - Eigener Bereich für KI-Parsing-Fallback: globaler Aktiv-Schalter, Parsing-Modell, Max Tokens, Temperature, Mindest-Konfidenz, Sync-Call-Limit, Textmodus (`MINIMIZED`/`FULL_TEXT`) und lokale Debug-Snippets.
 - `FULL_TEXT` muss als datenschutzrelevante Option erklärt werden. Manuelle Reparse-Flows mit `FULL_TEXT` verlangen eine zusätzliche Bestätigung.
 - Bereich „Datenwartung" mit Re-Parse aller Bons und Reset aller importierten Bon-Daten. Der Reset benötigt eine deutliche Bestätigung und darf Kategorien, Regeln und Einstellungen nicht löschen.
+- Produkt-Historie-Defaults (`productHistoryMinConfirmedMatches`, `productHistoryMinVariantShare`) sind administrativ konfigurierbar.
+- Ein separater Produktdaten-Reset ist sichtbar vom Reset importierter Bon-Daten getrennt und benötigt eine eigene deutliche Bestätigung.
 
 #### 9.2.7 Einstellungen – Kategorien
 
@@ -1526,6 +1854,24 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 
 - Bereich „Backup erstellen": Button „Backup jetzt herunterladen" + Information über letztes Backup.
 - Bereich „Restore": File-Upload-Feld + Warntextblock + Bestätigungseingabe + „Restore starten"-Button.
+
+#### 9.2.11 Produkte – Review, Pflege und Preisvergleich
+
+- Hauptbereich „Produkte" enthält Tabs oder gleichwertige Navigation für:
+  - Produktzuordnung prüfen
+  - Produktfamilien
+  - Produktvarianten
+  - Produktregeln
+  - Preisvergleich
+- „Produktzuordnung prüfen" ist eine dichte, filterbare Tabelle. Standard-Sortierung: häufige/teure unsichere Positionen zuerst. Filter: Unsicherheit, Store, Produktfamilie, Kategorie, Zeitraum, Quelle, Status.
+- Jeder Review-Eintrag zeigt Bon-Datum, Store/Filiale, Positionsbeschreibung, Menge, Einheit, Preis, vorgeschlagene Familie/Variante, Konfidenz, Begründung und Vorschau betroffener historischer Positionen.
+- Aktionen: akzeptieren, korrigieren, ablehnen, `NO_PRODUCT`, neue Familie/Variante anlegen, Produktregel aus Zuordnung vorschlagen.
+- Produktfamilien-/Variantenverwaltung unterstützt Anlegen, Bearbeiten, Aktivieren/Deaktivieren, Merge/Split und Vorschau vor historisch wirkenden Änderungen.
+- Produktregeln sind getrennt von Kategorisierungsregeln sichtbar. Rückwirkendes Anwenden braucht Vorschau und Bestätigung.
+- Produktpreisvergleich zeigt Familien- und Variantenansichten. Standard: letzter bekannter Preis und historisches Minimum pro Store. Details: Durchschnitt, Median, Verlauf und zugrunde liegende Bon-Positionen.
+- Store-Gruppierung ist zwischen `store_name` und `store_name + store_branch` umschaltbar.
+- Effektiv gezahlter Preis und regulärer Preis werden klar unterschieden. Regulärer Preis wird nur angezeigt, wenn er sicher ableitbar ist.
+- Auffällige oder ausgeschlossene Preisbeobachtungen sind markiert; Ausschluss/Wiedereinschluss ist reversibel.
 
 ### 9.3 Allgemeine UI-Anforderungen
 
@@ -1838,6 +2184,9 @@ ebon-backup-2026-05-26_10-00.zip
 ├── manifest.json
 ├── categories.json
 ├── categorization_rules.json
+├── product_families.json
+├── product_variants.json
+├── product_rules.json
 ├── parse_rules.json
 ├── parse_rule_suggestions.json
 ├── receipts.json
@@ -1849,7 +2198,7 @@ ebon-backup-2026-05-26_10-00.zip
 └── app_settings.json
 ```
 
-Secret-Werte in `app_settings.json` werden nicht im Klartext exportiert. Für Secret-Keys enthält das Backup entweder `null` oder einen maskierten Platzhalter mit zusätzlichem Feld `"requiresReconfiguration": true`. Nach einem Restore müssen externe Secrets über die Einstellungsseite oder Umgebungsvariablen neu gesetzt werden.
+Produktzuordnungen, Reviewstatus und Preis-Ausschlüsse werden über `receipt_items.json` und Produkt-Stammdatendateien gesichert. Secret-Werte in `app_settings.json` werden nicht im Klartext exportiert. Für Secret-Keys enthält das Backup entweder `null` oder einen maskierten Platzhalter mit zusätzlichem Feld `"requiresReconfiguration": true`. Nach einem Restore müssen externe Secrets über die Einstellungsseite oder Umgebungsvariablen neu gesetzt werden.
 
 ### 12.2 manifest.json
 
@@ -1858,7 +2207,7 @@ Secret-Werte in `app_settings.json` werden nicht im Klartext exportiert. Für Se
   "version": "1",
   "appVersion": "1.0.0",
   "createdAt": "2026-05-26T10:00:00Z",
-  "tables": ["categories", "categorization_rules", "parse_rules", "parse_rule_suggestions", "receipts", "receipt_items", "ai_parsing_log", "ai_categorization_log", "sync_log", "sync_log_entry", "app_settings"],
+  "tables": ["categories", "categorization_rules", "product_families", "product_variants", "product_rules", "parse_rules", "parse_rule_suggestions", "receipts", "receipt_items", "ai_parsing_log", "ai_categorization_log", "sync_log", "sync_log_entry", "app_settings"],
   "recordCounts": {
     "categories": 8,
     "receipts": 142,
@@ -1885,7 +2234,7 @@ Automatische Backups sind eine optionale Phase-13-Erweiterung. Sie verwenden das
 - Log-Level konfigurierbar via `LOG_LEVEL`.
 - Jeder eingehende API-Request wird auf `DEBUG` geloggt (Methode, Pfad, Status, Dauer).
 - Fehler werden mit Stack-Trace auf `ERROR` geloggt.
-- KI-Calls werden auf `INFO` geloggt (Workflow, Modell, betroffene Bon-/Positions-ID, Status, Dauer). Bei KI-Parsing-Calls werden keine vollständigen Bontexte, Prompts oder Rohantworten auf `INFO` oder `ERROR` geloggt.
+- KI-Calls werden auf `INFO` geloggt (Workflow, Modell, betroffene Bon-/Positions-ID, Status, Dauer). Bei KI-Parsing- und KI-Produktzuordnungs-Calls werden keine vollständigen Bontexte, Prompts oder Rohantworten auf `INFO` oder `ERROR` geloggt.
 - `TAG_REMOVED`-Events werden als INFO geloggt.
 - Secrets (`APP_API_TOKEN`, `PAPERLESS_API_TOKEN`, `OPENROUTER_API_KEY`, Datenbankpasswörter) dürfen nie im Klartext geloggt werden.
 - `raw_text`, KI-Prompts und KI-Rohantworten dürfen standardmäßig nicht auf `INFO` oder `ERROR` geloggt werden. Auf `DEBUG` oder in lokalen Debug-Snippets dürfen sie nur gekürzt, maskiert und mit sichtbarer PII-Warnung erscheinen.
@@ -1899,6 +2248,7 @@ Ein `@ControllerAdvice` fängt alle Exceptions ab und gibt strukturierte Fehlero
 
 - KI-Kategorisierungs-Calls: 3 Versuche mit exponential backoff. Schlägt der letzte Versuch fehl oder liefert die KI keine eindeutig passende Kategorie: Position bleibt unkategorisiert (`category_id = NULL`, `category_source = NULL`), Warnung wird geloggt.
 - KI-Parsing-Calls: 3 Versuche mit exponential backoff bei transienten Fehlern. Schlägt der letzte Versuch fehl, wird der Fallback als `FAILED` in `ai_parsing_log` protokolliert und der Bon bleibt `PARSE_ERROR` mit dem besten verfügbaren Teilparse. Bei invalidem JSON, zu niedriger Konfidenz oder Sync-Limit wird ein spezifischer Status protokolliert.
+- KI-Produktzuordnungs-Calls: 3 Versuche mit exponential backoff bei transienten Fehlern. Schlägt der letzte Versuch fehl oder ist das Ergebnis unsicher, bleibt die Position `NEEDS_REVIEW` oder ohne Produktzuordnung; vollständige Raw-Receipt-Texte dürfen nicht gesendet oder geloggt werden.
 - Paperless-NGX-Calls: 3 Versuche bei HTTP 5xx. Bei endgültigem Fehler: Sync schlägt fehl, kein Partial-Import kaputt.
 - Datenbank-Fehler: Bei Transaktionsfehler vollständiges Rollback, Fehlermeldung in Response.
 
@@ -1942,6 +2292,12 @@ Ein `@ControllerAdvice` fängt alle Exceptions ab und gibt strukturierte Fehlero
 | Kategorie-Icons | Eingeschlossen in Phase 13: Auswahl, Anzeige und konsistente Persistenz vorhandener Kategorie-Icons. |
 | Release-/Software-Versionierung | Eingeschlossen in Phase 13: zentrale Versionsanzeige und konsistente Build-/Backup-/UI-Version. |
 | OpenRouter KI-Parsing-Fallback | Eingeschlossen in Phase 14: kontrollierte automatische Übernahme valider KI-Parses, KI-Parsing-Log, Parser-Regelvorschläge, UI-Verwaltung und Migrationsexport. |
+| Produktzuordnung und Preisvergleich | Eingeschlossen in Phase 15a-c: Produktfamilien/-varianten, Review-Queue, Produktpflege, Preisvergleich und Exports. |
+| Externe Produktdatenbank | Nicht im Scope. EAN/GTIN wird vorbereitet, aber nicht extern abgefragt. |
+| Barcode-Scan-Workflow | Nicht im Scope. |
+| Store-Stammdatenmodell | Nicht im Scope von Phase 15. Preisvergleiche nutzen `store_name` oder `store_name + store_branch`. |
+| Mehrfachprodukt-Zuordnung einer Bon-Position | Nicht im Scope von Phase 15. Eine `receipt_item` hat maximal eine Produktzuordnung. |
+| Separate Produkt-KI-Settings | Nicht im Scope von Phase 15. Produkt-KI nutzt die bestehende KI-Kategorisierungs-/OpenRouter-Konfiguration. |
 
 ---
 
@@ -1989,6 +2345,9 @@ Die Frontend-, Backup- und Hardening-Arbeiten sind bewusst feiner aufgeteilt als
 | 12 | Echte Integration, Docker-Gesamtsystem, Logging, Secret-Masking, README, Smoke-Test und finale Verifikation | `docker compose up --build`, Smoke-Test |
 | 13 | CI, Selenium-E2E-Smoke-Tests, rollierende Backups, Kategorie-Icons und Software-Versionierung | GitHub-Actions-Workflow definiert, E2E-Smoke-Test lauffähig, `mvn verify`, `npm run build`, `docker compose config` |
 | 14 | OpenRouter KI-Parsing-Fallback, KI-Parsing-Log, Parser-Regelvorschläge, UI-Verwaltung, Fixture-Vorschau und Migrationsexport | Mocked OpenRouter-Tests, `mvn verify`, `npm run build`, kein echter OpenRouter-Call in Tests/CI |
+| 15a | Produktfundament: Produktfamilien, Produktvarianten, Produktzuordnung an Bon-Positionen, Produktregeln/Synonyme, automatische Zuordnung nach Sync/Reparse und Backup/Restore/Reset-Semantik | Flyway-Migrationen, Produktzuordnungsservice-Tests mit Regel/Historie/KI-Mock, `mvn verify`, kein echter OpenRouter-Call in Tests/CI |
+| 15b | Produktreview und Pflege: Prüfliste, manuelle Korrekturen, Merge/Split, Produktverwaltung, Regelvorschläge aus manuellen Zuordnungen und rückwirkendes Anwenden mit Vorschau | API-Contract-Tests für Review/Merge/Split/Regelvorschau, `mvn verify`, `npm run build` |
+| 15c | Produktpreisvergleich und Exports: Produktseiten, Store-Vergleich, Einheitenpreise, letzter/minimaler/durchschnittlicher/medianer Preis, Ausreißerhandling, Suche/Report/CSV-Erweiterungen | Report-Tests für Einheiten/Rabatte/Median/Minimum/Ausreißer, CSV-Tests, `mvn verify`, `npm run build` |
 
 ### 16.3 Agenten-Regeln
 
@@ -2016,6 +2375,8 @@ Eine Implementierung gilt als vollständig, wenn:
 - Backup-Dry-Run und Restore-Transaktion automatisiert getestet sind.
 - KI-Parsing-Fallback automatisiert gegen gemockte OpenRouter-Antworten getestet ist: Erfolg, invalides JSON, niedrige Konfidenz, Sync-Limit, deaktivierter Fallback, fehlender API-Key.
 - Parser-Regelvorschläge in Tests validiert, akzeptiert, abgelehnt und als Migration exportiert werden können.
+- Produktzuordnung automatisiert gegen Regeln, klare Historie und gemockte KI getestet ist.
+- Produktpreisreports Einheitenumrechnung, Mehrfachpackungen, effektive Preise, Median/Minimum/letzten Preis und Ausreißer-Ausschluss korrekt abdecken.
 
 ### 17.2 Parser-Corpus
 
@@ -2072,6 +2433,30 @@ Jede `expected.json` folgt dem KI-Parsing-JSON-Schema aus F-02. Bei negativen Te
 - Given ein valides Backup, when Dry-Run ausgeführt wird, then werden keine Daten verändert.
 - Given ein inkompatibles Manifest, when Restore ausgeführt wird, then antwortet die API mit `422`.
 - Given ein Fehler während Restore-Import, then wird die gesamte Transaktion zurückgerollt.
+
+**Produktzuordnung:**
+
+- Given zwei Positionen beschreiben dasselbe Produkt mit gleicher Größe, when eine Produktregel greift, then werden sie derselben Produktfamilie und Variante zugeordnet.
+- Given zwei Positionen unterscheiden sich in Größe oder Packungsstruktur, then dürfen sie nicht automatisch derselben Variante zugeordnet werden.
+- Given eine Position enthält keine sichere Größe, then darf nur die Produktfamilie gesetzt werden, außer klare vertrauenswürdige Historie stützt eine Variante.
+- Given klare Historie wird berechnet, then zählen KI-only-Treffer nicht als alleinige vertrauenswürdige Grundlage.
+- Given eine Produktfamilie hat eine Standard-Kategorie und die Position ist unkategorisiert, then wird die Kategorie gefüllt.
+- Given eine Position hat bereits eine Kategorie, then überschreibt Produktzuordnung diese Kategorie nicht.
+- Given KI-Produktzuordnung ist unsicher, then landet die Position in der Review-Queue.
+
+**Produktreview und Produktpflege:**
+
+- Given eine Position steht in der Review-Queue, when der Nutzer akzeptiert, korrigiert, ablehnt oder `NO_PRODUCT` wählt, then wird der Status nachvollziehbar gespeichert.
+- Given eine Produktregel soll rückwirkend angewendet werden, then zeigt das Backend zuerst eine Vorschau und ändert erst nach Bestätigung Daten.
+- Given Produktfamilien oder Varianten werden zusammengeführt oder getrennt, then passiert dies transaktional und nur nach Vorschau/Bestaetigung.
+
+**Produktpreisvergleich:**
+
+- Given Produktvarianten mit `ml/l`, `g/kg` oder Stückzahlen existieren, then werden Einheitenpreise korrekt normalisiert.
+- Given eine Mehrfachpackung wie `6x0,33l` existiert, then wird die Gesamtmenge für den Einheitenpreis verwendet.
+- Given Rabatte sind abbildbar, then ist der effektiv gezahlte Preis Standard und ein regulärer Preis wird nur bei sicherer Ableitung angezeigt.
+- Given eine Preisbeobachtung ist ausgeschlossen, then fließt sie nicht in Minimum, Durchschnitt, Median oder letzten Preis ein und bleibt auditierbar.
+- Given Store-Gruppierung umgeschaltet wird, then liefert der Report Ergebnisse nach `store_name` oder `store_name + store_branch`.
 
 **CI/E2E/Operationalisierung:**
 

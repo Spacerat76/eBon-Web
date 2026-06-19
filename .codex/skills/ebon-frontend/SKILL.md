@@ -4,7 +4,7 @@ Use this skill for React, TypeScript, Vite, shadcn/ui, Tailwind CSS, dashboards,
 
 ## Read First
 
-- `ebon-specification.md` sections 8, 9, 14, 16, 17.
+- `ebon-specification.md` sections F-19, 8, 9, 14, 16, 17.
 - `AGENTS.md`.
 
 ## Product Rules
@@ -43,6 +43,12 @@ Use this skill for React, TypeScript, Vite, shadcn/ui, Tailwind CSS, dashboards,
 - AI parsing logs shown in the UI must be prompt-free by default: show status, trigger, model, timestamps, duration, failure reason, warnings, and field confidence, but not full prompts or raw model responses.
 - Parser rule suggestions must show why they exist: trigger, parser problem, solution rationale, validation status, and affected receipt/store context.
 - Any manual reparse using KI text mode `FULL_TEXT` must require an explicit confirmation before sending the request.
+- Product assignment UI must distinguish product family from product variant and must not hide size/unit/package differences.
+- Receipt item rows in Phase 15 should show product family, variant, assignment source/status, and unit price compactly.
+- The product review queue must prioritize high-value/high-frequency uncertain assignments and support filters for uncertainty, store, family, category, date range, source, and status.
+- Product correction flows that affect history must show preview counts and require confirmation before applying merge, split, bulk reassignment, or product-data reset.
+- Product price views should show last known price and historical minimum by default, with average, median, trend, and source receipt rows in detail.
+- Product price comparisons must make effective paid price vs derivable regular price clear and must show excluded outliers as reversible, audit-friendly state.
 
 ## Core Flows
 
@@ -58,6 +64,9 @@ Use this skill for React, TypeScript, Vite, shadcn/ui, Tailwind CSS, dashboards,
 - Data maintenance settings: re-parse all receipts and reset imported receipt data with explicit confirmation.
 - Category and rule management.
 - Parser rule suggestion management: list, filter, inspect, edit, accept, reject, choose reparse scope, and export accepted suggestions as a Flyway migration draft.
+- Product review queue: inspect uncertain assignments, accept/correct/reject, mark `NO_PRODUCT`, create product families/variants, and create rules from manual assignments with preview.
+- Product management: product families, variants, product rules, merge/split, and retroactive apply with confirmation.
+- Product price comparison: family and variant pages, store grouping by `store_name` or `store_name + store_branch`, unit prices, exports, and outlier exclusion.
 - Fixture preview/export for parser debugging must be anonymized and export outside `backend/src/test/resources/corpus/` unless manually reviewed.
 - Backup download, validate, and restore confirmation.
 

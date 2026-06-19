@@ -240,18 +240,19 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         receipt.setStoreName("McDonald's");
         receipt.addItem(new ReceiptItem(0, "Cheeseburger", new BigDecimal("7.50")));
         receipt.addItem(new ReceiptItem(1, "Hamburger Royal TS", new BigDecimal("6.99")));
+        receipt.addItem(new ReceiptItem(2, "2x Filet-o-Fish®", new BigDecimal("5.00")));
         receiptRepository.saveAndFlush(receipt);
 
         categorizationService.categorizeReceipt(receipt.getId());
 
         List<ReceiptItem> items = receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId());
-        assertThat(items).hasSize(2);
+        assertThat(items).hasSize(3);
         assertThat(items)
                 .extracting(item -> item.getCategory().getName())
-                .containsExactly("Gastronomie", "Gastronomie");
+                .containsExactly("Gastronomie", "Gastronomie", "Gastronomie");
         assertThat(items)
                 .extracting(ReceiptItem::getCategorySource)
-                .containsExactly(CategorySource.RULE, CategorySource.RULE);
+                .containsExactly(CategorySource.RULE, CategorySource.RULE, CategorySource.RULE);
     }
 
     // Verifies repository persistence keeps receipt items and implements TAG_REMOVED as a soft delete.

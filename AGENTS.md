@@ -50,6 +50,9 @@ Follow the phases in `ebon-specification.md` section 16:
 12. Real integration, Docker full-system verification, logging, secret masking, README, smoke test, and final hardening.
 13. CI, Selenium E2E smoke tests, rolling scheduled backups, category icons, and software versioning.
 14. OpenRouter AI parsing fallback with controlled AI parse adoption, AI parsing logs, parser rule suggestions, UI review workflow, fixture preview, and migration export.
+15. Phase 15a product foundation: product families, product variants, product assignment on receipt items, product rules/synonyms, automatic assignment after sync/reparse, and backup/restore/reset semantics.
+16. Phase 15b product review and maintenance: review queue, manual corrections, merge/split, product management, rule suggestions from manual assignments, and retroactive apply with preview.
+17. Phase 15c product price comparison and exports: product pages, store comparison, unit prices, last/minimum/average/median prices, outlier handling, search/report/CSV integration.
 
 ## Domain-Specific Guardrails
 
@@ -71,6 +74,16 @@ Follow the phases in `ebon-specification.md` section 16:
 - Secrets returned through settings or backup must be masked or marked for reconfiguration.
 - Rolling automatic backups must use the same secret masking as manual backups and must not delete manually downloaded backups.
 - CI and E2E tests must run without real Paperless-NGX/OpenRouter tokens or private receipt data.
+- Product assignment uses product families plus variants: e.g. `Coca Cola Zero` is a family, while `0.33l` and `0.5l` bottles are distinct variants.
+- A `receipt_item` may have at most one product assignment. Multi-product bundle splitting is out of scope for Phase 15.
+- Product assignment must not silently merge distinct sizes, units, or package structures. Unknown size may assign only a family unless clear trusted history supports a variant.
+- Trusted history for product assignment includes manual assignments, accepted suggestions/rules, and rule-based automatic matches; AI-only matches must not establish clear history by themselves.
+- Product rules are separate from categorization rules. A product family may fill an empty category via its default category, but product assignment must not overwrite an existing or manually set category.
+- Product assignment may use rules, trusted history, and KI. High-confidence KI may assign automatically; uncertain matches must go to the product review queue.
+- KI product assignment may send normalized item text, store, price, and quantity, but not full receipt raw text. Do not store full KI prompts or raw responses by default.
+- `NO_PRODUCT` is valid for non-product lines such as pure discounts, coupons, payment lines, and rounding differences. Deposit and bag lines may be modeled as normal product families when useful.
+- Product price comparisons use the effective paid price by default and may also show regular price only when safely derivable.
+- Backup/restore must include product master data, rules, assignments, review state, and price-exclusion data. The imported-receipts reset keeps product master data/rules; a separate explicit action is required to reset product data.
 
 ## Project Skills
 

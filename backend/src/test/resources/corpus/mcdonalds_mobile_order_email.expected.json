@@ -1,0 +1,31 @@
+{
+  "receiptDate": "2026-06-16",
+  "receiptTime": "10:59:59",
+  "storeName": "McDonald's",
+  "storeBranch": "Faehrstr. 27-29",
+  "totalAmount": 18.99,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "2 Klassiker nach Wahl Big Mac®",
+      "quantity": 1,
+      "unit": "Stk",
+      "unitPrice": 13.99,
+      "totalPrice": 13.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "2x Filet-o-Fish®",
+      "quantity": 1,
+      "unit": "Stk",
+      "unitPrice": 5.00,
+      "totalPrice": 5.00,
+      "discountAmount": null
+    }
+  ]
+}

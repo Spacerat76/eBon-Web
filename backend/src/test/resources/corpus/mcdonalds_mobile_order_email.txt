@@ -1,0 +1,4 @@
+Subject: Deine Bestelluebersicht
+From: McDonald's Account Services
+
+HTML content: Von: McDonald's Account Services Gesendet: Dienstag, 16. Juni 2026 11:16 Betreff: Deine Bestelluebersicht Mobile Bestellbestaetigung Hallo P, vielen Dank fuer deine Bestellung. Bestell-Datum: 16/06/2026 10:59:59 Bestell-Nummer: KS. 19 - 46 Restaurant: Beispiel Restaurant GmbH Faehrstr. 27-29 40221 DUESSELDORF St.Nr./UStIDNr. 123/456 Anzahl Artikel Gesamt 1 2 Klassiker nach Wahl* und gr. Beilagen** nur 13,99 € 1 2 Klassiker nach Wahl Big Mac® €13.99 1 Big Mac® 1 Hamburger Royal Cheese 1 Pommes Frites Groß 1 Mayonnaise 20ml 1 Wasser still 0,5l 1 2 Filet-O-Fish® nur 5 € 1 2x Filet-o-Fish® €5.00 1 Filet-o-Fish® 1 Filet-o-Fish® TOTAL: €18.99 Zahlungsdaten Zahlungsart: Adyen Genehmigter Betrag: €18.99 EUR Restaurant ID: 00331

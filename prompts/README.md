@@ -27,5 +27,8 @@ Dieser Ordner enthaelt vorbereitete Prompts, um das Projekt Schritt fuer Schritt
 12. `phase-12-real-integration-hardening.md`
 13. `phase-13-ci-e2e-operations.md`
 14. `phase-14-openrouter-ai-parsing-fallback.md`
+15. `phase-15a-product-foundation.md`
+16. `phase-15b-product-review-maintenance.md`
+17. `phase-15c-product-price-comparison.md`
 
 Bei limitiertem KI-Kontingent: Nach jeder Phase stoppen, selbst pruefen, dann erst weiter.

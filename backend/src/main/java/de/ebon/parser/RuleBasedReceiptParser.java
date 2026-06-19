@@ -57,6 +57,15 @@ public class RuleBasedReceiptParser {
     private static final Pattern QUANTITY_ARTICLE_ITEM_LINE = Pattern.compile(
             "^\\s*(?<quantity>\\d+)\\s+(?<description>.+?)\\s+(?<total>" + AMOUNT_PATTERN + ")\\s*$",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern MCDONALDS_MOBILE_ORDER_TIMESTAMP = Pattern.compile(
+            "\\bBestell-Datum:\\s*(?<date>\\d{1,2}/\\d{1,2}/\\d{2,4})\\s+(?<time>\\d{1,2}:\\d{2}(?::\\d{2})?)\\b",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern MCDONALDS_MOBILE_TOTAL = Pattern.compile(
+            "\\bTOTAL\\s*:\\s*€\\s*(?<amount>" + AMOUNT_PATTERN + ")\\b",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern MCDONALDS_MOBILE_ITEM = Pattern.compile(
+            "(?<!\\S)(?<quantity>\\d+)\\s+(?<description>[^€]+?)\\s+€\\s*(?<total>" + AMOUNT_PATTERN + ")\\b",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     private final ReceiptParseValidator validator = new ReceiptParseValidator();
     private final ReceiptParserProperties parserProperties;
@@ -86,6 +95,21 @@ public class RuleBasedReceiptParser {
         List<String> lines = relevantReceiptLines(rawLines);
 
         String storeName = parseStoreName(lines);
+        if (isMcdonaldsMobileOrder(rawText)) {
+            ParsedReceipt receipt = new ParsedReceipt(
+                    parseMcdonaldsMobileOrderDate(rawText),
+                    parseMcdonaldsMobileOrderTime(rawText),
+                    "McDonald's",
+                    parseMcdonaldsMobileStoreBranch(rawText),
+                    parseMcdonaldsMobileTotal(rawText),
+                    "EUR",
+                    null,
+                    null,
+                    null,
+                    parseMcdonaldsMobileItems(rawText));
+            return validator.validate(receipt);
+        }
+
         ParsedReceipt receipt = new ParsedReceipt(
                 parseDate(lines),
                 parseTime(lines),
@@ -99,6 +123,189 @@ public class RuleBasedReceiptParser {
                 parseItems(lines, storeName));
 
         return validator.validate(receipt);
+    }
+
+    private LocalDate parseMcdonaldsMobileOrderDate(String rawText) {
+        Matcher matcher = MCDONALDS_MOBILE_ORDER_TIMESTAMP.matcher(rawText);
+        if (matcher.find()) {
+            return parseDateValue(matcher.group("date"));
+        }
+        return null;
+    }
+
+    private LocalTime parseMcdonaldsMobileOrderTime(String rawText) {
+        Matcher matcher = MCDONALDS_MOBILE_ORDER_TIMESTAMP.matcher(rawText);
+        if (matcher.find()) {
+            return parseTimeValue(matcher.group("time"));
+        }
+        return null;
+    }
+
+    private boolean isMcdonaldsMobileOrder(String rawText) {
+        if (rawText == null || rawText.isBlank()) {
+            return false;
+        }
+        String upper = rawText.toUpperCase(Locale.ROOT);
+        return (upper.contains("MCDONALD") || upper.contains("MCDONALD\"S") || upper.contains("MCDONALD'S"))
+                && (upper.contains("MOBILE BESTELLBESTÄTIGUNG")
+                        || upper.contains("MOBILE BESTELLBESTAETIGUNG")
+                        || upper.contains("DEINE BESTELLÜBERSICHT")
+                        || upper.contains("DEINE BESTELLUEBERSICHT"))
+                && upper.contains("BESTELL-DATUM:")
+                && upper.contains("ANZAHL ARTIKEL GESAMT")
+                && upper.contains("TOTAL:");
+    }
+
+    private BigDecimal parseMcdonaldsMobileTotal(String rawText) {
+        Matcher matcher = MCDONALDS_MOBILE_TOTAL.matcher(rawText);
+        if (matcher.find()) {
+            return GermanNumberParser.parse(matcher.group("amount"));
+        }
+        return null;
+    }
+
+    private List<ParsedReceiptItem> parseMcdonaldsMobileItems(String rawText) {
+        String segment = firstMcdonaldsMobileItemsSegment(rawText);
+        if (segment == null) {
+            return List.of();
+        }
+
+        List<ParsedReceiptItem> items = new ArrayList<>();
+        Matcher matcher = MCDONALDS_MOBILE_ITEM.matcher(segment);
+        while (matcher.find()) {
+            BigDecimal quantity = GermanNumberParser.parse(matcher.group("quantity"));
+            BigDecimal totalPrice = GermanNumberParser.parse(matcher.group("total"));
+            BigDecimal unitPrice = quantity == null || quantity.signum() == 0
+                    ? null
+                    : totalPrice.divide(quantity, 2, RoundingMode.HALF_UP);
+            String description = cleanupDescription(matcher.group("description"));
+            if (description.isBlank() || description.toUpperCase(Locale.ROOT).contains(" NUR ")) {
+                continue;
+            }
+            items.add(new ParsedReceiptItem(
+                    items.size(),
+                    description,
+                    quantity,
+                    "Stk",
+                    unitPrice,
+                    totalPrice,
+                    totalPrice.signum() < 0 ? totalPrice.abs() : null));
+        }
+        return items;
+    }
+
+    private String firstMcdonaldsMobileItemsSegment(String rawText) {
+        String normalized = rawText.replace('\r', ' ').replace('\n', ' ').replaceAll("\\s+", " ");
+        String upper = normalized.toUpperCase(Locale.ROOT);
+        int start = upper.indexOf("ANZAHL ARTIKEL GESAMT");
+        if (start < 0) {
+            return null;
+        }
+        int contentStart = start + "ANZAHL ARTIKEL GESAMT".length();
+        int end = upper.indexOf("TOTAL:", contentStart);
+        if (end < 0 || end <= contentStart) {
+            return null;
+        }
+        return normalized.substring(contentStart, end);
+    }
+
+    private String parseMcdonaldsMobileStoreBranch(String rawText) {
+        String block = mcdonaldsRestaurantBlock(rawText);
+        if (block == null) {
+            return null;
+        }
+
+        String[] tokens = block.split("\\s+");
+        int postalIndex = -1;
+        for (int i = 0; i < tokens.length; i++) {
+            if (tokens[i].matches("\\d{5}")) {
+                postalIndex = i;
+                break;
+            }
+        }
+        if (postalIndex < 2) {
+            return null;
+        }
+
+        int houseNumberIndex = postalIndex - 1;
+        int streetSuffixIndex = -1;
+        for (int i = houseNumberIndex - 1; i >= 0; i--) {
+            if (isStreetSuffixToken(tokens[i])) {
+                streetSuffixIndex = i;
+                break;
+            }
+        }
+        if (streetSuffixIndex < 0) {
+            return null;
+        }
+
+        int startIndex = streetStartIndex(tokens, streetSuffixIndex);
+        List<String> addressTokens = new ArrayList<>();
+        for (int i = startIndex; i <= houseNumberIndex; i++) {
+            addressTokens.add(tokens[i]);
+        }
+        return cleanupBranchLine(String.join(" ", addressTokens));
+    }
+
+    private String mcdonaldsRestaurantBlock(String rawText) {
+        String normalized = rawText.replace('\r', ' ').replace('\n', ' ').replaceAll("\\s+", " ");
+        String upper = normalized.toUpperCase(Locale.ROOT);
+        int start = upper.indexOf("RESTAURANT:");
+        if (start < 0) {
+            return null;
+        }
+        int contentStart = start + "RESTAURANT:".length();
+        int end = upper.indexOf("ST.NR", contentStart);
+        if (end < 0) {
+            end = upper.indexOf("ANZAHL ARTIKEL GESAMT", contentStart);
+        }
+        if (end < 0 || end <= contentStart) {
+            return null;
+        }
+        return normalized.substring(contentStart, end).trim();
+    }
+
+    private int streetStartIndex(String[] tokens, int streetSuffixIndex) {
+        String suffix = tokens[streetSuffixIndex].toLowerCase(Locale.ROOT);
+        if ((suffix.equals("str.") || suffix.equals("strasse") || suffix.equals("straße")) && streetSuffixIndex > 0) {
+            return streetSuffixIndex - 1;
+        }
+        if (streetSuffixIndex > 1 && isStreetPrefixToken(tokens[streetSuffixIndex - 2])) {
+            return streetSuffixIndex - 2;
+        }
+        if (streetSuffixIndex > 0 && isStreetPrefixToken(tokens[streetSuffixIndex - 1])) {
+            return streetSuffixIndex - 1;
+        }
+        return streetSuffixIndex;
+    }
+
+    private boolean isStreetPrefixToken(String token) {
+        String normalized = token.toLowerCase(Locale.ROOT);
+        return normalized.equals("am")
+                || normalized.equals("an")
+                || normalized.equals("auf")
+                || normalized.equals("im")
+                || normalized.equals("in")
+                || normalized.equals("der")
+                || normalized.equals("den");
+    }
+
+    private boolean isStreetSuffixToken(String token) {
+        String normalized = token.toLowerCase(Locale.ROOT).replace(",", "");
+        return normalized.equals("str.")
+                || normalized.endsWith("str.")
+                || normalized.equals("straße")
+                || normalized.endsWith("straße")
+                || normalized.equals("strasse")
+                || normalized.endsWith("strasse")
+                || normalized.equals("allee")
+                || normalized.equals("weg")
+                || normalized.equals("platz")
+                || normalized.equals("ring")
+                || normalized.equals("markt")
+                || normalized.equals("gasse")
+                || normalized.equals("ufer")
+                || normalized.equals("damm");
     }
 
     private List<String> relevantReceiptLines(List<String> lines) {
@@ -162,14 +369,22 @@ public class RuleBasedReceiptParser {
 
     private LocalTime parseTime(List<String> lines) {
         for (String line : lines) {
-            Matcher matcher = TIME.matcher(line);
-            if (matcher.find()) {
-                int second = matcher.group("second") == null ? 0 : Integer.parseInt(matcher.group("second"));
-                return LocalTime.of(
-                        Integer.parseInt(matcher.group("hour")),
-                        Integer.parseInt(matcher.group("minute")),
-                        second);
+            LocalTime time = parseTimeValue(line);
+            if (time != null) {
+                return time;
             }
+        }
+        return null;
+    }
+
+    private LocalTime parseTimeValue(String value) {
+        Matcher matcher = TIME.matcher(value);
+        if (matcher.find()) {
+            int second = matcher.group("second") == null ? 0 : Integer.parseInt(matcher.group("second"));
+            return LocalTime.of(
+                    Integer.parseInt(matcher.group("hour")),
+                    Integer.parseInt(matcher.group("minute")),
+                    second);
         }
         return null;
     }
