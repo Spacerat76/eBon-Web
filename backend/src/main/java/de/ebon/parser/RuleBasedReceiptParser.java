@@ -22,7 +22,7 @@ public class RuleBasedReceiptParser {
 
     private static final String AMOUNT_PATTERN = "-?\\d{1,3}(?:\\.\\d{3})*,\\d{2}|-?\\d+,\\d{2}|-?\\d+\\.\\d{2}";
     private static final Pattern AMOUNT_AT_END = Pattern.compile(
-            "(?<amount>" + AMOUNT_PATTERN + ")\\s*(?:[A-Z]|§?\\d)?\\s*\\*?$");
+            "(?<amount>" + AMOUNT_PATTERN + ")\\s*(?:[A-Z]{1,2}|§?\\d)?\\s*\\*?$");
     private static final Pattern AMOUNT_BEFORE_EUR = Pattern.compile(
             "(?<amount>" + AMOUNT_PATTERN + ")\\s*EUR\\b",
             Pattern.CASE_INSENSITIVE);
@@ -35,6 +35,9 @@ public class RuleBasedReceiptParser {
             Pattern.CASE_INSENSITIVE);
     private static final Pattern QUANTITY_PRICE = Pattern.compile(
             "(?<quantity>\\d+(?:,\\d+)?)\\s*(?<unit>kg|g|l|ml|stk|stck|stueck)?\\s*(?:x|\\*)\\s*(?<unitPrice>\\d+,\\d+)",
+            Pattern.CASE_INSENSITIVE);
+    private static final Pattern PRICE_X_QUANTITY = Pattern.compile(
+            "(?<unitPrice>" + AMOUNT_PATTERN + ")\\s*€\\s*(?:x|\\*)\\s*(?<quantity>\\d+(?:,\\d+)?)",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern QUANTITY_DETAIL_LINE = Pattern.compile(
             "^\\s*(?<quantity>\\d+(?:,\\d+)?)\\s*(?<unit>kg|g|l|ml|stk|stck|stueck)?\\s*(?:x|\\*)\\s*(?<unitPrice>\\d+,\\d+)\\s*(?:EUR(?:/\\w+)?)?\\s*$",
@@ -407,6 +410,9 @@ public class RuleBasedReceiptParser {
             if (upper.contains("EDEKA")) {
                 return "EDEKA";
             }
+            if (upper.contains("E-CENTER") || upper.contains("E CENTER")) {
+                return "EDEKA";
+            }
             if (isPharmacyStoreLine(line)) {
                 return cleanupDescription(line);
             }
@@ -635,6 +641,16 @@ public class RuleBasedReceiptParser {
 
         for (String line : lines) {
             String upper = line.toUpperCase(Locale.ROOT);
+            if (upper.contains("ERHALTEN SIE")) {
+                Matcher matcher = BONUS_POINTS.matcher(line);
+                if (matcher.find()) {
+                    return GermanNumberParser.parse(matcher.group("points"));
+                }
+            }
+        }
+
+        for (String line : lines) {
+            String upper = line.toUpperCase(Locale.ROOT);
             if (upper.contains("BASIS-PUNKTE") || upper.contains("BASISPUNKTE")) {
                 Matcher matcher = BONUS_POINTS.matcher(line);
                 if (matcher.find()) {
@@ -786,7 +802,12 @@ public class RuleBasedReceiptParser {
                 BigDecimal quantity = null;
                 String unit = null;
                 BigDecimal unitPrice = null;
-                if (quantityMatcher.find()) {
+                Matcher priceXQuantityMatcher = PRICE_X_QUANTITY.matcher(String.join(" ", descriptionLines));
+                if (priceXQuantityMatcher.find()) {
+                    quantity = GermanNumberParser.parse(priceXQuantityMatcher.group("quantity"));
+                    unit = "Stk";
+                    unitPrice = GermanNumberParser.parse(priceXQuantityMatcher.group("unitPrice"));
+                } else if (quantityMatcher.find()) {
                     quantity = GermanNumberParser.parse(quantityMatcher.group("quantity"));
                     unit = normalizeUnit(quantityMatcher.group("unit"));
                     unitPrice = GermanNumberParser.parse(quantityMatcher.group("unitPrice"));
@@ -1147,7 +1168,8 @@ public class RuleBasedReceiptParser {
     }
 
     private String cleanupDescription(String description) {
-        String cleaned = QUANTITY_PRICE.matcher(description.replace('|', ' ')).replaceAll(" ");
+        String cleaned = PRICE_X_QUANTITY.matcher(description.replace('|', ' ')).replaceAll(" ");
+        cleaned = QUANTITY_PRICE.matcher(cleaned).replaceAll(" ");
         return cleaned
                 .replaceAll("(?i)\\bPRz:\\s*", " ")
                 .replaceAll("\\bEUR/\\w+\\b", " ")
@@ -1213,6 +1235,7 @@ public class RuleBasedReceiptParser {
                 || upper.contains("WWW.")
                 || upper.equals("EUR")
                 || upper.contains("ARTIKELPREIS")
+                || upper.startsWith("COUPON:")
                 || upper.startsWith("DM-RABATTE AUF RABATTFÄHIGE ARTIKEL")
                 || upper.startsWith("DM-RABATTE AUF RABATTFAEHIGE ARTIKEL")
                 || upper.startsWith("PARTNER-RABATTE AUF RABATTFÄHIGE ARTIKEL")
@@ -1235,6 +1258,7 @@ public class RuleBasedReceiptParser {
                 || upper.contains("KARTENZAHLUNG")
                 || upper.contains("K-U-N-D-E-N-B-E-L-E-G")
                 || upper.contains("ZAHLUNG ERFOLGT")
+                || upper.startsWith("POSTEN:")
                 || upper.matches("[-=* ]{5,}")
                 || isPostalAddressLine(line)
                 || upper.contains("PAYBACK")
@@ -1263,6 +1287,8 @@ public class RuleBasedReceiptParser {
                 || upper.equals("DM")
                 || upper.startsWith("DM ")
                 || upper.contains("EDEKA")
+                || upper.contains("E-CENTER")
+                || upper.contains("E CENTER")
                 || upper.contains("LANDMARKT")
                 || isPharmacyStoreLine(line)
                 || upper.contains("MCDONALD")
@@ -1376,8 +1402,8 @@ public class RuleBasedReceiptParser {
 
     private boolean isTaxTableLine(String line) {
         String trimmed = line.trim();
-        return line.matches("^\\s*(?:\\d+|[A-Z])\\s*=?\\s*\\d{1,2},\\d{1,2}%.*")
-                || trimmed.matches("^\\|\\s*[A-Z]\\s*=?\\s*\\d{1,2},\\d{1,2}%.*")
+        return line.matches("^\\s*(?:\\d+|[A-Z])\\s*=?\\s*\\d{1,2}(?:,\\d{1,2})?%.*")
+                || trimmed.matches("^\\|\\s*[A-Z]\\s*=?\\s*\\d{1,2}(?:,\\d{1,2})?%.*")
                 || line.toUpperCase(Locale.ROOT).startsWith("GESAMTBETRAG ");
     }
 

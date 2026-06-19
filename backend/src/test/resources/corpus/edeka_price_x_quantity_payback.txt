@@ -1,0 +1,44 @@
+E-Center Beispiel
+Schellbergstr. 9
+41469 Beispielstadt
+Tel. 01234 / 567890
+www.edeka.de
+
+EUR
+Thomy Remoulade2,09 € x 3 6,27 AW
+Vriesen Eier BDH 2,99 A
+Kinder Riegel 4,44 € x 2 8,88 AW
+Nesquik Original 2,29 AW
+Coupon Nesquik Original -0,30
+Nesquik Original 2,29 AW
+Coupon Nesquik Original -0,30
+Coupon: 10000000
+Posten: 8 ----------
+
+SUMME € 22,12
+EC-Cash € 22,12
+
+* * Kundenbeleg * *
+EDEKA Beispiel
+Schellbergstr. 9
+Beispielstadt
+Datum: 12.06.2026
+Uhrzeit: 17:16:37 Uhr
+Kartenzahlung
+PAYBACK #########0000
+Betrag EUR 22,12
+Zahlung erfolgt
+
+MwSt NETTO MwSt UMSATZ
+A 7% 20,67 1,45 22,12
+
+PAYBACK - ******0000
+
+Fuer den Einkauf von 22,12 EUR auf
+rabattfaehige Artikel erhalten Sie 44 °P.
+
+11 °P Basispunkte
+33 °P 4FACH °P auf den Einkauf
+
+Punktestand nach Einkauf: 13.440 °P
+Punktestand entspricht: 134,40 EUR

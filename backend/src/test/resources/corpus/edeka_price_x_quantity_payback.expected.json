@@ -1,0 +1,76 @@
+{
+  "receiptDate": "2026-06-12",
+  "receiptTime": "17:16:37",
+  "storeName": "EDEKA",
+  "storeBranch": "Schellbergstr. 9",
+  "totalAmount": 22.12,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": 44,
+  "bonusType": "Payback",
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Thomy Remoulade",
+      "quantity": 3,
+      "unit": "Stk",
+      "unitPrice": 2.09,
+      "totalPrice": 6.27,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Vriesen Eier BDH",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "Kinder Riegel",
+      "quantity": 2,
+      "unit": "Stk",
+      "unitPrice": 4.44,
+      "totalPrice": 8.88,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 3,
+      "description": "Nesquik Original",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.29,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 4,
+      "description": "Coupon Nesquik Original",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": -0.30,
+      "discountAmount": 0.30
+    },
+    {
+      "positionIndex": 5,
+      "description": "Nesquik Original",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.29,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 6,
+      "description": "Coupon Nesquik Original",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": -0.30,
+      "discountAmount": 0.30
+    }
+  ]
+}
