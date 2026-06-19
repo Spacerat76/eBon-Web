@@ -125,6 +125,32 @@ export interface ParseRuleSuggestionDTO {
   status: ParseRuleSuggestionStatus;
   rejectionReason: string | null;
   acceptedParseRuleId: number | null;
+  receiptContext: ParseRuleSuggestionReceiptContextDTO | null;
+}
+
+export interface ParseRuleSuggestionReceiptContextDTO {
+  receiptId: number;
+  paperlessDocumentId: number | null;
+  rawText: string | null;
+  parseStatus: ParseStatus;
+  parseSource: ParseSource | null;
+  receiptDate: string | null;
+  receiptTime: string | null;
+  storeName: string | null;
+  storeBranch: string | null;
+  totalAmount: number | null;
+  currency: string;
+  items: ParseRuleSuggestionItemDTO[];
+}
+
+export interface ParseRuleSuggestionItemDTO {
+  positionIndex: number;
+  description: string;
+  quantity: number | null;
+  unit: string | null;
+  unitPrice: number | null;
+  totalPrice: number | null;
+  discountAmount: number | null;
 }
 
 export interface ParseRuleSuggestionUpdateRequest {

@@ -19,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class SettingsService {
 
     private static final String MASK = "********";
+    private static final String LEGACY_UNAVAILABLE_MODEL = "google/gemini-flash-1.5";
     private static final BigDecimal DEFAULT_AI_CONFIDENCE = new BigDecimal("0.900");
     private static final BigDecimal DEFAULT_AI_PARSING_CONFIDENCE = new BigDecimal("0.900");
 
@@ -59,6 +60,7 @@ public class SettingsService {
     public SettingsDto getSettings() {
         String paperlessToken = value("paperless_api_token", paperlessProperties.getApiToken());
         String openRouterKey = value("openrouter_api_key", aiProperties.getOpenrouterApiKey());
+        String openRouterModel = openRouterModel();
         return new SettingsDto(
                 value("paperless_base_url", paperlessProperties.getBaseUrl()),
                 value("paperless_public_base_url", defaultPublicBaseUrl()),
@@ -67,10 +69,10 @@ public class SettingsService {
                 value("paperless_ebon_tag", paperlessProperties.getEbonTag()),
                 mask(openRouterKey),
                 value("openrouter_base_url", aiProperties.getOpenrouterBaseUrl()),
-                value("openrouter_model", value("ai_model", aiProperties.getModel())),
+                openRouterModel,
                 confidence(),
                 booleanValue("ai_parsing_fallback_enabled", aiParsingProperties.isFallbackEnabled()),
-                value("ai_parsing_model", aiParsingProperties.getModel()),
+                aiParsingModel(openRouterModel),
                 integerValue("ai_parsing_max_tokens", aiParsingProperties.getMaxTokens()),
                 doubleValue("ai_parsing_temperature", aiParsingProperties.getTemperature()),
                 decimalValue("ai_parsing_min_confidence", DEFAULT_AI_PARSING_CONFIDENCE),
@@ -90,7 +92,13 @@ public class SettingsService {
         saveIfPresent("paperless_ebon_tag", request.paperlessEbonTag(), "Paperless-NGX eBon-Tag");
         saveSecretIfPresent("openrouter_api_key", request.openRouterApiKey(), "OpenRouter API-Key");
         saveIfPresent("openrouter_base_url", request.openRouterBaseUrl(), "OpenRouter Basis-URL");
-        saveIfPresent("openrouter_model", request.openRouterModel(), "OpenRouter Modell");
+        if (request.openRouterModel() != null) {
+            boolean aiParsingInheritsOpenRouterModel = aiParsingModelInheritsOpenRouterModel();
+            save("openrouter_model", request.openRouterModel(), "OpenRouter Modell");
+            if (aiParsingInheritsOpenRouterModel) {
+                save("ai_parsing_model", request.openRouterModel(), "OpenRouter Modell fuer KI-Parsing");
+            }
+        }
         if (request.aiCategorizationMinConfidence() != null) {
             save("ai_categorization_min_confidence",
                     request.aiCategorizationMinConfidence().toPlainString(),
@@ -153,6 +161,25 @@ public class SettingsService {
         return publicBaseUrl == null || publicBaseUrl.isBlank()
                 ? paperlessProperties.getBaseUrl()
                 : publicBaseUrl;
+    }
+
+    private String openRouterModel() {
+        return value("openrouter_model", value("ai_model", aiProperties.getModel()));
+    }
+
+    private String aiParsingModel(String openRouterModel) {
+        String configured = value("ai_parsing_model", null);
+        if (configured == null || configured.isBlank() || LEGACY_UNAVAILABLE_MODEL.equals(configured)) {
+            return openRouterModel == null || openRouterModel.isBlank()
+                    ? aiParsingProperties.getModel()
+                    : openRouterModel;
+        }
+        return configured;
+    }
+
+    private boolean aiParsingModelInheritsOpenRouterModel() {
+        String configured = value("ai_parsing_model", null);
+        return configured == null || configured.isBlank() || LEGACY_UNAVAILABLE_MODEL.equals(configured);
     }
 
     private int integerValue(String key, int fallback) {

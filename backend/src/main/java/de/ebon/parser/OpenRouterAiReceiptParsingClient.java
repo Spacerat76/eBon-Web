@@ -55,12 +55,16 @@ class OpenRouterAiReceiptParsingClient implements AiReceiptParsingClient {
         body.put("max_tokens", settings.maxTokens());
         body.put("temperature", settings.temperature());
         body.put("response_format", Map.of("type", "json_object"));
+        body.put("reasoning", Map.of(
+                "effort", "minimal",
+                "exclude", true));
         body.put("messages", List.of(
                 Map.of(
                         "role", "system",
                         "content", """
                                 Du extrahierst deutsche Kassenbons in ein festes JSON-Schema.
                                 Antworte ausschliesslich mit einem vollstaendigen JSON-Objekt.
+                                Verwende exakt die angeforderten Feldnamen. Keine Synonyme wie price, amount oder lines.
                                 Erfinde keine Positionen, Summen oder Datumswerte.
                                 Liefere parseRuleSuggestions nur als Vorschlaege, niemals als aktive Regeln.
                                 """),
@@ -90,7 +94,53 @@ class OpenRouterAiReceiptParsingClient implements AiReceiptParsingClient {
                 receiptDate, receiptTime, storeName, storeBranch, totalAmount, currency, bonusBalance, bonusPoints,
                 bonusType, overallConfidence, fieldConfidence, warnings, items[], parseRuleSuggestions[].
                 items[].positionIndex muss bei 0 starten und fortlaufend sein.
+                Jede Position muss totalPrice verwenden. Verwende niemals price oder amount fuer Positionen.
                 bonusBalance und bonusPoints sind nur in diesem Einkauf neu gesammelte Werte.
+
+                Antworte exakt in dieser Struktur:
+                {
+                  "receiptDate": "YYYY-MM-DD",
+                  "receiptTime": "HH:mm:ss oder null",
+                  "storeName": "Name",
+                  "storeBranch": "Adresse oder Filiale oder null",
+                  "totalAmount": 0.00,
+                  "currency": "EUR",
+                  "bonusBalance": null,
+                  "bonusPoints": null,
+                  "bonusType": null,
+                  "overallConfidence": 0.000,
+                  "fieldConfidence": {
+                    "receiptDate": 0.000,
+                    "receiptTime": 0.000,
+                    "storeName": 0.000,
+                    "storeBranch": 0.000,
+                    "totalAmount": 0.000,
+                    "items": 0.000
+                  },
+                  "warnings": [],
+                  "items": [
+                    {
+                      "positionIndex": 0,
+                      "description": "Artikel",
+                      "quantity": null,
+                      "unit": null,
+                      "unitPrice": null,
+                      "totalPrice": 0.00,
+                      "discountAmount": null
+                    }
+                  ],
+                  "parseRuleSuggestions": [
+                    {
+                      "ruleType": "ITEM_PATTERN",
+                      "storeName": "Name oder null",
+                      "matchRegex": "Regex",
+                      "extractGroup": "Gruppe oder null",
+                      "confidence": 0.000,
+                      "problemDescription": "Warum der Regelparser scheiterte",
+                      "solutionRationale": "Warum diese Regel hilft"
+                    }
+                  ]
+                }
                 """.formatted(
                 prompt.textMode(),
                 settings.minConfidence(),

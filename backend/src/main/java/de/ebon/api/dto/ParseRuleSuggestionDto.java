@@ -22,5 +22,6 @@ public record ParseRuleSuggestionDto(
         String validationMessage,
         ParseRuleSuggestionStatus status,
         String rejectionReason,
-        Long acceptedParseRuleId) {
+        Long acceptedParseRuleId,
+        ParseRuleSuggestionReceiptContextDto receiptContext) {
 }

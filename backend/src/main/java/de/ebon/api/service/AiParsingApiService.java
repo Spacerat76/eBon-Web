@@ -7,7 +7,9 @@ import de.ebon.api.dto.MigrationDraftDto;
 import de.ebon.api.dto.PageResponse;
 import de.ebon.api.dto.ParseRuleSuggestionAcceptRequest;
 import de.ebon.api.dto.ParseRuleSuggestionDto;
+import de.ebon.api.dto.ParseRuleSuggestionItemDto;
 import de.ebon.api.dto.ParseRuleSuggestionRejectRequest;
+import de.ebon.api.dto.ParseRuleSuggestionReceiptContextDto;
 import de.ebon.api.dto.ParseRuleSuggestionUpdateRequest;
 import de.ebon.categorization.CategorizationService;
 import de.ebon.parser.AiParsingTextMode;
@@ -22,6 +24,7 @@ import de.ebon.persistence.model.ParseRuleSuggestion;
 import de.ebon.persistence.model.ParseRuleSuggestionStatus;
 import de.ebon.persistence.model.ParseStatus;
 import de.ebon.persistence.model.Receipt;
+import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.model.RuleSource;
 import de.ebon.persistence.repository.AiParsingLogRepository;
 import de.ebon.persistence.repository.ParseRuleRepository;
@@ -109,12 +112,12 @@ public class AiParsingApiService {
                 Sort.by(Sort.Direction.DESC, "createdAt"));
         return PageResponse.from(suggestionRepository.findAll(
                 suggestionSpec(status, store, validationStatus),
-                pageable).map(this::toSuggestionDto), "createdAt", "desc");
+                pageable).map(suggestion -> toSuggestionDto(suggestion, false)), "createdAt", "desc");
     }
 
     @Transactional(readOnly = true)
     public ParseRuleSuggestionDto getSuggestion(Long id) {
-        return toSuggestionDto(suggestion(id));
+        return toSuggestionDto(suggestion(id), true);
     }
 
     @Transactional
@@ -122,7 +125,7 @@ public class AiParsingApiService {
         ParseRuleSuggestion suggestion = suggestion(id);
         ensureOpen(suggestion);
         applyDraft(suggestion, request);
-        return toSuggestionDto(suggestionRepository.saveAndFlush(suggestion));
+        return toSuggestionDto(suggestionRepository.saveAndFlush(suggestion), true);
     }
 
     @Transactional
@@ -149,7 +152,7 @@ public class AiParsingApiService {
         suggestion.accept(parseRule);
         ParseRuleSuggestion saved = suggestionRepository.saveAndFlush(suggestion);
         reparseScope(saved, request.reparseScope());
-        return toSuggestionDto(saved);
+        return toSuggestionDto(saved, false);
     }
 
     @Transactional
@@ -157,7 +160,7 @@ public class AiParsingApiService {
         ParseRuleSuggestion suggestion = suggestion(id);
         ensureOpen(suggestion);
         suggestion.reject(request.rejectionReason());
-        return toSuggestionDto(suggestionRepository.saveAndFlush(suggestion));
+        return toSuggestionDto(suggestionRepository.saveAndFlush(suggestion), false);
     }
 
     @Transactional(readOnly = true)
@@ -302,7 +305,7 @@ public class AiParsingApiService {
                 log.getResponseSnippet());
     }
 
-    private ParseRuleSuggestionDto toSuggestionDto(ParseRuleSuggestion suggestion) {
+    private ParseRuleSuggestionDto toSuggestionDto(ParseRuleSuggestion suggestion, boolean includeReceiptContext) {
         return new ParseRuleSuggestionDto(
                 suggestion.getId(),
                 suggestion.getReceipt() == null ? null : suggestion.getReceipt().getId(),
@@ -319,7 +322,41 @@ public class AiParsingApiService {
                 suggestion.getValidationMessage(),
                 suggestion.getStatus(),
                 suggestion.getRejectionReason(),
-                suggestion.getAcceptedParseRule() == null ? null : suggestion.getAcceptedParseRule().getId());
+                suggestion.getAcceptedParseRule() == null ? null : suggestion.getAcceptedParseRule().getId(),
+                includeReceiptContext ? receiptContext(suggestion.getReceipt()) : null);
+    }
+
+    private ParseRuleSuggestionReceiptContextDto receiptContext(Receipt receipt) {
+        if (receipt == null) {
+            return null;
+        }
+        return new ParseRuleSuggestionReceiptContextDto(
+                receipt.getId(),
+                receipt.getPaperlessDocumentId(),
+                receipt.getRawText(),
+                receipt.getParseStatus(),
+                receipt.getParseSource(),
+                receipt.getReceiptDate(),
+                receipt.getReceiptTime(),
+                receipt.getStoreName(),
+                receipt.getStoreBranch(),
+                receipt.getTotalAmount(),
+                receipt.getCurrency(),
+                receipt.getItems().stream()
+                        .sorted((left, right) -> Integer.compare(left.getPositionIndex(), right.getPositionIndex()))
+                        .map(this::toSuggestionItemDto)
+                        .toList());
+    }
+
+    private ParseRuleSuggestionItemDto toSuggestionItemDto(ReceiptItem item) {
+        return new ParseRuleSuggestionItemDto(
+                item.getPositionIndex(),
+                item.getDescription(),
+                item.getQuantity(),
+                item.getUnit(),
+                item.getUnitPrice(),
+                item.getTotalPrice(),
+                item.getDiscountAmount());
     }
 
     private Map<String, Object> readMap(String json) {

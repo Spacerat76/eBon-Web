@@ -77,7 +77,14 @@ export async function mockRequest<T>(path: string, init: RequestInit = {}): Prom
     return aiParsingLogs as T;
   }
   if (url.pathname === "/parser/rule-suggestions") {
-    return page(parseRuleSuggestions, Number(url.searchParams.get("page") ?? 0), Number(url.searchParams.get("size") ?? 20)) as T;
+    return page(
+      parseRuleSuggestions.map((suggestion) => ({ ...suggestion, receiptContext: null })),
+      Number(url.searchParams.get("page") ?? 0),
+      Number(url.searchParams.get("size") ?? 20)
+    ) as T;
+  }
+  if (/^\/parser\/rule-suggestions\/\d+$/.test(url.pathname)) {
+    return parseRuleSuggestions[0] as T;
   }
   if (/^\/parser\/rule-suggestions\/\d+\/accept$/.test(url.pathname) && method === "POST") {
     return { ...parseRuleSuggestions[0], status: "ACCEPTED", acceptedParseRuleId: 99 } as T;
@@ -274,7 +281,7 @@ const receipts: ReceiptDTO[] = [
     aiParsingSummary: {
       lastStatus: "SUCCESS",
       lastTrigger: "MANUAL_REPARSE",
-      modelUsed: "google/gemini-flash-1.5",
+      modelUsed: "openai/gpt-oss-20b",
       overallConfidence: 0.94,
       hasOpenRuleSuggestions: true
     },
@@ -309,10 +316,10 @@ const settings: SettingsDTO = {
   paperlessEbonTag: "eBON",
   openRouterApiKey: null,
   openRouterBaseUrl: "https://openrouter.ai/api/v1",
-  openRouterModel: "google/gemini-flash-1.5",
+  openRouterModel: "openai/gpt-oss-20b",
   aiCategorizationMinConfidence: 0.9,
   aiParsingFallbackEnabled: true,
-  aiParsingModel: "google/gemini-flash-1.5",
+  aiParsingModel: "openai/gpt-oss-20b",
   aiParsingMaxTokens: 2500,
   aiParsingTemperature: 0,
   aiParsingMinConfidence: 0.9,
@@ -329,7 +336,7 @@ const aiParsingLogs = [
     receiptId: 2,
     trigger: "MANUAL_REPARSE",
     status: "SUCCESS",
-    modelUsed: "google/gemini-flash-1.5",
+    modelUsed: "openai/gpt-oss-20b",
     startedAt: "2026-06-16T08:00:00Z",
     finishedAt: "2026-06-16T08:00:02Z",
     durationMs: 2100,
@@ -360,7 +367,31 @@ const parseRuleSuggestions = [
     validationMessage: null,
     status: "OPEN",
     rejectionReason: null,
-    acceptedParseRuleId: null
+    acceptedParseRuleId: null,
+    receiptContext: {
+      receiptId: 2,
+      paperlessDocumentId: 1002,
+      rawText: "dm\nArtikel SHAMPOO 2,95\nSUMME 2,95",
+      parseStatus: "PARSED",
+      parseSource: "AI",
+      receiptDate: "2026-06-16",
+      receiptTime: "08:15:00",
+      storeName: "dm",
+      storeBranch: "Neuss",
+      totalAmount: 2.95,
+      currency: "EUR",
+      items: [
+        {
+          positionIndex: 0,
+          description: "SHAMPOO",
+          quantity: null,
+          unit: null,
+          unitPrice: null,
+          totalPrice: 2.95,
+          discountAmount: null
+        }
+      ]
+    }
   }
 ];
 

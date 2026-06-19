@@ -39,6 +39,9 @@ public class RuleBasedReceiptParser {
     private static final Pattern QUANTITY_DETAIL_LINE = Pattern.compile(
             "^\\s*(?<quantity>\\d+(?:,\\d+)?)\\s*(?<unit>kg|g|l|ml|stk|stck|stueck)?\\s*(?:x|\\*)\\s*(?<unitPrice>\\d+,\\d+)\\s*(?:EUR(?:/\\w+)?)?\\s*$",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern LEADING_QUANTITY_PRICE_LINE = Pattern.compile(
+            "^\\s*(?<quantity>\\d+(?:,\\d+)?)\\s*(?:x|\\*)\\s*[«<]?\\s*(?<unitPrice>" + AMOUNT_PATTERN + ")\\s*$",
+            Pattern.CASE_INSENSITIVE);
     private static final Pattern HANDEINGABE_QUANTITY_LINE = Pattern.compile(
             "^.*\\bHandeingabe\\s+E-Bon\\s+(?<quantity>\\d+(?:,\\d+)?)\\s*(?<unit>kg|g|l|ml|stk|stck|stueck)\\s*$",
             Pattern.CASE_INSENSITIVE);
@@ -74,12 +77,13 @@ public class RuleBasedReceiptParser {
     }
 
     public ReceiptParseResult parse(String rawText) {
-        List<String> lines = rawText == null
+        List<String> rawLines = rawText == null
                 ? List.of()
                 : rawText.lines()
                         .map(String::trim)
                         .filter(line -> !line.isBlank())
                         .toList();
+        List<String> lines = relevantReceiptLines(rawLines);
 
         String storeName = parseStoreName(lines);
         ParsedReceipt receipt = new ParsedReceipt(
@@ -95,6 +99,20 @@ public class RuleBasedReceiptParser {
                 parseItems(lines, storeName));
 
         return validator.validate(receipt);
+    }
+
+    private List<String> relevantReceiptLines(List<String> lines) {
+        for (int i = 0; i < lines.size(); i++) {
+            if (!lines.get(i).equalsIgnoreCase("Kassenbon")) {
+                continue;
+            }
+            for (int start = i - 1; start >= 0; start--) {
+                if (isPharmacyStoreLine(lines.get(start))) {
+                    return lines.subList(start, lines.size());
+                }
+            }
+        }
+        return lines;
     }
 
     private LocalDate parseDate(List<String> lines) {
@@ -173,6 +191,9 @@ public class RuleBasedReceiptParser {
             }
             if (upper.contains("EDEKA")) {
                 return "EDEKA";
+            }
+            if (isPharmacyStoreLine(line)) {
+                return cleanupDescription(line);
             }
             if (upper.contains("MCDONALD") || upper.contains("MEDONALD")) {
                 return "McDonald's";
@@ -450,13 +471,21 @@ public class RuleBasedReceiptParser {
         List<String> pendingDescriptionLines = new ArrayList<>();
         boolean quantityArticleTable = hasQuantityArticleTable(lines);
         List<ParseRule> dynamicTotalRules = activeRules(ParseRuleType.TOTAL_PATTERN, storeName);
+        QuantityDetails leadingQuantityDetails = null;
 
         for (String line : lines) {
+            QuantityDetails leadingDetails = parseLeadingQuantityPriceLine(line);
+            if (leadingDetails != null) {
+                leadingQuantityDetails = leadingDetails;
+                continue;
+            }
+
             ParsedReceiptItem quantityArticleItem = quantityArticleTable
                     ? parseQuantityArticleItemLine(line, items.size())
                     : null;
             if (quantityArticleItem != null) {
                 pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
                 items.add(quantityArticleItem);
                 continue;
             }
@@ -464,6 +493,7 @@ public class RuleBasedReceiptParser {
             ParsedReceiptItem dmItem = parseDmItemLine(line, items.size());
             if (dmItem != null) {
                 pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
                 items.add(dmItem);
                 continue;
             }
@@ -481,6 +511,7 @@ public class RuleBasedReceiptParser {
             ParsedReceiptItem pipeTableItem = parsePipeTableItemLine(line, pendingDescriptionLines, items.size());
             if (pipeTableItem != null) {
                 pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
                 items.add(pipeTableItem);
                 continue;
             }
@@ -545,6 +576,13 @@ public class RuleBasedReceiptParser {
                     unit = normalizeUnit(quantityMatcher.group("unit"));
                     unitPrice = GermanNumberParser.parse(quantityMatcher.group("unitPrice"));
                 }
+                if (quantity == null && leadingQuantityDetails != null
+                        && leadingQuantityDetailsMatches(totalPrice, leadingQuantityDetails)) {
+                    quantity = leadingQuantityDetails.quantity();
+                    unit = leadingQuantityDetails.unit();
+                    unitPrice = leadingQuantityDetails.unitPrice();
+                }
+                leadingQuantityDetails = null;
 
                 BigDecimal discountAmount = totalPrice.signum() < 0 || description.toUpperCase(Locale.ROOT).contains("RABATT")
                         ? totalPrice.abs()
@@ -704,10 +742,12 @@ public class RuleBasedReceiptParser {
             return null;
         }
 
-        List<String> descriptionParts = new ArrayList<>(pendingDescriptionLines);
         boolean hasDescriptionFromPreviousTableRow = !pendingDescriptionLines.isEmpty()
                 && !cells.isEmpty()
                 && isQuantityOnlyCell(cells.getFirst());
+        List<String> descriptionParts = hasDescriptionFromPreviousTableRow
+                ? new ArrayList<>(pendingDescriptionLines)
+                : new ArrayList<>();
         BigDecimal quantity = null;
         String unit = null;
         BigDecimal unitPrice = null;
@@ -849,6 +889,25 @@ public class RuleBasedReceiptParser {
                 GermanNumberParser.parse(matcher.group("unitPrice")));
     }
 
+    private QuantityDetails parseLeadingQuantityPriceLine(String line) {
+        Matcher matcher = LEADING_QUANTITY_PRICE_LINE.matcher(line);
+        if (!matcher.matches()) {
+            return null;
+        }
+        return new QuantityDetails(
+                GermanNumberParser.parse(matcher.group("quantity")),
+                "Stk",
+                GermanNumberParser.parse(matcher.group("unitPrice")));
+    }
+
+    private boolean leadingQuantityDetailsMatches(BigDecimal totalPrice, QuantityDetails quantityDetails) {
+        if (totalPrice == null || quantityDetails.quantity() == null || quantityDetails.unitPrice() == null) {
+            return false;
+        }
+        BigDecimal expectedTotal = quantityDetails.quantity().multiply(quantityDetails.unitPrice());
+        return expectedTotal.subtract(totalPrice).abs().compareTo(new BigDecimal("0.02")) <= 0;
+    }
+
     private void updateLastItemWithQuantityDetails(List<ParsedReceiptItem> items, QuantityDetails quantityDetails) {
         int lastIndex = items.size() - 1;
         ParsedReceiptItem item = items.get(lastIndex);
@@ -875,6 +934,7 @@ public class RuleBasedReceiptParser {
     private String cleanupDescription(String description) {
         String cleaned = QUANTITY_PRICE.matcher(description.replace('|', ' ')).replaceAll(" ");
         return cleaned
+                .replaceAll("(?i)\\bPRz:\\s*", " ")
                 .replaceAll("\\bEUR/\\w+\\b", " ")
                 .replaceAll("\\*+", " ")
                 .replaceAll("\\s+", " ")
@@ -920,7 +980,8 @@ public class RuleBasedReceiptParser {
                 || upper.contains("GUTHABEN")
                 || upper.contains("PAYBACK")
                 || upper.contains("PUNKTESTAND")
-                || upper.contains("PUNKTE");
+                || upper.contains("PUNKTE")
+                || isReceiptFooterLine(line);
     }
 
     private boolean isMetadataLine(String line) {
@@ -929,9 +990,7 @@ public class RuleBasedReceiptParser {
                 || upper.contains("KASSE")
                 || upper.contains("BON")
                 || upper.contains("BELEG")
-                || upper.contains("TEL.")
-                || upper.contains("TEL:")
-                || upper.startsWith("TEL ")
+                || isPhoneLikeLine(line)
                 || upper.startsWith("FAX")
                 || upper.contains("UID")
                 || upper.contains("STEUER.NR")
@@ -965,6 +1024,7 @@ public class RuleBasedReceiptParser {
                 || isPostalAddressLine(line)
                 || upper.contains("PAYBACK")
                 || upper.contains("DEUTSCHLANDCARD")
+                || isReceiptFooterLine(line)
                 || isTaxTableLine(line)
                 || isBranchLine(line)
                 || isPipeTableNoiseLine(line)
@@ -988,8 +1048,39 @@ public class RuleBasedReceiptParser {
                 || upper.equals("DM")
                 || upper.startsWith("DM ")
                 || upper.contains("EDEKA")
+                || upper.contains("LANDMARKT")
+                || isPharmacyStoreLine(line)
                 || upper.contains("MCDONALD")
                 || upper.contains("MEDONALD");
+    }
+
+    private boolean isPharmacyStoreLine(String line) {
+        return line.toUpperCase(Locale.ROOT).matches(".*\\bAPOTHEKE\\b.*");
+    }
+
+    private boolean isPhoneLikeLine(String line) {
+        String upper = line.toUpperCase(Locale.ROOT);
+        return upper.contains("TEL.")
+                || upper.contains("TEL:")
+                || upper.startsWith("TEL ")
+                || upper.matches("^\\s*[LT]?EL\\.?\\s*:?\\s*.*\\d.*");
+    }
+
+    private boolean isReceiptFooterLine(String line) {
+        String upper = line.toUpperCase(Locale.ROOT);
+        return upper.contains("KASSENBELEG")
+                || upper.contains("BELEG")
+                || upper.contains("BEDIENER")
+                || upper.contains("ECR SERIAL")
+                || upper.contains("TSE SERIAL")
+                || upper.contains("SERIAL:")
+                || upper.startsWith("STNR")
+                || upper.startsWith("STNR .")
+                || upper.equals("VIELEN DANK")
+                || upper.equals("FÜR IHREN")
+                || upper.equals("FUER IHREN")
+                || upper.equals("EINKAUF!")
+                || upper.matches("^[A-F0-9]{16,}$");
     }
 
     private boolean isBranchLine(String line) {
@@ -1010,9 +1101,7 @@ public class RuleBasedReceiptParser {
 
     private boolean isMetadataLineWithoutBranch(String line) {
         String upper = line.toUpperCase(Locale.ROOT);
-        return upper.contains("TEL.")
-                || upper.contains("TEL:")
-                || upper.startsWith("TEL ")
+        return isPhoneLikeLine(line)
                 || upper.contains("UID")
                 || upper.startsWith("FAX")
                 || upper.contains("STEUER-NR")
@@ -1026,6 +1115,7 @@ public class RuleBasedReceiptParser {
         String upper = line.toUpperCase(Locale.ROOT);
         return upper.contains("SUMME")
                 || upper.contains("TOTAL")
+                || upper.contains("IUOTAL")
                 || upper.contains("GESAMT")
                 || upper.contains("ZU ZAHLEN")
                 || upper.contains("ENDSUMME");
@@ -1058,6 +1148,7 @@ public class RuleBasedReceiptParser {
         return upper.startsWith("SUMME EUR")
                 || upper.startsWith("ENDSUMME")
                 || upper.startsWith("TOTAL")
+                || upper.startsWith("IUOTAL")
                 || upper.contains("ZU ZAHLEN");
     }
 
@@ -1081,7 +1172,10 @@ public class RuleBasedReceiptParser {
                 || upper.contains("UST-ID")
                 || upper.contains("UST.")
                 || upper.matches(".*\\bUST\\b.*")
-                || upper.contains("UMSATZSTEUER");
+                || upper.contains("UMSATZSTEUER")
+                || upper.contains("STEUER")
+                || upper.contains("SIEUER")
+                || upper.contains("NETTO");
     }
 
     private boolean isPostalAddressLine(String line) {

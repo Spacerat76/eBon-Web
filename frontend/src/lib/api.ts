@@ -304,6 +304,10 @@ export class ApiClient {
     })}`);
   }
 
+  parseRuleSuggestion(id: number): Promise<ParseRuleSuggestionDTO> {
+    return this.request(`/parser/rule-suggestions/${id}`);
+  }
+
   updateParseRuleSuggestion(id: number, request: ParseRuleSuggestionUpdateRequest): Promise<ParseRuleSuggestionDTO> {
     return this.request(`/parser/rule-suggestions/${id}`, {
       method: "PUT",

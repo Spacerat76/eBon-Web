@@ -126,6 +126,18 @@ class SettingsServiceTests {
                         org.assertj.core.groups.Tuple.tuple("sync_interval_minutes", "15"));
     }
 
+    // Verifies the settings response does not expose the historical invalid parsing-model seed as the effective value.
+    @Test
+    void getSettingsUsesOpenRouterModelForLegacyAiParsingModelSeed() {
+        settings.put("openrouter_model", new AppSetting("openrouter_model", "openai/gpt-oss-20b", "model"));
+        settings.put("ai_parsing_model", new AppSetting("ai_parsing_model", "google/gemini-flash-1.5", "legacy"));
+
+        SettingsDto dto = settingsService.getSettings();
+
+        assertThat(dto.openRouterModel()).isEqualTo("openai/gpt-oss-20b");
+        assertThat(dto.aiParsingModel()).isEqualTo("openai/gpt-oss-20b");
+    }
+
     // Verifies Paperless connection checks are delegated to the mockable tester with unmasked settings.
     @Test
     void testConnectionForPaperlessReflectsConfiguredUrlPresence() {

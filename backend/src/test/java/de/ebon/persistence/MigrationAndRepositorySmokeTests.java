@@ -129,7 +129,21 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         receipt.addItem(new ReceiptItem(23, "SAMT ERDBEERE", new BigDecimal("2.49")));
         receipt.addItem(new ReceiptItem(24, "FR.JOG.NATUR 1,5", new BigDecimal("1.09")));
         receipt.addItem(new ReceiptItem(25, "DUO VLA SCH./VA.", new BigDecimal("1.49")));
-        receipt.addItem(new ReceiptItem(26, "Unklare Sonderposition", new BigDecimal("2.49")));
+        receipt.addItem(new ReceiptItem(26, "754753 FF Ungarisch 175g", new BigDecimal("0.99")));
+        receipt.addItem(new ReceiptItem(27, "297776 Chocr Sahne&amp;Weiße", new BigDecimal("2.19")));
+        receipt.addItem(new ReceiptItem(28, "701900 Ba Schlupfhose", new BigDecimal("5.99")));
+        receipt.addItem(new ReceiptItem(29, "702620 KQRo XXL 31g.12x64", new BigDecimal("6.99")));
+        receipt.addItem(new ReceiptItem(30, "Büsch auf 30Die.", new BigDecimal("2.40")));
+        receipt.addItem(new ReceiptItem(31, "HINTERSCHINK", new BigDecimal("2.62")));
+        receipt.addItem(new ReceiptItem(32, "Herz.Parmigiano3,29 € x 2", new BigDecimal("6.58")));
+        receipt.addItem(new ReceiptItem(33, "Landl.Erdb.Konfi.", new BigDecimal("2.49")));
+        receipt.addItem(new ReceiptItem(34, "ALT BV", new BigDecimal("10.99")));
+        receipt.addItem(new ReceiptItem(35, "JA GRAN DUETT", new BigDecimal("0.98")));
+        receipt.addItem(new ReceiptItem(36, "SENF MITTELSCH.", new BigDecimal("1.69")));
+        receipt.addItem(new ReceiptItem(37, "MIRACEL WHIP", new BigDecimal("1.69")));
+        receipt.addItem(new ReceiptItem(38, "CORNICHONS CHILI", new BigDecimal("0.99")));
+        receipt.addItem(new ReceiptItem(39, "ORIGINAL NFB", new BigDecimal("3.29")));
+        receipt.addItem(new ReceiptItem(40, "Unklare Sonderposition", new BigDecimal("2.49")));
         receiptRepository.saveAndFlush(receipt);
 
         categorizationService.categorizeReceipt(receipt.getId());
@@ -187,8 +201,36 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         assertThat(items.get(24).getCategorySource()).isEqualTo(CategorySource.RULE);
         assertThat(items.get(25).getCategory().getName()).isEqualTo("Milchprodukte und Eier");
         assertThat(items.get(25).getCategorySource()).isEqualTo(CategorySource.RULE);
-        assertThat(items.get(26).getCategory()).isNull();
-        assertThat(items.get(26).getCategorySource()).isNull();
+        assertThat(items.get(26).getCategory().getName()).isEqualTo("Suesswaren und Snacks");
+        assertThat(items.get(26).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(27).getCategory().getName()).isEqualTo("Suesswaren und Snacks");
+        assertThat(items.get(27).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(28).getCategory().getName()).isEqualTo("Baby und Kind");
+        assertThat(items.get(28).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(29).getCategory().getName()).isEqualTo("Haushalt");
+        assertThat(items.get(29).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(30).getCategory().getName()).isEqualTo("Brot und Backwaren");
+        assertThat(items.get(30).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(31).getCategory().getName()).isEqualTo("Fleisch und Wurst");
+        assertThat(items.get(31).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(32).getCategory().getName()).isEqualTo("Milchprodukte und Eier");
+        assertThat(items.get(32).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(33).getCategory().getName()).isEqualTo("Vorrat und Fertiggerichte");
+        assertThat(items.get(33).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(34).getCategory().getName()).isEqualTo("Getraenke");
+        assertThat(items.get(34).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(35).getCategory().getName()).isEqualTo("Milchprodukte und Eier");
+        assertThat(items.get(35).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(36).getCategory().getName()).isEqualTo("Vorrat und Fertiggerichte");
+        assertThat(items.get(36).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(37).getCategory().getName()).isEqualTo("Vorrat und Fertiggerichte");
+        assertThat(items.get(37).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(38).getCategory().getName()).isEqualTo("Vorrat und Fertiggerichte");
+        assertThat(items.get(38).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(39).getCategory().getName()).isEqualTo("Suesswaren und Snacks");
+        assertThat(items.get(39).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(40).getCategory()).isNull();
+        assertThat(items.get(40).getCategorySource()).isNull();
     }
 
     // Verifies restaurant store context wins over grocery-oriented product-name rules such as hamburger buns.

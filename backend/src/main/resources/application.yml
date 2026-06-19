@@ -38,12 +38,12 @@ app:
   ai:
     openrouter-base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
     openrouter-api-key: ${OPENROUTER_API_KEY:}
-    model: ${OPENROUTER_MODEL:google/gemini-flash-1.5}
+    model: ${OPENROUTER_MODEL:openai/gpt-oss-20b}
     max-tokens: ${OPENROUTER_MAX_TOKENS:500}
     temperature: ${OPENROUTER_TEMPERATURE:0.1}
     parsing:
       fallback-enabled: ${AI_PARSING_FALLBACK_ENABLED:true}
-      model: ${OPENROUTER_PARSING_MODEL:${OPENROUTER_MODEL:google/gemini-flash-1.5}}
+      model: ${OPENROUTER_PARSING_MODEL:${OPENROUTER_MODEL:openai/gpt-oss-20b}}
       max-tokens: ${OPENROUTER_PARSING_MAX_TOKENS:2500}
       temperature: ${OPENROUTER_PARSING_TEMPERATURE:0.0}
       min-confidence: ${AI_PARSING_MIN_CONFIDENCE:0.900}

@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
 import { CategoryIcon } from "@/lib/category-icons";
+import { formatCurrency, formatDate, formatTime } from "@/lib/format";
 import type {
   BackupValidationReportDTO,
   CategorizationRuleDTO,
@@ -19,6 +20,7 @@ import type {
   DataMaintenanceResultDTO,
   PageResponse,
   ParseRuleSuggestionDTO,
+  ParseRuleSuggestionReceiptContextDTO,
   RuleMatchField,
   RuleMatchType,
   ReparseScope,
@@ -46,7 +48,7 @@ const emptySettings: SettingsDTO = {
   openRouterModel: "",
   aiCategorizationMinConfidence: 0.9,
   aiParsingFallbackEnabled: true,
-  aiParsingModel: "google/gemini-flash-1.5",
+  aiParsingModel: "openai/gpt-oss-20b",
   aiParsingMaxTokens: 2500,
   aiParsingTemperature: 0,
   aiParsingMinConfidence: 0.9,
@@ -556,6 +558,7 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
         <ParserSuggestionSettings
           onAccept={acceptParserSuggestion}
           onExport={exportParserRules}
+          onLoadDetail={(id) => apiClient.parseRuleSuggestion(id)}
           onReject={rejectParserSuggestion}
           saving={saving}
           suggestions={parserSuggestions?.content ?? []}
@@ -733,7 +736,7 @@ function GeneralSettings({
                 />
                 Lokale Debug-Snippets speichern
               </label>
-              <Field help="Separates Modell für Bon-Parsing. Leer lassen nutzt den gespeicherten Default." label="Parsing-Modell">
+              <Field help="Optionaler Override für Bon-Parsing. Standardmäßig wird das OpenRouter Modell oben verwendet." label="Parsing-Modell">
                 <Input onChange={(event) => onSettingsChange({ ...settings, aiParsingModel: event.target.value })} value={settings.aiParsingModel ?? ""} />
               </Field>
               <Field help="Maximale Antwortlänge für das KI-JSON." label="Parsing Max Tokens">
@@ -963,17 +966,39 @@ function BackupSettings({
 function ParserSuggestionSettings({
   onAccept,
   onExport,
+  onLoadDetail,
   onReject,
   saving,
   suggestions
 }: {
   onAccept: (suggestion: ParseRuleSuggestionDTO, reparseScope: ReparseScope) => void;
   onExport: () => void;
+  onLoadDetail: (id: number) => Promise<ParseRuleSuggestionDTO>;
   onReject: (suggestion: ParseRuleSuggestionDTO) => void;
   saving: boolean;
   suggestions: ParseRuleSuggestionDTO[];
 }) {
   const [scopeById, setScopeById] = useState<Record<number, ReparseScope>>({});
+  const [detailById, setDetailById] = useState<Record<number, ParseRuleSuggestionDTO>>({});
+  const [detailErrorById, setDetailErrorById] = useState<Record<number, string>>({});
+  const [loadingDetailId, setLoadingDetailId] = useState<number | null>(null);
+
+  async function ensureDetail(suggestion: ParseRuleSuggestionDTO) {
+    if (suggestion.receiptContext || detailById[suggestion.id] || loadingDetailId === suggestion.id) {
+      return;
+    }
+
+    setLoadingDetailId(suggestion.id);
+    setDetailErrorById((current) => ({ ...current, [suggestion.id]: "" }));
+    try {
+      const detail = await onLoadDetail(suggestion.id);
+      setDetailById((current) => ({ ...current, [suggestion.id]: detail }));
+    } catch (detailError) {
+      setDetailErrorById((current) => ({ ...current, [suggestion.id]: toUserMessage(detailError) }));
+    } finally {
+      setLoadingDetailId((current) => current === suggestion.id ? null : current);
+    }
+  }
 
   return (
     <Card>
@@ -988,6 +1013,8 @@ function ParserSuggestionSettings({
         {!suggestions.length ? <div className="rounded-md border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">Keine Parser-Regelvorschläge</div> : null}
         {suggestions.map((suggestion) => {
           const scope = scopeById[suggestion.id] ?? "NONE";
+          const detail = detailById[suggestion.id] ?? suggestion;
+          const context = detail.receiptContext;
           return (
             <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800" key={suggestion.id}>
               <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -1007,6 +1034,31 @@ function ParserSuggestionSettings({
               </div>
               <pre className="mt-3 overflow-auto rounded-md bg-zinc-950 p-2 text-xs text-zinc-50">{suggestion.matchRegex}</pre>
               {suggestion.validationMessage ? <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">{suggestion.validationMessage}</div> : null}
+              <details
+                className="mt-3 rounded-md border border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950/40"
+                onToggle={(event) => {
+                  if (event.currentTarget.open) {
+                    void ensureDetail(suggestion);
+                  }
+                }}
+              >
+                <summary className="cursor-pointer px-3 py-2 font-medium text-zinc-700 dark:text-zinc-200">
+                  Quelltext und Parsing-Ergebnis anzeigen
+                </summary>
+                <div className="border-t border-zinc-200 p-3 dark:border-zinc-800">
+                  {loadingDetailId === suggestion.id ? (
+                    <div className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Bon-Kontext wird geladen...
+                    </div>
+                  ) : null}
+                  {detailErrorById[suggestion.id] ? <ErrorBox message={detailErrorById[suggestion.id]} /> : null}
+                  {context ? <ParserSuggestionReceiptContext context={context} /> : null}
+                  {!context && loadingDetailId !== suggestion.id && !detailErrorById[suggestion.id] ? (
+                    <div className="text-sm text-zinc-500 dark:text-zinc-400">Kein Bon-Kontext verfügbar.</div>
+                  ) : null}
+                </div>
+              </details>
               {suggestion.status === "OPEN" ? (
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <select
@@ -1033,6 +1085,81 @@ function ParserSuggestionSettings({
       </CardContent>
     </Card>
   );
+}
+
+function ParserSuggestionReceiptContext({ context }: { context: ParseRuleSuggestionReceiptContextDTO }) {
+  return (
+    <div className="grid gap-3 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <div>
+        <div className="mb-1 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Quelltext</div>
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-zinc-200 bg-white p-3 text-xs leading-relaxed text-zinc-800 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-100">
+          {context.rawText || "Kein Quelltext gespeichert."}
+        </pre>
+      </div>
+      <div className="min-w-0">
+        <div className="mb-1 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Aktuelles Parsing-Ergebnis</div>
+        <div className="space-y-3 rounded-md border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <ParserContextMetric label="Geschäft" value={context.storeName ?? "-"} />
+            <ParserContextMetric label="Filiale" value={context.storeBranch ?? "-"} />
+            <ParserContextMetric label="Datum" value={`${formatDate(context.receiptDate)} · ${formatTime(context.receiptTime)}`} />
+            <ParserContextMetric label="Gesamtbetrag" value={context.totalAmount == null ? "-" : formatCurrency(context.totalAmount)} />
+            <ParserContextMetric label="Status" value={context.parseStatus} />
+            <ParserContextMetric label="Quelle" value={context.parseSource ?? "-"} />
+          </div>
+          <div className="overflow-auto rounded-md border border-zinc-200 dark:border-zinc-800">
+            <table className="min-w-full divide-y divide-zinc-200 text-left text-xs dark:divide-zinc-800">
+              <thead className="bg-zinc-50 text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+                <tr>
+                  <th className="px-2 py-2">#</th>
+                  <th className="px-2 py-2">Beschreibung</th>
+                  <th className="px-2 py-2 text-right">Menge</th>
+                  <th className="px-2 py-2">Einheit</th>
+                  <th className="px-2 py-2 text-right">Einzelpreis</th>
+                  <th className="px-2 py-2 text-right">Gesamt</th>
+                  <th className="px-2 py-2 text-right">Rabatt</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
+                {context.items.length ? context.items.map((item) => (
+                  <tr key={`${item.positionIndex}-${item.description}`}>
+                    <td className="px-2 py-2 text-zinc-500 dark:text-zinc-400">{item.positionIndex + 1}</td>
+                    <td className="max-w-72 px-2 py-2">{item.description}</td>
+                    <td className="px-2 py-2 text-right">{formatOptionalNumber(item.quantity)}</td>
+                    <td className="px-2 py-2">{item.unit ?? "-"}</td>
+                    <td className="px-2 py-2 text-right">{formatOptionalCurrency(item.unitPrice)}</td>
+                    <td className="px-2 py-2 text-right font-medium">{formatOptionalCurrency(item.totalPrice)}</td>
+                    <td className="px-2 py-2 text-right">{formatOptionalCurrency(item.discountAmount)}</td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td className="px-2 py-4 text-center text-zinc-500 dark:text-zinc-400" colSpan={7}>Keine Positionen gespeichert.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ParserContextMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-md bg-zinc-50 px-2 py-1.5 dark:bg-zinc-900">
+      <div className="text-[11px] font-medium uppercase text-zinc-500 dark:text-zinc-400">{label}</div>
+      <div className="truncate text-sm text-zinc-900 dark:text-zinc-50" title={value}>{value}</div>
+    </div>
+  );
+}
+
+function formatOptionalCurrency(value: number | null | undefined): string {
+  return value == null ? "-" : formatCurrency(value);
+}
+
+function formatOptionalNumber(value: number | null | undefined): string {
+  return value == null ? "-" : new Intl.NumberFormat("de-DE", { maximumFractionDigits: 3 }).format(value);
 }
 
 function ValidationMessageList({ title, tone, values }: { title: string; tone: "amber" | "red"; values: string[] }) {

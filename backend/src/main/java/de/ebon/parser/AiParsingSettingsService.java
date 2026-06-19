@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 public class AiParsingSettingsService {
 
     private static final BigDecimal DEFAULT_MIN_CONFIDENCE = new BigDecimal("0.900");
+    private static final String LEGACY_UNAVAILABLE_MODEL = "google/gemini-flash-1.5";
 
     private final AppSettingRepository appSettingRepository;
     private final AiCategorizationProperties aiProperties;
@@ -27,17 +28,28 @@ public class AiParsingSettingsService {
     }
 
     public AiParsingSettings current() {
+        String openRouterModel = value("openrouter_model", value("ai_model", aiProperties.getModel()));
         return new AiParsingSettings(
                 booleanValue("ai_parsing_fallback_enabled", aiParsingProperties.isFallbackEnabled()),
                 value("openrouter_base_url", aiProperties.getOpenrouterBaseUrl()),
                 value("openrouter_api_key", aiProperties.getOpenrouterApiKey()),
-                value("ai_parsing_model", aiParsingProperties.getModel()),
+                aiParsingModel(openRouterModel),
                 integerValue("ai_parsing_max_tokens", aiParsingProperties.getMaxTokens()),
                 doubleValue("ai_parsing_temperature", aiParsingProperties.getTemperature()),
                 decimalValue("ai_parsing_min_confidence", DEFAULT_MIN_CONFIDENCE),
                 integerValue("ai_parsing_sync_call_limit", aiParsingProperties.getSyncCallLimit()),
                 enumValue("ai_parsing_text_mode", aiParsingProperties.getTextMode(), AiParsingTextMode.class),
                 booleanValue("ai_parsing_store_debug_snippets", aiParsingProperties.isStoreDebugSnippets()));
+    }
+
+    private String aiParsingModel(String openRouterModel) {
+        String configured = value("ai_parsing_model", null);
+        if (configured == null || configured.isBlank() || LEGACY_UNAVAILABLE_MODEL.equals(configured)) {
+            return openRouterModel == null || openRouterModel.isBlank()
+                    ? aiParsingProperties.getModel()
+                    : openRouterModel;
+        }
+        return configured;
     }
 
     private String value(String key, String fallback) {

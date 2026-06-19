@@ -249,6 +249,68 @@ class RuleBasedReceiptParserEdgeTests {
                 });
     }
 
+    // Verifies embedded prescription text before the real pharmacy receipt does not leak into receipt metadata or item text.
+    @Test
+    void parsesEmbeddedApothekeReceiptAfterPrescriptionBlock() {
+        ReceiptParseResult result = parser.parse("""
+                GD Kranken
+                Baas
+                Patrick
+                Karlstr. 23
+                41469 Neuss
+                30.08.76
+                Dermatologie
+                Drususallee
+                Dr. med. Peter von Zons
+                Drususallee 1, 41460 Neuss
+                Fon 02131/25451
+                Rezept
+                22.05.26
+                FLUCONACOL - CT 50MG HARTK, KAP, 14 St, N1
+                400 mg (8 Stück als Einmaldosierung)
+                30.07 (15890459)
+                30.07 #306635 / 13 alex apo. rauschenberg
+                Unterschrift des Arztes
+                alex apotheke
+                reuschenberg
+                Apothekerin Andrea Dutine
+                Am Reuschenberger Markt 2
+                41466 Neuss
+                Tel: 02131 - 125 979 0
+                Daniela Baas
+                Karlstr. 23
+                41469 Neuss
+                Kassenbon
+                Preisangaben in EUR
+                |  Anz | Artikel | Preis | Zuzahlung  |
+                | --- | --- | --- | --- |
+                |  PRz: FLUCONAZOL ACCORD 50MG | 1 HKP 14 ST | 30,07 | 30,07  |
+                |  PZN: 15890459 |  |  | BESTELLUNG  |
+                Positionen: 1
+                Total EUR: 30,07
+                MwSt 19% von 30,07: 4,80
+                Zahlungsart: EC
+                Datum: 22.05.26
+                Uhrzeit: 16:42:58
+                Vielen Dank für Ihren Einkauf.
+                """);
+
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().storeName()).isEqualTo("alex apotheke");
+        assertThat(result.receipt().storeBranch()).isEqualTo("Am Reuschenberger Markt 2");
+        assertThat(result.receipt().receiptDate()).isEqualTo("2026-05-22");
+        assertThat(result.receipt().receiptTime()).isEqualTo("16:42:58");
+        assertThat(result.receipt().totalAmount()).isEqualByComparingTo("30.07");
+        assertThat(result.receipt().items()).singleElement()
+                .satisfies(item -> {
+                    assertThat(item.description()).isEqualTo("FLUCONAZOL ACCORD 50MG 1 HKP 14 ST");
+                    assertThat(item.quantity()).isNull();
+                    assertThat(item.unit()).isNull();
+                    assertThat(item.unitPrice()).isNull();
+                    assertThat(item.totalPrice()).isEqualByComparingTo("30.07");
+                });
+    }
+
     // Verifies pharmacy receipts with a following-line total parse all medicines without header leakage.
     @Test
     void parsesApothekeEndsummeOnFollowingLine() {
@@ -286,6 +348,62 @@ class RuleBasedReceiptParserEdgeTests {
         assertThat(result.receipt().items().getFirst().description())
                 .isEqualTo("BEXSEROINJEKTIONSSUSP FER ISU 1X0.5ml");
         assertThat(result.receipt().items().getFirst().unitPrice()).isEqualByComparingTo("122.52");
+    }
+
+    // Verifies noisy OCR receipts can still use a leading quantity/price line and ignore tax/payment lines.
+    @Test
+    void parsesLandmarktOfferOcrReceipt() {
+        ReceiptParseResult result = parser.parse("""
+                LANDMARKT OFFER
+                Gubisrather Str. 23
+                41516 Grevenbroich
+                lel.: 02182 828 94 03
+                23/05/2026 SA 10:30
+                2X «11.50
+                Einstreu T2 23.00
+                Einstreu T2 4.50
+                Einstreu 12 4.50
+                SIEUERRAIE 2 7.000%
+                NETTO 2 29.91
+                STEUER 2 2.09
+                IuoTAl 32.00
+                EC-Cash 32.00
+                Ust-IdNr. DE
+                BEDIENER 01 024473 00000
+                StNr .:114/5713/1583
+                VIELEN DANK
+                FÜR IHREN
+                EINKAUF!
+                ECR Serial: X030B5AN900032
+                TSE Serial:C31AAF39E2CA118B2CF5
+                A3DOBAIFBOGL2ECBF7B3
+                265 109666 196F955A765
+                g9F8
+                VO; X030B5AN900032; Kassenbeleg-V1
+                ;Beleg“0.00_32.00_0.00_0.00_0.00
+                """);
+
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().storeName()).isEqualTo("LANDMARKT OFFER");
+        assertThat(result.receipt().storeBranch()).isEqualTo("Gubisrather Str. 23");
+        assertThat(result.receipt().receiptDate()).isEqualTo("2026-05-23");
+        assertThat(result.receipt().receiptTime()).isEqualTo("10:30");
+        assertThat(result.receipt().totalAmount()).isEqualByComparingTo("32.00");
+        assertThat(result.receipt().items()).hasSize(3);
+        assertThat(result.receipt().items().getFirst())
+                .satisfies(item -> {
+                    assertThat(item.description()).isEqualTo("Einstreu T2");
+                    assertThat(item.quantity()).isEqualByComparingTo("2");
+                    assertThat(item.unit()).isEqualTo("Stk");
+                    assertThat(item.unitPrice()).isEqualByComparingTo("11.50");
+                    assertThat(item.totalPrice()).isEqualByComparingTo("23.00");
+                });
+        assertThat(result.receipt().items())
+                .extracting(ParsedReceiptItem::description)
+                .containsExactly("Einstreu T2", "Einstreu T2", "Einstreu 12");
+        assertThat(result.receipt().items())
+                .extracting(ParsedReceiptItem::totalPrice)
+                .containsExactly(new BigDecimal("23.00"), new BigDecimal("4.50"), new BigDecimal("4.50"));
     }
 
     // Verifies accepted parse_rule rows can act as item-parser fallback after a user approves an AI suggestion.
