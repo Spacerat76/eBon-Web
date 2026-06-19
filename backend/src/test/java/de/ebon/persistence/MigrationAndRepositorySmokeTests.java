@@ -11,12 +11,17 @@ import de.ebon.persistence.repository.CategoryRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
 import de.ebon.support.PostgresIntegrationTestSupport;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceUtils;
+import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -42,6 +47,9 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
 
     @Autowired
     private CategorizationService categorizationService;
+
+    @Autowired
+    private EntityManager entityManager;
 
     // Verifies Flyway creates required schema objects, reference data, settings, and guarded category seeds.
     @Test
@@ -79,6 +87,18 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
                             and is_active = true
                         """,
                 Integer.class);
+        Integer activeGenericPaintRules = jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from categorization_rule rule
+                        join category category on category.id = rule.category_id
+                        where category.name = 'Baumarkt und Garten'
+                            and rule.match_field = 'DESCRIPTION'
+                            and rule.match_type = 'CONTAINS'
+                            and upper(rule.match_value) = 'FARBE'
+                            and rule.is_active = true
+                        """,
+                Integer.class);
 
         assertThat(successfulMigrations).isGreaterThanOrEqualTo(10);
         assertThat(receiptItemFtsIndex).isEqualTo("idx_receipt_item_description_fts");
@@ -91,6 +111,7 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
                 .doesNotContain("Obst und Gemuese", "Salat");
         assertThat(categorizationRules).isGreaterThan(0);
         assertThat(activeBroadStoreFallbacks).isZero();
+        assertThat(activeGenericPaintRules).isZero();
         assertThat(appSettingRepository.findById("sync_interval_minutes")).isPresent();
         assertThat(appSettingRepository.findById("ai_model")).isPresent();
         assertThat(appSettingRepository.findById("ai_categorization_min_confidence")).isPresent()
@@ -143,7 +164,12 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         receipt.addItem(new ReceiptItem(37, "MIRACEL WHIP", new BigDecimal("1.69")));
         receipt.addItem(new ReceiptItem(38, "CORNICHONS CHILI", new BigDecimal("0.99")));
         receipt.addItem(new ReceiptItem(39, "ORIGINAL NFB", new BigDecimal("3.29")));
-        receipt.addItem(new ReceiptItem(40, "Unklare Sonderposition", new BigDecimal("2.49")));
+        receipt.addItem(new ReceiptItem(40, "Nesquik Original", new BigDecimal("2.29")));
+        receipt.addItem(new ReceiptItem(41, "BABY-TOPS Groesse 074", new BigDecimal("4.99")));
+        receipt.addItem(new ReceiptItem(42, "Unklare Sonderposition", new BigDecimal("2.49")));
+        receipt.addItem(new ReceiptItem(43, "BABY-HOSE Farbe 1 Große 074", new BigDecimal("5.99")));
+        receipt.addItem(new ReceiptItem(44, "J BB TROUSERS Farbe 1 Große 068", new BigDecimal("6.99")));
+        receipt.addItem(new ReceiptItem(45, "Neutraler Artikel Farbe 1 Große 047", new BigDecimal("1.99")));
         receiptRepository.saveAndFlush(receipt);
 
         categorizationService.categorizeReceipt(receipt.getId());
@@ -229,8 +255,63 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         assertThat(items.get(38).getCategorySource()).isEqualTo(CategorySource.RULE);
         assertThat(items.get(39).getCategory().getName()).isEqualTo("Suesswaren und Snacks");
         assertThat(items.get(39).getCategorySource()).isEqualTo(CategorySource.RULE);
-        assertThat(items.get(40).getCategory()).isNull();
-        assertThat(items.get(40).getCategorySource()).isNull();
+        assertThat(items.get(40).getCategory().getName()).isEqualTo("Getraenke");
+        assertThat(items.get(40).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(41).getCategory().getName()).isEqualTo("Baby und Kind");
+        assertThat(items.get(41).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(42).getCategory()).isNull();
+        assertThat(items.get(42).getCategorySource()).isNull();
+        assertThat(items.get(43).getCategory().getName()).isEqualTo("Baby und Kind");
+        assertThat(items.get(43).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(44).getCategory().getName()).isEqualTo("Baby und Kind");
+        assertThat(items.get(44).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(45).getCategory()).isNull();
+        assertThat(items.get(45).getCategorySource()).isNull();
+    }
+
+    // Verifies V22 repairs C&A rule assignments created before its product-specific rules existed.
+    @Test
+    void caMigrationRepairsHistoricalRuleAssignmentsWithoutOverwritingManualItems() {
+        Category hardwareCategory = categoryRepository.findByName("Baumarkt und Garten").orElseThrow();
+        Category babyCategory = categoryRepository.findByName("Baby und Kind").orElseThrow();
+        Receipt receipt = new Receipt(4244, "historical C&A receipt");
+        receipt.setStoreName("C&A");
+        receipt.addItem(ruleCategorizedItem(0, "KI-TAGESW Farbe 1 Große 068", hardwareCategory));
+        receipt.addItem(ruleCategorizedItem(1, "BABY-TOPS Farbe 1 Große 074", hardwareCategory));
+        receipt.addItem(ruleCategorizedItem(2, "BABY-COMBI Farbe 1 Große 074", hardwareCategory));
+        receipt.addItem(ruleCategorizedItem(3, "B-ACCESS Farbe 1 Große 070", hardwareCategory));
+        receipt.addItem(ruleCategorizedItem(4, "J BB TOPS Farbe 1 Große 074", hardwareCategory));
+        receipt.addItem(ruleCategorizedItem(5, "BABY-HOSE Farbe 1 Große 074", hardwareCategory));
+        ReceiptItem manuallyEditedItem = new ReceiptItem(6, "J BB TROUSERS Farbe 1 Große 068", new BigDecimal("5.99"));
+        manuallyEditedItem.assignCategory(hardwareCategory, CategorySource.MANUAL);
+        receipt.addItem(manuallyEditedItem);
+        receiptRepository.saveAndFlush(receipt);
+
+        Connection connection = DataSourceUtils.getConnection(jdbcTemplate.getDataSource());
+        try {
+            ScriptUtils.executeSqlScript(
+                    connection,
+                    new ClassPathResource("db/migration/V22__refine_ca_color_size_categorization.sql"));
+        } finally {
+            DataSourceUtils.releaseConnection(connection, jdbcTemplate.getDataSource());
+        }
+
+        entityManager.clear();
+        List<ReceiptItem> items = receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId());
+        assertThat(items.subList(0, 6)).allSatisfy(item -> {
+            assertThat(item.getCategory().getName()).isEqualTo(babyCategory.getName());
+            assertThat(item.getCategorySource()).isEqualTo(CategorySource.RULE);
+            assertThat(item.isManuallyEdited()).isFalse();
+        });
+        assertThat(items.get(6).getCategory().getName()).isEqualTo(hardwareCategory.getName());
+        assertThat(items.get(6).getCategorySource()).isEqualTo(CategorySource.MANUAL);
+        assertThat(items.get(6).isManuallyEdited()).isTrue();
+    }
+
+    private ReceiptItem ruleCategorizedItem(int positionIndex, String description, Category category) {
+        ReceiptItem item = new ReceiptItem(positionIndex, description, new BigDecimal("5.99"));
+        item.assignCategory(category, CategorySource.RULE);
+        return item;
     }
 
     // Verifies restaurant store context wins over grocery-oriented product-name rules such as hamburger buns.

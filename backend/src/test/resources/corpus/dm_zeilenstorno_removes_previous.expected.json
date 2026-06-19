@@ -1,0 +1,22 @@
+{
+  "receiptDate": "2026-05-13",
+  "receiptTime": "17:43:00",
+  "storeName": "dm",
+  "storeBranch": "Filiale DBA4/3",
+  "totalAmount": 11.90,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Fotoauftrag",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 11.90,
+      "discountAmount": null
+    }
+  ]
+}

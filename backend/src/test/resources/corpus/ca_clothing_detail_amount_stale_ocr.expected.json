@@ -1,0 +1,58 @@
+{
+  "receiptDate": "2026-06-19",
+  "receiptTime": "14:23:20",
+  "storeName": "C&A",
+  "storeBranch": "Breslauer Str. 2-4",
+  "totalAmount": 45.95,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": "Payback",
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "BABY-COMBI Groesse 074",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 8.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "B-ACCESS. Groesse 047",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 4.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "BABY-COMBI Groesse 074",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 7.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 3,
+      "description": "B-OUTDOOR Groesse 074",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 13.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 4,
+      "description": "B-WAESCHE Groesse 074",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 9.99,
+      "discountAmount": null
+    }
+  ]
+}

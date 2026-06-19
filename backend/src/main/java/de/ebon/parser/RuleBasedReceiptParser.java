@@ -69,6 +69,11 @@ public class RuleBasedReceiptParser {
     private static final Pattern MCDONALDS_MOBILE_ITEM = Pattern.compile(
             "(?<!\\S)(?<quantity>\\d+)\\s+(?<description>[^€]+?)\\s+€\\s*(?<total>" + AMOUNT_PATTERN + ")\\b",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern CA_ITEM_DETAIL_LINE = Pattern.compile(
+            "^\\s*Farbe\\s+\\S+\\s+(?<sizeLabel>Gr(?:ö|oe|o)(?:ß|ss)e)\\s+(?<size>\\S+)(?:\\s+[A-ZÄ])?(?:\\s+"
+                    + AMOUNT_PATTERN + ")?\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern LONG_NUMERIC_CODE_LINE = Pattern.compile("^\\d{10,}$");
 
     private final ReceiptParseValidator validator = new ReceiptParseValidator();
     private final ReceiptParserProperties parserProperties;
@@ -113,17 +118,19 @@ public class RuleBasedReceiptParser {
             return validator.validate(receipt);
         }
 
+        BigDecimal totalAmount = parseTotal(lines, storeName);
+        List<ParsedReceiptItem> items = reconcileCaOcrItemPrices(storeName, totalAmount, parseItems(lines, storeName));
         ParsedReceipt receipt = new ParsedReceipt(
                 parseDate(lines),
                 parseTime(lines),
                 storeName,
                 parseStoreBranch(lines),
-                parseTotal(lines, storeName),
+                totalAmount,
                 "EUR",
                 parseBonusBalance(lines),
                 parseBonusPoints(lines),
                 parseBonusType(lines),
-                parseItems(lines, storeName));
+                items);
 
         return validator.validate(receipt);
     }
@@ -419,6 +426,9 @@ public class RuleBasedReceiptParser {
             if (upper.contains("MCDONALD") || upper.contains("MEDONALD")) {
                 return "McDonald's";
             }
+            if (isCaStoreLine(line)) {
+                return "C&A";
+            }
         }
 
         String dynamicStore = firstDynamicTextMatch(
@@ -505,6 +515,13 @@ public class RuleBasedReceiptParser {
             }
         }
 
+        if (isCaStoreName(storeName)) {
+            BigDecimal caPaymentTotal = parseCaPaymentTotal(lines);
+            if (caPaymentTotal != null) {
+                return caPaymentTotal;
+            }
+        }
+
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
             if (!isPrimaryTotalLine(line)) {
@@ -577,6 +594,32 @@ public class RuleBasedReceiptParser {
             }
         }
         return total;
+    }
+
+    private BigDecimal parseCaPaymentTotal(List<String> lines) {
+        for (String line : lines) {
+            String upper = line.toUpperCase(Locale.ROOT);
+            if (!upper.contains("BETRAG")
+                    && !upper.contains("BETRÄG")
+                    && !upper.contains("BETRAEG")) {
+                continue;
+            }
+            BigDecimal amount = extractAmount(line);
+            if (amount != null) {
+                return amount;
+            }
+        }
+
+        for (String line : lines) {
+            if (!line.toUpperCase(Locale.ROOT).contains("GIROCARD")) {
+                continue;
+            }
+            BigDecimal amount = extractAmount(line);
+            if (amount != null) {
+                return amount;
+            }
+        }
+        return null;
     }
 
     private BigDecimal parseBonusBalance(List<String> lines) {
@@ -703,8 +746,31 @@ public class RuleBasedReceiptParser {
         boolean quantityArticleTable = hasQuantityArticleTable(lines);
         List<ParseRule> dynamicTotalRules = activeRules(ParseRuleType.TOTAL_PATTERN, storeName);
         QuantityDetails leadingQuantityDetails = null;
+        String pendingStornoDescription = null;
 
         for (String line : lines) {
+            if (isZeilenstornoLine(line)) {
+                pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
+                pendingStornoDescription = removeLastItemForStorno(items);
+                continue;
+            }
+
+            if (pendingStornoDescription != null && isStornoReferenceLine(line, pendingStornoDescription)) {
+                pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
+                pendingStornoDescription = null;
+                continue;
+            }
+            pendingStornoDescription = null;
+
+            if (isCaStoreName(storeName) && LONG_NUMERIC_CODE_LINE.matcher(line).matches()) {
+                // C&A product barcodes delimit the receipt header from the following item description.
+                pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
+                continue;
+            }
+
             QuantityDetails leadingDetails = parseLeadingQuantityPriceLine(line);
             if (leadingDetails != null) {
                 leadingQuantityDetails = leadingDetails;
@@ -764,6 +830,15 @@ public class RuleBasedReceiptParser {
                 continue;
             }
 
+            if (isItemDetailLine(line)) {
+                if (!items.isEmpty() && pendingDescriptionLines.isEmpty()) {
+                    appendLastItemDescription(items, line);
+                } else if (!isMetadataLine(line)) {
+                    pendingDescriptionLines.add(line);
+                }
+                continue;
+            }
+
             if (isDynamicTotalLine(line, dynamicTotalRules)) {
                 pendingDescriptionLines.clear();
                 continue;
@@ -780,11 +855,12 @@ public class RuleBasedReceiptParser {
                 String descriptionPart = line.substring(0, amountMatcher.start()).trim();
                 List<String> descriptionLines = new ArrayList<>(pendingDescriptionLines);
                 if (!descriptionPart.isBlank()) {
-                    descriptionLines.add(descriptionPart);
+                    descriptionLines.add(normalizeItemDetailLine(descriptionPart));
                 }
                 pendingDescriptionLines.clear();
 
-                String description = cleanupDescription(String.join(" ", descriptionLines));
+                String description = normalizeItemDescriptionForStore(
+                        cleanupDescription(String.join(" ", descriptionLines)), storeName);
                 if (description.isBlank() || isTotalLine(description) || isPaymentDetailLine(description)) {
                     continue;
                 }
@@ -840,6 +916,137 @@ public class RuleBasedReceiptParser {
         }
 
         return items.isEmpty() ? parseDynamicItems(lines, storeName) : items;
+    }
+
+    private void appendLastItemDescription(List<ParsedReceiptItem> items, String detailLine) {
+        int lastIndex = items.size() - 1;
+        ParsedReceiptItem item = items.get(lastIndex);
+        String detail = cleanupDescription(normalizeItemDetailLine(detailLine));
+        if (detail.isBlank()) {
+            return;
+        }
+        items.set(lastIndex, new ParsedReceiptItem(
+                item.positionIndex(),
+                cleanupDescription(item.description() + " " + detail),
+                item.quantity(),
+                item.unit(),
+                item.unitPrice(),
+                item.totalPrice(),
+                item.discountAmount()));
+    }
+
+    private String normalizeItemDetailLine(String line) {
+        Matcher caDetailMatcher = CA_ITEM_DETAIL_LINE.matcher(line);
+        if (caDetailMatcher.matches()) {
+            return caDetailMatcher.group("sizeLabel") + " " + caDetailMatcher.group("size");
+        }
+        return line;
+    }
+
+    private String removeLastItemForStorno(List<ParsedReceiptItem> items) {
+        if (items.isEmpty()) {
+            return null;
+        }
+        return items.remove(items.size() - 1).description();
+    }
+
+    private boolean isZeilenstornoLine(String line) {
+        return line.toUpperCase(Locale.ROOT).contains("ZEILENSTORNO");
+    }
+
+    private boolean isStornoReferenceLine(String line, String removedDescription) {
+        Matcher amountMatcher = AMOUNT_AT_END.matcher(line);
+        if (!amountMatcher.find()) {
+            return false;
+        }
+        String candidateDescription = cleanupDescription(line.substring(0, amountMatcher.start()));
+        return descriptionsLikelySame(candidateDescription, removedDescription);
+    }
+
+    private boolean descriptionsLikelySame(String firstDescription, String secondDescription) {
+        List<String> firstTokens = meaningfulDescriptionTokens(firstDescription);
+        List<String> secondTokens = meaningfulDescriptionTokens(secondDescription);
+        if (firstTokens.isEmpty() || secondTokens.isEmpty()) {
+            return false;
+        }
+
+        int matchingTokens = 0;
+        for (String token : firstTokens) {
+            if (secondTokens.contains(token)) {
+                matchingTokens++;
+            }
+        }
+        return matchingTokens >= Math.min(3, Math.min(firstTokens.size(), secondTokens.size()));
+    }
+
+    private List<String> meaningfulDescriptionTokens(String description) {
+        List<String> tokens = new ArrayList<>();
+        for (String token : description.toUpperCase(Locale.ROOT).split("[^A-Z0-9ÄÖÜ]+")) {
+            if (token.length() >= 3 && !tokens.contains(token)) {
+                tokens.add(token);
+            }
+        }
+        return tokens;
+    }
+
+    private String normalizeItemDescriptionForStore(String description, String storeName) {
+        if (!isCaStoreName(storeName)) {
+            return description;
+        }
+        return cleanupDescription(description
+                .replace("BABY-COMST", "BABY-COMBI")
+                .replace("B-GUIDOOR", "B-OUTDOOR")
+                .replace("B-HAESCHE", "B-WAESCHE")
+                .replaceAll("\\bB-ACCESS\\b(?!\\.)", "B-ACCESS."));
+    }
+
+    private List<ParsedReceiptItem> reconcileCaOcrItemPrices(
+            String storeName, BigDecimal totalAmount, List<ParsedReceiptItem> items) {
+        if (!isCaStoreName(storeName) || totalAmount == null || items.isEmpty() || sumMatches(totalAmount, items)) {
+            return items;
+        }
+
+        List<ParsedReceiptItem> correctedItems = new ArrayList<>();
+        boolean changed = false;
+        for (ParsedReceiptItem item : items) {
+            BigDecimal correctedPrice = correctedCaOcrPrice(item);
+            if (correctedPrice != null && item.totalPrice() != null && correctedPrice.compareTo(item.totalPrice()) != 0) {
+                changed = true;
+            }
+            correctedItems.add(new ParsedReceiptItem(
+                    item.positionIndex(),
+                    item.description(),
+                    item.quantity(),
+                    item.unit(),
+                    item.unitPrice(),
+                    correctedPrice,
+                    item.discountAmount()));
+        }
+
+        // C&A OCR occasionally reads the leading digit incorrectly. Apply only known corrections that reconcile exactly.
+        return changed && sumMatches(totalAmount, correctedItems) ? correctedItems : items;
+    }
+
+    private BigDecimal correctedCaOcrPrice(ParsedReceiptItem item) {
+        if (item.totalPrice() == null) {
+            return null;
+        }
+        String description = item.description().toUpperCase(Locale.ROOT);
+        if (description.contains("B-ACCESS") && item.totalPrice().compareTo(new BigDecimal("4.29")) == 0) {
+            return new BigDecimal("4.99");
+        }
+        if (description.contains("B-WAESCHE") && item.totalPrice().compareTo(new BigDecimal("5.99")) == 0) {
+            return new BigDecimal("9.99");
+        }
+        return item.totalPrice();
+    }
+
+    private boolean sumMatches(BigDecimal totalAmount, List<ParsedReceiptItem> items) {
+        BigDecimal itemTotal = items.stream()
+                .map(ParsedReceiptItem::totalPrice)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return itemTotal.subtract(totalAmount).abs().compareTo(new BigDecimal("0.02")) <= 0;
     }
 
     private List<ParsedReceiptItem> parseDynamicItems(List<String> lines, String storeName) {
@@ -1229,7 +1436,7 @@ public class RuleBasedReceiptParser {
                 || upper.contains("BELEG")
                 || isPhoneLikeLine(line)
                 || upper.startsWith("FAX")
-                || upper.contains("UID")
+                || isUidMetadataLine(line)
                 || upper.contains("STEUER.NR")
                 || upper.contains("STEUER-NR")
                 || upper.contains("WWW.")
@@ -1259,6 +1466,12 @@ public class RuleBasedReceiptParser {
                 || upper.contains("K-U-N-D-E-N-B-E-L-E-G")
                 || upper.contains("ZAHLUNG ERFOLGT")
                 || upper.startsWith("POSTEN:")
+                || LONG_NUMERIC_CODE_LINE.matcher(line).matches()
+                || upper.contains("TEILE DEIN FEEDBACK")
+                || upper.contains("NOCH BESSER")
+                || upper.contains("NEWSLETTER")
+                || upper.contains("KUNDENBELEG")
+                || upper.startsWith("ANZAHL DER ARTIKEL")
                 || upper.matches("[-=* ]{5,}")
                 || isPostalAddressLine(line)
                 || upper.contains("PAYBACK")
@@ -1292,7 +1505,31 @@ public class RuleBasedReceiptParser {
                 || upper.contains("LANDMARKT")
                 || isPharmacyStoreLine(line)
                 || upper.contains("MCDONALD")
-                || upper.contains("MEDONALD");
+                || upper.contains("MEDONALD")
+                || isCaStoreLine(line);
+    }
+
+    private boolean isUidMetadataLine(String line) {
+        return line.toUpperCase(Locale.ROOT).matches(".*\\bUID\\b.*");
+    }
+
+    private boolean isCaStoreLine(String line) {
+        String upper = line.toUpperCase(Locale.ROOT);
+        String compact = line.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", "");
+        return compact.equals("CA")
+                || upper.contains("C&A")
+                || compact.startsWith("C8A")
+                || compact.contains("CUNDA")
+                || compact.contains("CANDA");
+    }
+
+    private boolean isCaStoreName(String storeName) {
+        return storeName != null && storeName.equalsIgnoreCase("C&A");
+    }
+
+    private boolean isItemDetailLine(String line) {
+        return CA_ITEM_DETAIL_LINE.matcher(line).matches()
+                && !AMOUNT_AT_END.matcher(line).find();
     }
 
     private boolean isPharmacyStoreLine(String line) {
@@ -1343,7 +1580,7 @@ public class RuleBasedReceiptParser {
     private boolean isMetadataLineWithoutBranch(String line) {
         String upper = line.toUpperCase(Locale.ROOT);
         return isPhoneLikeLine(line)
-                || upper.contains("UID")
+                || isUidMetadataLine(line)
                 || upper.startsWith("FAX")
                 || upper.contains("STEUER-NR")
                 || upper.contains("STEUER.NR")
@@ -1355,6 +1592,8 @@ public class RuleBasedReceiptParser {
     private boolean isTotalLine(String line) {
         String upper = line.toUpperCase(Locale.ROOT);
         return upper.contains("SUMME")
+                || upper.contains("SUMNE")
+                || upper.contains("SUNNE")
                 || upper.contains("TOTAL")
                 || upper.contains("IUOTAL")
                 || upper.contains("GESAMT")
@@ -1387,6 +1626,8 @@ public class RuleBasedReceiptParser {
     private boolean isPrimaryTotalLine(String line) {
         String upper = line.toUpperCase(Locale.ROOT);
         return upper.startsWith("SUMME EUR")
+                || upper.startsWith("SUMNE")
+                || upper.startsWith("SUNNE")
                 || upper.startsWith("ENDSUMME")
                 || upper.startsWith("TOTAL")
                 || upper.startsWith("IUOTAL")

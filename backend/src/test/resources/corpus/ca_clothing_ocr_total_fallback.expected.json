@@ -1,0 +1,67 @@
+{
+  "receiptDate": "2026-06-19",
+  "receiptTime": "13:49:09",
+  "storeName": "C&A",
+  "storeBranch": "Niederstr. 26-30",
+  "totalAmount": 48.94,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": "Payback",
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "KI-TAGESW Groesse 068",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 15.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "BABY-TOPS Groesse 074",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 4.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "BABY-COMBI Groesse 074",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 7.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 3,
+      "description": "BABY-TOPS Groesse 074",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 3.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 4,
+      "description": "B-ACCESS. Groesse 070",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 11.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 5,
+      "description": "J BB TOPS Groesse 074",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 3.99,
+      "discountAmount": null
+    }
+  ]
+}
