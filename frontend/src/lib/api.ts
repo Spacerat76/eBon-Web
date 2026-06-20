@@ -18,6 +18,7 @@ import type {
   MessageResponse,
   MigrationDraftDTO,
   PageResponse,
+  PaperlessRawTextStatusDTO,
   ParseRuleSuggestionAcceptRequest,
   ParseRuleSuggestionDTO,
   ParseRuleSuggestionStatus,
@@ -28,6 +29,7 @@ import type {
   ReceiptItemUpdateRequest,
   ReceiptListParams,
   ReceiptUpdateRequest,
+  RawTextSource,
   ReportByCategoryDTO,
   ReportByPeriodDTO,
   ReportByStoreDTO,
@@ -109,6 +111,10 @@ export class ApiClient {
     return this.request(`/receipts/${id}`);
   }
 
+  paperlessRawTextStatus(id: number): Promise<PaperlessRawTextStatusDTO> {
+    return this.request(`/receipts/${id}/paperless-raw-text-status`);
+  }
+
   updateReceipt(id: number, request: ReceiptUpdateRequest): Promise<ReceiptDTO> {
     return this.request(`/receipts/${id}`, {
       method: "PUT",
@@ -121,13 +127,15 @@ export class ApiClient {
     overwriteManualEdits: boolean,
     useAiFallback = true,
     aiTextMode?: "MINIMIZED" | "FULL_TEXT" | null,
-    confirmFullText = false
+    confirmFullText = false,
+    rawTextSource: RawTextSource = "STORED"
   ): Promise<ReceiptDTO> {
     return this.request(`/receipts/${id}/reparse?${toQuery({
       overwriteManualEdits: overwriteManualEdits ? "true" : "false",
       useAiFallback: useAiFallback ? "true" : "false",
       aiTextMode: aiTextMode || undefined,
-      confirmFullText: confirmFullText ? "true" : "false"
+      confirmFullText: confirmFullText ? "true" : "false",
+      rawTextSource
     })}`, {
       method: "POST"
     });

@@ -2,6 +2,9 @@ package de.ebon.api.service;
 
 import de.ebon.api.dto.PageResponse;
 import de.ebon.api.dto.DataMaintenanceResultDto;
+import de.ebon.api.dto.PaperlessRawTextStatus;
+import de.ebon.api.dto.PaperlessRawTextStatusDto;
+import de.ebon.api.dto.RawTextSource;
 import de.ebon.api.dto.ReceiptDto;
 import de.ebon.api.dto.ReceiptItemCreateRequest;
 import de.ebon.api.dto.ReceiptItemDto;
@@ -9,6 +12,9 @@ import de.ebon.api.dto.ReceiptItemUpdateRequest;
 import de.ebon.api.dto.ReceiptUpdateRequest;
 import de.ebon.categorization.CategorizationService;
 import de.ebon.config.PaperlessProperties;
+import de.ebon.paperless.PaperlessClient;
+import de.ebon.paperless.PaperlessClientException;
+import de.ebon.paperless.PaperlessDocument;
 import de.ebon.parser.ParsedReceipt;
 import de.ebon.parser.ParseExecutionOptions;
 import de.ebon.parser.ReceiptParseApplier;
@@ -83,6 +89,9 @@ class ReceiptApiServiceTests {
     @Mock
     private ReceiptParseApplier receiptParseApplier;
 
+    @Mock
+    private PaperlessClient paperlessClient;
+
     private final ReceiptParseApplier realReceiptParseApplier = new ReceiptParseApplier();
     private final PaperlessProperties paperlessProperties = new PaperlessProperties();
 
@@ -99,7 +108,8 @@ class ReceiptApiServiceTests {
                 paperlessProperties,
                 categorizationService,
                 receiptParserService,
-                realReceiptParseApplier);
+                realReceiptParseApplier,
+                paperlessClient);
         paperlessProperties.setPublicBaseUrl("http://paperless.web");
         paperlessProperties.setDocumentUrlTemplate("");
         lenient().when(appSettingRepository.findById(anyString())).thenReturn(Optional.empty());
@@ -398,6 +408,87 @@ class ReceiptApiServiceTests {
         assertThat(dto.storeBranch()).isEqualTo("Am Markt 1");
         verify(receiptParserService).parse(eq(receipt), any(ParseExecutionOptions.class));
         verify(categorizationService).categorizeReceipt(receipt.getId());
+    }
+
+    // Verifies the status check ignores transport-only line-ending differences and exposes no raw text.
+    @Test
+    void paperlessRawTextStatusTreatsEquivalentLineEndingsAsUnchanged() {
+        Receipt receipt = receipt(70L, 8001, "REWE", false, "Bio Milch");
+        ReflectionTestUtils.setField(receipt, "rawText", "REWE\r\nBio Milch\r\nSUMME 1,99");
+        when(receiptRepository.findById(receipt.getId())).thenReturn(Optional.of(receipt));
+        when(paperlessClient.fetchDocumentById(8001))
+                .thenReturn(new PaperlessDocument(8001, "REWE", "2026-06-19", "REWE\nBio Milch\nSUMME 1,99"));
+
+        PaperlessRawTextStatusDto result = service.paperlessRawTextStatus(receipt.getId());
+
+        assertThat(result.status()).isEqualTo(PaperlessRawTextStatus.UNCHANGED);
+    }
+
+    // Verifies the status check reports an actual Paperless content change without returning that content.
+    @Test
+    void paperlessRawTextStatusReportsChangedForDifferentContent() {
+        Receipt receipt = receipt(73L, 8004, "REWE", false, "Bio Milch");
+        when(receiptRepository.findById(receipt.getId())).thenReturn(Optional.of(receipt));
+        when(paperlessClient.fetchDocumentById(8004))
+                .thenReturn(new PaperlessDocument(8004, "REWE", "2026-06-19", "Korrigierter Rohtext"));
+
+        PaperlessRawTextStatusDto result = service.paperlessRawTextStatus(receipt.getId());
+
+        assertThat(result.status()).isEqualTo(PaperlessRawTextStatus.CHANGED);
+    }
+
+    // Verifies that a confirmed Paperless source replaces stored raw text before the parser sees the receipt.
+    @Test
+    void reparseReceiptUsesConfirmedPaperlessRawTextTransactionally() {
+        Receipt receipt = receipt(71L, 8002, "REWE", false, "Alte Position");
+        when(receiptRepository.findById(receipt.getId())).thenReturn(Optional.of(receipt));
+        when(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()))
+                .thenReturn(List.of(firstItem(receipt)));
+        when(paperlessClient.fetchDocumentById(8002))
+                .thenReturn(new PaperlessDocument(8002, "REWE", "2026-06-19", "Neuer Rohtext"));
+        when(receiptParserService.parse(eq(receipt), any(ParseExecutionOptions.class))).thenAnswer(invocation -> {
+            assertThat(receipt.getRawText()).isEqualTo("Neuer Rohtext");
+            return new ReceiptParseResult(ParseStatus.PARSE_ERROR, null, "Test-Parsefehler");
+        });
+        when(receiptRepository.saveAndFlush(any(Receipt.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.reparseReceipt(receipt.getId(), false, true, null, false, RawTextSource.PAPERLESS);
+
+        assertThat(receipt.getRawText()).isEqualTo("Neuer Rohtext");
+        verify(paperlessClient).fetchDocumentById(8002);
+    }
+
+    // Verifies that an unavailable Paperless instance is represented as a safe status without leaking client details.
+    @Test
+    void paperlessRawTextStatusReportsUnavailableWhenPaperlessCannotBeRead() {
+        Receipt receipt = receipt(72L, 8003, "REWE", false, "Bio Milch");
+        when(receiptRepository.findById(receipt.getId())).thenReturn(Optional.of(receipt));
+        when(paperlessClient.fetchDocumentById(8003))
+                .thenThrow(new PaperlessClientException("internal Paperless transport detail"));
+
+        PaperlessRawTextStatusDto result = service.paperlessRawTextStatus(receipt.getId());
+
+        assertThat(result.status()).isEqualTo(PaperlessRawTextStatus.UNAVAILABLE);
+    }
+
+    // Verifies a failed confirmed refresh does not replace the persisted raw text or invoke the parser.
+    @Test
+    void reparseReceiptKeepsStoredRawTextWhenPaperlessRefreshFails() {
+        Receipt receipt = receipt(74L, 8005, "REWE", false, "Bio Milch");
+        when(receiptRepository.findById(receipt.getId())).thenReturn(Optional.of(receipt));
+        when(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()))
+                .thenReturn(List.of(firstItem(receipt)));
+        when(paperlessClient.fetchDocumentById(8005))
+                .thenThrow(new PaperlessClientException("internal Paperless transport detail"));
+
+        assertThatThrownBy(() -> service.reparseReceipt(
+                        receipt.getId(), false, true, null, false, RawTextSource.PAPERLESS))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(throwable -> assertThat(((ResponseStatusException) throwable).getStatusCode().value())
+                        .isEqualTo(502));
+
+        assertThat(receipt.getRawText()).isEqualTo("raw");
+        verify(receiptParserService, never()).parse(any(Receipt.class), any(ParseExecutionOptions.class));
     }
 
     // Verifies the administrative reparse-all action preserves manual work by default and reports skipped receipts.

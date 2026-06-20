@@ -540,6 +540,10 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 - **F-02.5:** Kann ein Bon nicht vollständig geparst werden, wird `parse_status = PARSE_ERROR` gesetzt und `parse_error_message` befüllt. Teilweise geparste Daten werden dennoch gespeichert.
 - **F-02.6:** Ein erfolgreich geparstes Dokument erhält `parse_status = PARSED`. **Definition „PARSED":** Ein Bon gilt als erfolgreich geparst (PARSED), wenn mindestens `total_amount`, `receipt_date` und `store_name` extrahiert wurden UND mindestens eine `receipt_item` mit gültigem `total_price` vorliegt. Fehlen einzelne optionale Felder (z.B. `receipt_time`, `store_branch`), gilt der Bon dennoch als PARSED.
 - **F-02.7:** Der Nutzer kann den Re-Parse eines einzelnen Bons über die UI triggern (UC-09).
+- **F-02.7a:** Vor einem Einzel-Reparse prüft die Anwendung den aktuellen Paperless-Text des zugehörigen Dokuments gegen den gespeicherten `receipt.raw_text`. Der Vergleich normalisiert ausschließlich Zeilenenden (`CRLF`/`LF`); sonstige Textunterschiede gelten als Änderung.
+- **F-02.7b:** Bei geändertem Paperless-Text fragt die Detailansicht ausdrücklich, ob der neue Text übernommen und für den Reparse verwendet werden soll. Der Nutzer kann alternativ den gespeicherten Rohtext verwenden oder abbrechen. Die Statusprüfung überträgt weder Rohtext noch Hashes an die UI.
+- **F-02.7c:** Der Einzel-Reparse akzeptiert `rawTextSource=STORED|PAPERLESS`, mit `STORED` als API-Default. Bei `PAPERLESS` lädt das Backend den Text unmittelbar vor dem Parse erneut, aktualisiert `receipt.raw_text` und parst denselben Text transaktional. Schlägt der Abruf fehl, bleibt der Bon unverändert; die UI bietet dann nur den gespeicherten Text an.
+- **F-02.7d:** Bulk-Reparse, Reparse nach Regelübernahme und automatische Sync-Läufe verwenden immer den gespeicherten Rohtext und führen keine dialogpflichtige Paperless-Rohtextaktualisierung aus.
 
 **Parser-Normalisierung und Validierung:**
 
@@ -1234,8 +1238,9 @@ Fehlerresponse-Format:
 |---|---|---|
 | GET | `/api/receipts` | Liste aller Bons (paginiert, filterbar nach `status`, `dateFrom`, `dateTo`, `store`) |
 | GET | `/api/receipts/{id}` | Bon-Details inkl. Positionen |
+| GET | `/api/receipts/{id}/paperless-raw-text-status` | Statusvergleich zwischen gespeichertem und aktuellem Paperless-Rohtext für einen Einzel-Reparse |
 | PUT | `/api/receipts/{id}` | Bon-Metadaten und Positionen aktualisieren |
-| POST | `/api/receipts/{id}/reparse` | Bon erneut parsen |
+| POST | `/api/receipts/{id}/reparse` | Bon erneut parsen; optional `rawTextSource=STORED|PAPERLESS`, Default `STORED` |
 | POST | `/api/receipts/reparse` | Alle Bons erneut parsen, optional mit `overwriteManualEdits=false` |
 | DELETE | `/api/receipts/{id}` | Bon und Positionen löschen |
 
@@ -1246,6 +1251,8 @@ Query-Parameter für `GET /api/receipts`:
 - `store` (partial match)
 - `includeDeleted` (default `false`; nur für administrative Ansichten)
 - `uncategorizedOnly` (default `false`; zeigt nur Bons mit mindestens einer Position, bei der `category_id = NULL` und `category_source = NULL`)
+
+`GET /api/receipts/{id}/paperless-raw-text-status` antwortet mit `status = UNCHANGED`, `CHANGED` oder `UNAVAILABLE`. Die Antwort enthält keinen Rohtext, keine Prüfsumme, keine Zugangsdaten und keine Details eines Paperless-Fehlers.
 
 #### Receipt Items
 
@@ -1804,6 +1811,7 @@ Die App hat eine linke Seitenleiste (Desktop) / untere Tab-Bar (Mobile) mit folg
 - Produktzuordnungen sind kompakt korrigierbar. Unsichere Zuordnungen zeigen `NEEDS_REVIEW`; `NO_PRODUCT` wird als eigener Status dargestellt und nicht mit Kategorien verwechselt.
 - Im Editiermodus: Inline-Editierung aller Felder, Dropdown für Kategorie, Buttons „Position löschen" / „Position hinzufügen". Speichern/Abbrechen bleibt beim Scrollen sichtbar und klickbar (z.B. Sticky Action-Bar), damit lange Bons nicht nach oben zurückscrollen müssen.
 - Rohtextansicht (ausklappbar): `raw_text` in Monospace-Font.
+- Einzel-Reparse: Vor dem Start prüft die UI den Paperless-Rohtext. Bei `CHANGED` erscheint ein klarer Bestätigungsdialog mit den Optionen „Neuen Rohtext übernehmen und parsen“, „Gespeicherten Rohtext verwenden“ und Abbrechen. Bei `UNAVAILABLE` erklärt die UI die fehlende Paperless-Verbindung und bietet nur den gespeicherten Rohtext oder Abbrechen an. Bulk-Reparse erhält keinen solchen Dialog.
 
 #### 9.2.4 Suche
 
@@ -2419,6 +2427,9 @@ Jede `expected.json` folgt dem KI-Parsing-JSON-Schema aus F-02. Bei negativen Te
 - Given die Item-Summe weicht um mehr als `0.02` vom Gesamtbetrag ab, then wird `PARSE_ERROR` gesetzt und der Teilparse gespeichert.
 - Given regelbasiertes Parsing scheitert und KI liefert valides JSON, then wird der Bon aus dem KI-JSON gespeichert.
 - Given KI liefert invalides JSON, then wird kein ungeprüftes Ergebnis persistiert.
+- Given der aktuelle Paperless-Rohtext eines Einzelbons abweicht, when der Nutzer „Neuen Rohtext übernehmen und parsen“ bestätigt, then wird der neue Text transaktional gespeichert und geparst.
+- Given der aktuelle Paperless-Rohtext abweicht, when der Nutzer „Gespeicherten Rohtext verwenden“ wählt, then bleibt `receipt.raw_text` unverändert.
+- Given Paperless beim Einzel-Reparse nicht erreichbar ist, then zeigt die UI keine externen Fehlerdetails und ermöglicht nur einen Reparse mit gespeichertem Rohtext.
 
 **Kategorisierung:**
 

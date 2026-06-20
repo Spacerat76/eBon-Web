@@ -36,6 +36,16 @@ try {
   await clickNav("#/receipts");
   await waitForText("Bons");
   await waitForText("REWE");
+
+  // The mock receipt id is stable, so navigate directly to the detail route.
+  // Clicking a table row is unreliable in headless Edge because the row itself
+  // is not the interactive element that receives the application navigation.
+  await driver.get(`${baseUrl}/#/receipts/1`);
+  await waitForText("Erneut parsen");
+  await clickButton("Erneut parsen");
+  await waitForText("Paperless-Rohtext wurde seit dem Import geändert.");
+  await clickButton("Gespeicherten Rohtext verwenden");
+  await waitForText("Bon wurde erneut geparst.");
 } finally {
   await driver.quit();
 }

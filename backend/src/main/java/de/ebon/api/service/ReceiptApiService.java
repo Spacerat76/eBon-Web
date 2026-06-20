@@ -4,6 +4,9 @@ import de.ebon.api.dto.AiSuggestionDto;
 import de.ebon.api.dto.AiParsingSummaryDto;
 import de.ebon.api.dto.PageResponse;
 import de.ebon.api.dto.DataMaintenanceResultDto;
+import de.ebon.api.dto.PaperlessRawTextStatus;
+import de.ebon.api.dto.PaperlessRawTextStatusDto;
+import de.ebon.api.dto.RawTextSource;
 import de.ebon.api.dto.ReceiptDto;
 import de.ebon.api.dto.ReceiptItemCreateRequest;
 import de.ebon.api.dto.ReceiptItemDto;
@@ -11,6 +14,9 @@ import de.ebon.api.dto.ReceiptItemUpdateRequest;
 import de.ebon.api.dto.ReceiptUpdateRequest;
 import de.ebon.categorization.CategorizationService;
 import de.ebon.config.PaperlessProperties;
+import de.ebon.paperless.PaperlessClient;
+import de.ebon.paperless.PaperlessClientException;
+import de.ebon.paperless.PaperlessDocument;
 import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
@@ -65,6 +71,7 @@ public class ReceiptApiService {
     private final CategorizationService categorizationService;
     private final ReceiptParserService receiptParserService;
     private final ReceiptParseApplier receiptParseApplier;
+    private final PaperlessClient paperlessClient;
 
     public ReceiptApiService(
             ReceiptRepository receiptRepository,
@@ -87,7 +94,34 @@ public class ReceiptApiService {
                 paperlessProperties,
                 categorizationService,
                 receiptParserService,
-                receiptParseApplier);
+                receiptParseApplier,
+                null);
+    }
+
+    public ReceiptApiService(
+            ReceiptRepository receiptRepository,
+            ReceiptItemRepository receiptItemRepository,
+            CategoryRepository categoryRepository,
+            AiCategorizationLogRepository aiCategorizationLogRepository,
+            AppSettingRepository appSettingRepository,
+            PaperlessProperties paperlessProperties,
+            CategorizationService categorizationService,
+            ReceiptParserService receiptParserService,
+            ReceiptParseApplier receiptParseApplier,
+            PaperlessClient paperlessClient) {
+        this(
+                receiptRepository,
+                receiptItemRepository,
+                categoryRepository,
+                aiCategorizationLogRepository,
+                null,
+                null,
+                appSettingRepository,
+                paperlessProperties,
+                categorizationService,
+                receiptParserService,
+                receiptParseApplier,
+                paperlessClient);
     }
 
     @Autowired
@@ -102,7 +136,8 @@ public class ReceiptApiService {
             PaperlessProperties paperlessProperties,
             CategorizationService categorizationService,
             ReceiptParserService receiptParserService,
-            ReceiptParseApplier receiptParseApplier) {
+            ReceiptParseApplier receiptParseApplier,
+            PaperlessClient paperlessClient) {
         this.receiptRepository = receiptRepository;
         this.receiptItemRepository = receiptItemRepository;
         this.categoryRepository = categoryRepository;
@@ -114,6 +149,7 @@ public class ReceiptApiService {
         this.categorizationService = categorizationService;
         this.receiptParserService = receiptParserService;
         this.receiptParseApplier = receiptParseApplier;
+        this.paperlessClient = paperlessClient;
     }
 
     @Transactional(readOnly = true)
@@ -215,7 +251,7 @@ public class ReceiptApiService {
 
     @Transactional
     public ReceiptDto reparseReceipt(Long id, boolean overwriteManualEdits) {
-        return reparseReceipt(id, overwriteManualEdits, true, null, false);
+        return reparseReceipt(id, overwriteManualEdits, true, null, false, RawTextSource.STORED);
     }
 
     @Transactional
@@ -225,6 +261,17 @@ public class ReceiptApiService {
             boolean useAiFallback,
             AiParsingTextMode aiTextMode,
             boolean confirmFullText) {
+        return reparseReceipt(id, overwriteManualEdits, useAiFallback, aiTextMode, confirmFullText, RawTextSource.STORED);
+    }
+
+    @Transactional
+    public ReceiptDto reparseReceipt(
+            Long id,
+            boolean overwriteManualEdits,
+            boolean useAiFallback,
+            AiParsingTextMode aiTextMode,
+            boolean confirmFullText,
+            RawTextSource rawTextSource) {
         Receipt receipt = activeReceipt(id);
         if (hasManualEdits(receipt) && !overwriteManualEdits) {
             throw new ResponseStatusException(
@@ -232,8 +279,29 @@ public class ReceiptApiService {
                     "Bon enthaelt manuell editierte Positionen. overwriteManualEdits=true ist erforderlich.");
         }
 
+        if (rawTextSource == RawTextSource.PAPERLESS) {
+            receipt.replaceRawText(currentPaperlessRawText(receipt));
+        }
+
         reparseReceipt(receipt, ParseExecutionOptions.manual(useAiFallback, aiTextMode, confirmFullText));
         return getReceipt(id);
+    }
+
+    @Transactional(readOnly = true)
+    public PaperlessRawTextStatusDto paperlessRawTextStatus(Long id) {
+        Receipt receipt = activeReceipt(id);
+        if (paperlessClient == null) {
+            return new PaperlessRawTextStatusDto(PaperlessRawTextStatus.UNAVAILABLE);
+        }
+        try {
+            String currentRawText = currentPaperlessRawText(receipt);
+            PaperlessRawTextStatus status = rawTextsEquivalent(receipt.getRawText(), currentRawText)
+                    ? PaperlessRawTextStatus.UNCHANGED
+                    : PaperlessRawTextStatus.CHANGED;
+            return new PaperlessRawTextStatusDto(status);
+        } catch (ResponseStatusException exception) {
+            return new PaperlessRawTextStatusDto(PaperlessRawTextStatus.UNAVAILABLE);
+        }
     }
 
     @Transactional
@@ -267,6 +335,29 @@ public class ReceiptApiService {
         receiptParseApplier.apply(receipt, parseResult);
         Receipt savedReceipt = receiptRepository.saveAndFlush(receipt);
         categorizationService.categorizeReceipt(savedReceipt.getId());
+    }
+
+    private String currentPaperlessRawText(Receipt receipt) {
+        if (paperlessClient == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Paperless-Rohtext konnte nicht aktualisiert werden.");
+        }
+        try {
+            PaperlessDocument document = paperlessClient.fetchDocumentById(receipt.getPaperlessDocumentId());
+            if (document.content() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Paperless-Rohtext konnte nicht aktualisiert werden.");
+            }
+            return document.content();
+        } catch (PaperlessClientException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Paperless-Rohtext konnte nicht aktualisiert werden.");
+        }
+    }
+
+    private boolean rawTextsEquivalent(String storedRawText, String currentRawText) {
+        return normalizeLineEndings(storedRawText).equals(normalizeLineEndings(currentRawText));
+    }
+
+    private String normalizeLineEndings(String rawText) {
+        return rawText == null ? "" : rawText.replace("\r\n", "\n").replace('\r', '\n');
     }
 
     @Transactional

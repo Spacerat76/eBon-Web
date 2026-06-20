@@ -13,6 +13,7 @@ Ziel:
 - Unkategorisierte Positionen mit category_id = NULL und category_source = NULL als "Ohne Kategorie" anzeigen und bearbeitbar machen
 - Nicht uebernommene KI-Vorschlaege bei "Ohne Kategorie"-Positionen anzeigen, z.B. "KI-Vorschlag: Drogerie (82 %)"; Ablehnungsgrund nutzerfreundlich erklaeren, etwa niedrige Konfidenz oder unbekannte Kategorie
 - Re-Parse-Button mit Konflikthinweis fuer manuelle Aenderungen vorbereiten
+- Vor einem einzelnen Re-Parse `GET /api/receipts/{id}/paperless-raw-text-status` aufrufen. Bei `CHANGED` einen klaren Dialog mit „Neuen Rohtext uebernehmen und parsen“, „Gespeicherten Rohtext verwenden“ und Abbrechen anzeigen. Bei `UNAVAILABLE` keine technischen Fehlerdetails zeigen und nur Reparse mit gespeichertem Text oder Abbrechen anbieten. Fuer Bulk-Reparse keinen Rohtextdialog implementieren.
 - Loeschen/Soft-Delete Verhalten im UI korrekt abbilden
 - Import-Datum in der Bon-Liste mit Datum und Uhrzeit lesbar anzeigen; bei schmaler Spalte Uhrzeit in einer zweiten Zeile unter dem Datum
 - Aktiven Navigationspunkt/Breadcrumb korrekt setzen: Bon-Liste und Bon-Detail muessen "Bons" zeigen, nicht "Dashboard"
@@ -29,6 +30,7 @@ Bitte:
 - Wenn `aiSuggestion` vorhanden ist, soll die UI eine schnelle Uebernahme des Vorschlags anbieten und alternativ die normale Kategorieauswahl offen halten. Die Uebernahme ist eine manuelle Kategorieentscheidung (`MANUAL`), keine nachtraegliche AI-Zuweisung.
 - Paperless-Links duerfen keine Secrets enthalten. Wenn das Backend noch kein `paperlessDocumentUrl` liefert, ergaenze DTO/API gemaess ebon-specification.md und nutze eine konfigurierbare Public-URL/Vorlage statt die interne API-URL blind im Frontend zusammenzubauen.
 - Verwende fuer die Bon-Liste die fachlich neueste Sortierung (`receiptDate desc`, danach `receiptTime desc`, danach `importedAt desc`), sofern der Nutzer keine andere Sortierung waehlt.
+- Den gewaehlten Einzel-Reparse explizit als `rawTextSource=STORED|PAPERLESS` an die API senden; Rohtext, Hashes, Secrets und Paperless-Fehlerdetails nicht in UI, Browser-Storage oder Logs ablegen.
 
 Pruefkommandos:
 - cd frontend && npm run build

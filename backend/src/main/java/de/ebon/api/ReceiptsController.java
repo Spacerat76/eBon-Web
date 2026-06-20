@@ -1,6 +1,8 @@
 package de.ebon.api;
 
 import de.ebon.api.dto.PageResponse;
+import de.ebon.api.dto.PaperlessRawTextStatusDto;
+import de.ebon.api.dto.RawTextSource;
 import de.ebon.api.dto.ReceiptDto;
 import de.ebon.api.dto.ReceiptItemCreateRequest;
 import de.ebon.api.dto.ReceiptItemDto;
@@ -62,6 +64,12 @@ public class ReceiptsController {
         return receiptApiService.getReceipt(id);
     }
 
+    @GetMapping("/api/receipts/{id}/paperless-raw-text-status")
+    @Operation(summary = "Paperless-Rohtext fuer Einzel-Reparse vergleichen")
+    public PaperlessRawTextStatusDto paperlessRawTextStatus(@PathVariable Long id) {
+        return receiptApiService.paperlessRawTextStatus(id);
+    }
+
     @PutMapping("/api/receipts/{id}")
     @Operation(summary = "Bon-Metadaten und Positionen aktualisieren")
     public ReceiptDto updateReceipt(@PathVariable Long id, @Valid @RequestBody ReceiptUpdateRequest request) {
@@ -75,8 +83,10 @@ public class ReceiptsController {
             @RequestParam(defaultValue = "false") boolean overwriteManualEdits,
             @RequestParam(defaultValue = "true") boolean useAiFallback,
             @RequestParam(required = false) AiParsingTextMode aiTextMode,
-            @RequestParam(defaultValue = "false") boolean confirmFullText) {
-        return receiptApiService.reparseReceipt(id, overwriteManualEdits, useAiFallback, aiTextMode, confirmFullText);
+            @RequestParam(defaultValue = "false") boolean confirmFullText,
+            @RequestParam(defaultValue = "STORED") RawTextSource rawTextSource) {
+        return receiptApiService.reparseReceipt(
+                id, overwriteManualEdits, useAiFallback, aiTextMode, confirmFullText, rawTextSource);
     }
 
     @DeleteMapping("/api/receipts/{id}")

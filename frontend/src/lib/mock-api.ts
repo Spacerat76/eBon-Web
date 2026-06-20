@@ -70,6 +70,9 @@ export async function mockRequest<T>(path: string, init: RequestInit = {}): Prom
   if (/^\/receipts\/\d+$/.test(url.pathname)) {
     return receipts[0] as T;
   }
+  if (/^\/receipts\/\d+\/paperless-raw-text-status$/.test(url.pathname)) {
+    return { status: "CHANGED" } as T;
+  }
   if (/^\/receipts\/\d+\/reparse$/.test(url.pathname) && method === "POST") {
     return receipts[0] as T;
   }

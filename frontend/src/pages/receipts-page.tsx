@@ -38,6 +38,7 @@ import type {
   AiCategorizationRejectionReason,
   CategorySource,
   PageResponse,
+  PaperlessRawTextStatus,
   ParseStatus,
   ParseRuleSuggestionDTO,
   ReceiptDTO,
@@ -124,6 +125,7 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
   const [applyingSuggestionId, setApplyingSuggestionId] = useState<number | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [overwriteManualEdits, setOverwriteManualEdits] = useState(false);
+  const [paperlessRawTextStatus, setPaperlessRawTextStatus] = useState<PaperlessRawTextStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -298,7 +300,7 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     }
   }
 
-  async function reparseSelectedReceipt() {
+  async function startReparseSelectedReceipt() {
     if (!selectedReceipt) {
       return;
     }
@@ -308,11 +310,43 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     setNotice(null);
 
     try {
-      const updated = await apiClient.reparseReceipt(selectedReceipt.id, overwriteManualEdits);
+      const status = await apiClient.paperlessRawTextStatus(selectedReceipt.id);
+      if (status.status === "CHANGED" || status.status === "UNAVAILABLE") {
+        setPaperlessRawTextStatus(status.status);
+        return;
+      }
+      await reparseSelectedReceipt("STORED");
+    } catch (reparseError) {
+      setError(toUserMessage(reparseError));
+    } finally {
+      setReparsing(false);
+    }
+  }
+
+  async function reparseSelectedReceipt(rawTextSource: "STORED" | "PAPERLESS") {
+    if (!selectedReceipt) {
+      return;
+    }
+
+    setReparsing(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const updated = await apiClient.reparseReceipt(
+        selectedReceipt.id,
+        overwriteManualEdits,
+        true,
+        null,
+        false,
+        rawTextSource
+      );
       setSelectedReceipt(updated);
       setDraft(toDraft(updated));
       setEditMode(false);
-      setNotice("Bon wurde erneut geparst.");
+      setNotice(rawTextSource === "PAPERLESS"
+        ? "Neuer Paperless-Rohtext wurde übernommen und der Bon erneut geparst."
+        : "Bon wurde erneut geparst.");
       await loadList();
     } catch (reparseError) {
       setError(toUserMessage(reparseError));
@@ -401,7 +435,7 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
           onDeleteReceipt={deleteSelectedReceipt}
           onDraftChange={setDraft}
           onEdit={() => setEditMode(true)}
-          onReparse={reparseSelectedReceipt}
+          onReparse={startReparseSelectedReceipt}
           onSave={saveDraft}
           onSetOverwriteManualEdits={setOverwriteManualEdits}
           overwriteManualEdits={overwriteManualEdits}
@@ -412,6 +446,57 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
           saving={saving}
         />
       </div>
+      <PaperlessRawTextDecisionDialog
+        onCancel={() => setPaperlessRawTextStatus(null)}
+        onUsePaperless={() => {
+          setPaperlessRawTextStatus(null);
+          void reparseSelectedReceipt("PAPERLESS");
+        }}
+        onUseStored={() => {
+          setPaperlessRawTextStatus(null);
+          void reparseSelectedReceipt("STORED");
+        }}
+        status={paperlessRawTextStatus}
+      />
+    </div>
+  );
+}
+
+function PaperlessRawTextDecisionDialog({
+  onCancel,
+  onUsePaperless,
+  onUseStored,
+  status
+}: {
+  onCancel: () => void;
+  onUsePaperless: () => void;
+  onUseStored: () => void;
+  status: PaperlessRawTextStatus | null;
+}) {
+  if (status === null) {
+    return null;
+  }
+
+  const isUnavailable = status === "UNAVAILABLE";
+  return (
+    <div aria-labelledby="paperless-raw-text-dialog-title" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4" role="dialog">
+      <Card className="w-full max-w-lg">
+        <CardHeader>
+          <CardTitle id="paperless-raw-text-dialog-title">Paperless-Rohtext prüfen</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-zinc-700 dark:text-zinc-300">
+            {isUnavailable
+              ? "Paperless ist momentan nicht erreichbar. Der Bon kann nur mit dem gespeicherten Rohtext erneut geparst werden."
+              : "Paperless-Rohtext wurde seit dem Import geändert. Welcher Text soll für den erneuten Parse verwendet werden?"}
+          </p>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button onClick={onCancel} variant="ghost">Abbrechen</Button>
+            <Button onClick={onUseStored} variant="secondary">Gespeicherten Rohtext verwenden</Button>
+            {!isUnavailable ? <Button onClick={onUsePaperless}>Neuen Rohtext übernehmen und parsen</Button> : null}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -44,6 +44,32 @@ class PaperlessRestClient implements PaperlessClient {
         return documents;
     }
 
+    @Override
+    public PaperlessDocument fetchDocumentById(Integer documentId) {
+        RestClientException lastException = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                PaperlessDocumentResponse document = restClient.get()
+                        .uri("/api/documents/{documentId}/", documentId)
+                        .header(HttpHeaders.AUTHORIZATION, "Token " + properties.getApiToken())
+                        .retrieve()
+                        .body(PaperlessDocumentResponse.class);
+                if (document == null || document.id() == null) {
+                    throw new PaperlessClientException("Paperless-NGX Dokument konnte nicht gelesen werden.");
+                }
+                return document.toDocument();
+            } catch (PaperlessClientException exception) {
+                throw exception;
+            } catch (RestClientException exception) {
+                if (!isRetryable(exception) || attempt == MAX_ATTEMPTS) {
+                    throw new PaperlessClientException("Paperless-NGX Dokument konnte nicht gelesen werden.", exception);
+                }
+                lastException = exception;
+            }
+        }
+        throw new PaperlessClientException("Paperless-NGX Dokument konnte nicht gelesen werden.", lastException);
+    }
+
     private String firstPagePath() {
         return "/api/documents/?tags__name__iexact="
                 + UriUtils.encodeQueryParam(properties.getEbonTag(), StandardCharsets.UTF_8)

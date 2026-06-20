@@ -1,0 +1,23 @@
+{
+  "parseStatus": "PARSED",
+  "receiptDate": "2026-05-06",
+  "receiptTime": "11:19:27",
+  "storeName": "star Tankstelle",
+  "storeBranch": "Musterstrasse 2",
+  "totalAmount": 59.02,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Diesel",
+      "quantity": 29.38,
+      "unit": "Liter",
+      "unitPrice": 2.009,
+      "totalPrice": 59.02,
+      "discountAmount": null
+    }
+  ]
+}

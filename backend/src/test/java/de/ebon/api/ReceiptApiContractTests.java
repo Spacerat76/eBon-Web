@@ -8,6 +8,8 @@ import de.ebon.persistence.model.DeleteReason;
 import de.ebon.persistence.model.ParseStatus;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
+import de.ebon.paperless.PaperlessClient;
+import de.ebon.paperless.PaperlessDocument;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
 import de.ebon.persistence.repository.CategoryRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
@@ -26,6 +28,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import tools.jackson.databind.JsonNode;
@@ -34,6 +40,7 @@ import tools.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@Import(ReceiptApiContractTests.FakePaperlessClientConfig.class)
 @TestPropertySource(properties = {
         "app.security.api-token=test-token",
         "app.sync.scheduler.enabled=false"
@@ -276,6 +283,47 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
                 .containsExactly("ALTE POSITION", "ZWEITE POSITION");
     }
 
+    // Verifies the reparse preflight is protected and returns only a safe change status, never raw text.
+    @Test
+    void paperlessRawTextStatusIsProtectedAndDoesNotExposeRawText() throws Exception {
+        Receipt receipt = new Receipt(300002, "gespeicherter Rohtext");
+        receipt.setStoreName("REWE");
+        receiptRepository.saveAndFlush(receipt);
+
+        HttpResponse<String> unauthorized = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create("http://localhost:" + port + "/api/receipts/" + receipt.getId()
+                                + "/paperless-raw-text-status"))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> authorized = sendGet(
+                "/api/receipts/" + receipt.getId() + "/paperless-raw-text-status");
+        JsonNode body = objectMapper.readTree(authorized.body());
+
+        assertThat(unauthorized.statusCode()).isEqualTo(401);
+        assertThat(authorized.statusCode()).isEqualTo(200);
+        assertThat(body.get("status").asString()).isEqualTo("CHANGED");
+        assertThat(body.has("rawText")).isFalse();
+        assertThat(body.has("hash")).isFalse();
+    }
+
+    // Verifies only the explicit PAPERLESS reparse option replaces the persisted raw text.
+    @Test
+    void reparseWithPaperlessSourceUpdatesRawTextBeforeParsing() throws Exception {
+        Receipt receipt = new Receipt(300003, "alter Rohtext");
+        receipt.setStoreName("REWE");
+        receiptRepository.saveAndFlush(receipt);
+
+        HttpResponse<String> response = sendPost(
+                "/api/receipts/" + receipt.getId() + "/reparse?rawTextSource=PAPERLESS");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(jdbcTemplate.queryForObject(
+                "select raw_text from receipt where id = ?", String.class, receipt.getId()))
+                .isEqualTo(FakePaperlessClientConfig.CURRENT_RAW_TEXT);
+    }
+
     // Verifies settings responses mask secrets and updates never persist the mask placeholder as a secret.
     @Test
     void settingsMaskSecretsAndDoNotPersistMaskPlaceholder() throws Exception {
@@ -422,5 +470,32 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         return httpClient.send(
                 builder.header("Authorization", "Bearer test-token").build(),
                 HttpResponse.BodyHandlers.ofString());
+    }
+
+    @TestConfiguration
+    static class FakePaperlessClientConfig {
+
+        static final String CURRENT_RAW_TEXT = """
+                REWE
+                19.06.2026
+                Test Artikel 1,00
+                SUMME EUR 1,00
+                """;
+
+        @Bean
+        @Primary
+        PaperlessClient paperlessClient() {
+            return new PaperlessClient() {
+                @Override
+                public java.util.List<PaperlessDocument> fetchDocumentsByTag() {
+                    return java.util.List.of();
+                }
+
+                @Override
+                public PaperlessDocument fetchDocumentById(Integer documentId) {
+                    return new PaperlessDocument(documentId, "Test document", "2026-06-19", CURRENT_RAW_TEXT);
+                }
+            };
+        }
     }
 }

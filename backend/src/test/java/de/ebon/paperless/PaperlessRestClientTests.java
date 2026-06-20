@@ -112,6 +112,31 @@ class PaperlessRestClientTests {
         server.verify();
     }
 
+    // Verifies the single-document endpoint reads current Paperless content with token authentication.
+    @Test
+    void fetchesSingleDocumentByIdWithTokenAuthentication() {
+        RestClient.Builder builder = RestClient.builder().baseUrl("http://paperless");
+        MockRestServiceServer server = MockRestServiceServer.bindTo(builder).build();
+        PaperlessRestClient client = new PaperlessRestClient(properties(), builder);
+
+        server.expect(requestTo("http://paperless/api/documents/42/"))
+                .andExpect(header(HttpHeaders.AUTHORIZATION, "Token test-paperless-token"))
+                .andRespond(withSuccess("""
+                        {
+                          "id": 42,
+                          "title": "Current document",
+                          "created": "2026-06-19T10:00:00Z",
+                          "content": "current raw text"
+                        }
+                        """, MediaType.APPLICATION_JSON));
+
+        PaperlessDocument document = client.fetchDocumentById(42);
+
+        assertThat(document.id()).isEqualTo(42);
+        assertThat(document.content()).isEqualTo("current raw text");
+        server.verify();
+    }
+
     private static PaperlessProperties properties() {
         PaperlessProperties properties = new PaperlessProperties();
         properties.setBaseUrl("http://paperless");

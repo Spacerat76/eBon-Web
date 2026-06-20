@@ -73,6 +73,15 @@ public class RuleBasedReceiptParser {
             "^\\s*Farbe\\s+\\S+\\s+(?<sizeLabel>Gr(?:ö|oe|o)(?:ß|ss)e)\\s+(?<size>\\S+)(?:\\s+[A-ZÄ])?(?:\\s+"
                     + AMOUNT_PATTERN + ")?\\s*$",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern STAR_FUEL_QUANTITY_LINE = Pattern.compile(
+            "^\\s*\\*?\\s*(?<quantity>\\d+(?:,\\d+)?)\\s+(?<unit>Liter)\\s+S(?:Ä|A)ULENNUMMER\\s+\\d+\\s*\\*?\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern STAR_FUEL_ITEM_LINE = Pattern.compile(
+            "^\\s*\\*?\\s*(?<description>.+?)\\s+[A-Z]\\s+(?<total>" + AMOUNT_PATTERN + ")\\s+EUR\\s*\\*?\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern STAR_FUEL_UNIT_PRICE_LINE = Pattern.compile(
+            "^\\s*(?<unitPrice>\\d+(?:,\\d{2,3})?)\\s*EUR\\s*/\\s*Liter\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern LONG_NUMERIC_CODE_LINE = Pattern.compile("^\\d{10,}$");
 
     private final ReceiptParseValidator validator = new ReceiptParseValidator();
@@ -429,6 +438,9 @@ public class RuleBasedReceiptParser {
             if (isCaStoreLine(line)) {
                 return "C&A";
             }
+            if (upper.contains("STAR TANKSTELLE")) {
+                return "star Tankstelle";
+            }
         }
 
         String dynamicStore = firstDynamicTextMatch(
@@ -537,9 +549,9 @@ public class RuleBasedReceiptParser {
             if (!isTotalLine(line) || isTaxTableLine(line) || line.toUpperCase(Locale.ROOT).contains("ZWISCHEN")) {
                 continue;
             }
-            Matcher matcher = AMOUNT_AT_END.matcher(line);
-            if (matcher.find()) {
-                return GermanNumberParser.parse(matcher.group("amount"));
+            BigDecimal amount = extractAmount(line);
+            if (amount != null) {
+                return amount;
             }
         }
 
@@ -563,9 +575,9 @@ public class RuleBasedReceiptParser {
     }
 
     private BigDecimal amountOnLineOrFollowing(List<String> lines, int lineIndex) {
-        Matcher matcher = AMOUNT_AT_END.matcher(lines.get(lineIndex));
-        if (matcher.find()) {
-            return GermanNumberParser.parse(matcher.group("amount"));
+        BigDecimal lineAmount = extractAmount(lines.get(lineIndex));
+        if (lineAmount != null) {
+            return lineAmount;
         }
 
         for (int nextIndex = lineIndex + 1; nextIndex < lines.size() && nextIndex <= lineIndex + 2; nextIndex++) {
@@ -573,9 +585,9 @@ public class RuleBasedReceiptParser {
             if (nextLine.isBlank()) {
                 continue;
             }
-            Matcher nextMatcher = AMOUNT_AT_END.matcher(nextLine);
-            if (nextMatcher.find()) {
-                return GermanNumberParser.parse(nextMatcher.group("amount"));
+            BigDecimal nextAmount = extractAmount(nextLine);
+            if (nextAmount != null) {
+                return nextAmount;
             }
             break;
         }
@@ -747,6 +759,8 @@ public class RuleBasedReceiptParser {
         List<ParseRule> dynamicTotalRules = activeRules(ParseRuleType.TOTAL_PATTERN, storeName);
         QuantityDetails leadingQuantityDetails = null;
         String pendingStornoDescription = null;
+        StarFuelDetails pendingStarFuelDetails = null;
+        Integer pendingStarFuelItemIndex = null;
 
         for (String line : lines) {
             if (isZeilenstornoLine(line)) {
@@ -763,6 +777,38 @@ public class RuleBasedReceiptParser {
                 continue;
             }
             pendingStornoDescription = null;
+
+            if (isStarStoreName(storeName)) {
+                StarFuelDetails starFuelDetails = parseStarFuelQuantityLine(line);
+                if (starFuelDetails != null) {
+                    pendingDescriptionLines.clear();
+                    leadingQuantityDetails = null;
+                    pendingStarFuelDetails = starFuelDetails;
+                    pendingStarFuelItemIndex = null;
+                    continue;
+                }
+
+                ParsedReceiptItem starFuelItem = parseStarFuelItemLine(line, pendingStarFuelDetails, items.size());
+                if (starFuelItem != null) {
+                    pendingDescriptionLines.clear();
+                    leadingQuantityDetails = null;
+                    pendingStarFuelDetails = null;
+                    items.add(starFuelItem);
+                    pendingStarFuelItemIndex = items.size() - 1;
+                    continue;
+                }
+
+                BigDecimal starFuelUnitPrice = parseStarFuelUnitPriceLine(line);
+                if (starFuelUnitPrice != null
+                        && pendingStarFuelItemIndex != null
+                        && pendingStarFuelItemIndex == items.size() - 1) {
+                    updateLastItemWithQuantityDetails(items, new QuantityDetails(null, "Liter", starFuelUnitPrice));
+                    pendingStarFuelItemIndex = null;
+                    continue;
+                }
+
+                pendingStarFuelDetails = null;
+            }
 
             if (isCaStoreName(storeName) && LONG_NUMERIC_CODE_LINE.matcher(line).matches()) {
                 // C&A product barcodes delimit the receipt header from the following item description.
@@ -916,6 +962,44 @@ public class RuleBasedReceiptParser {
         }
 
         return items.isEmpty() ? parseDynamicItems(lines, storeName) : items;
+    }
+
+    private StarFuelDetails parseStarFuelQuantityLine(String line) {
+        Matcher matcher = STAR_FUEL_QUANTITY_LINE.matcher(line);
+        if (!matcher.matches()) {
+            return null;
+        }
+        return new StarFuelDetails(
+                GermanNumberParser.parse(matcher.group("quantity")),
+                normalizeUnit(matcher.group("unit")));
+    }
+
+    private ParsedReceiptItem parseStarFuelItemLine(
+            String line, StarFuelDetails pendingDetails, int positionIndex) {
+        if (pendingDetails == null) {
+            return null;
+        }
+        Matcher matcher = STAR_FUEL_ITEM_LINE.matcher(line);
+        if (!matcher.matches()) {
+            return null;
+        }
+        String description = cleanupDescription(matcher.group("description"));
+        if (description.isBlank()) {
+            return null;
+        }
+        return new ParsedReceiptItem(
+                positionIndex,
+                description,
+                pendingDetails.quantity(),
+                pendingDetails.unit(),
+                null,
+                GermanNumberParser.parse(matcher.group("total")),
+                null);
+    }
+
+    private BigDecimal parseStarFuelUnitPriceLine(String line) {
+        Matcher matcher = STAR_FUEL_UNIT_PRICE_LINE.matcher(line);
+        return matcher.matches() ? GermanNumberParser.parse(matcher.group("unitPrice")) : null;
     }
 
     private void appendLastItemDescription(List<ParsedReceiptItem> items, String detailLine) {
@@ -1506,6 +1590,7 @@ public class RuleBasedReceiptParser {
                 || isPharmacyStoreLine(line)
                 || upper.contains("MCDONALD")
                 || upper.contains("MEDONALD")
+                || upper.contains("STAR TANKSTELLE")
                 || isCaStoreLine(line);
     }
 
@@ -1525,6 +1610,10 @@ public class RuleBasedReceiptParser {
 
     private boolean isCaStoreName(String storeName) {
         return storeName != null && storeName.equalsIgnoreCase("C&A");
+    }
+
+    private boolean isStarStoreName(String storeName) {
+        return storeName != null && storeName.equalsIgnoreCase("star Tankstelle");
     }
 
     private boolean isItemDetailLine(String line) {
@@ -1799,5 +1888,8 @@ public class RuleBasedReceiptParser {
     }
 
     private record QuantityDetails(BigDecimal quantity, String unit, BigDecimal unitPrice) {
+    }
+
+    private record StarFuelDetails(BigDecimal quantity, String unit) {
     }
 }

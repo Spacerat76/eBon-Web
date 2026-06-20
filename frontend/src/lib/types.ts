@@ -37,6 +37,10 @@ export type ParseRuleSuggestionStatus = "OPEN" | "ACCEPTED" | "REJECTED";
 
 export type ReparseScope = "NONE" | "CURRENT_RECEIPT" | "PARSE_ERROR_BY_STORE" | "ALL_PARSE_ERROR";
 
+export type PaperlessRawTextStatus = "UNCHANGED" | "CHANGED" | "UNAVAILABLE";
+
+export type RawTextSource = "STORED" | "PAPERLESS";
+
 export interface ApiErrorResponse {
   status: number;
   error: string;
@@ -224,6 +228,10 @@ export interface ReceiptDTO {
   deleteReason: DeleteReason | null;
   rawText: string | null;
   items: ReceiptItemDTO[];
+}
+
+export interface PaperlessRawTextStatusDTO {
+  status: PaperlessRawTextStatus;
 }
 
 export interface CategoryDTO {

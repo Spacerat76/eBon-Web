@@ -15,6 +15,7 @@ Ziel:
 - Manuelles Zuruecksetzen auf "Ohne Kategorie" implementieren: Wenn ein Receipt-Item-Update `categoryId = null` fuer die Kategorieaenderung sendet, muss der Controller `CategorizationService.manuallyClearItemCategory(...)` verwenden. Nicht einfach Felder direkt auf null setzen, damit `is_manually_edited = true` gesetzt wird und spaetere Regeln/Bulk-Apply diese Nutzerentscheidung nicht still ueberschreiben.
 - SettingsDTO um `aiCategorizationMinConfidence` ergaenzen. Wert aus `app_settings.ai_categorization_min_confidence` lesen/speichern, Wertebereich 0.000 bis 1.000 validieren, Default 0.900 dokumentieren.
 - ReceiptItemDTO um optionales `aiSuggestion` ergaenzen, damit nicht uebernommene KI-Vorschlaege fuer "Ohne Kategorie"-Positionen in der UI sichtbar sind.
+- Fuer Einzel-Reparse einen geschuetzten Status-Endpunkt `GET /api/receipts/{id}/paperless-raw-text-status` bereitstellen. Die DTO-Antwort darf nur `UNCHANGED`, `CHANGED` oder `UNAVAILABLE` enthalten, niemals Rohtext, Hashes, Secrets oder Paperless-Fehlerdetails. `POST /api/receipts/{id}/reparse` um `rawTextSource=STORED|PAPERLESS` mit Default `STORED` ergaenzen; Bulk-Reparse bleibt immer `STORED`.
 
 Bitte:
 - Lies zuerst AGENTS.md.
@@ -29,6 +30,7 @@ Bitte:
 - Fuer `aiCategorizationMinConfidence` OpenAPI-Schema mit `minimum: 0`, `maximum: 1`, sinnvollem Beispiel `0.900` und Validierungsfehlern dokumentieren.
 - `aiSuggestion` aus dem letzten strukturierten KI-Log pro Position ableiten: `categoryId`, `categoryName`, `confidence`, `rejectionReason`. Nur nicht uebernommene Vorschlaege anzeigen; bei bereits gesetzter Kategorie `aiSuggestion = null`.
 - Contract-Tests fuer LOW_CONFIDENCE/UNKNOWN_CATEGORY-Suggestions schreiben, damit die UI keine rohe KI-JSON-Antwort parsen muss.
+- Contract-Tests fuer Rohtextstatus, Authentifizierung, Zeilenenden-Normalisierung, geaenderten Text und `UNAVAILABLE` ohne sensible Details schreiben.
 
 Pruefkommandos:
 - cd backend && mvn verify

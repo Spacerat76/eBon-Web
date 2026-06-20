@@ -251,6 +251,13 @@ public class Receipt {
         return rawText;
     }
 
+    public void replaceRawText(String rawText) {
+        if (rawText == null) {
+            throw new IllegalArgumentException("Rohtext darf nicht null sein.");
+        }
+        this.rawText = rawText;
+    }
+
     public String getStoreName() {
         return storeName;
     }

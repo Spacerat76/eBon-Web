@@ -1,0 +1,18 @@
+star Tankstelle
+Musterstrasse 2
+41472 Neustadt
+Tel.: 00000-000000
+
+* 29,38 Liter SAULENNUMMER 1 *
+*Diesel A 59,02 EUR*
+2,009 EUR/Liter
+
+Datum 06.05.2026
+Uhrzeit 11:19:27
+Kartenzahlung
+girocard
+Betrag 59,02 EUR
+**TOTAL** 59,02 EUR
+
+MWST 19,00% A 9,42 EUR
+NETTO 49,60 EUR BRUTTO 59,02 EUR
