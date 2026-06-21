@@ -83,6 +83,9 @@ public class RuleBasedReceiptParser {
             "^\\s*(?<unitPrice>\\d+(?:,\\d{2,3})?)\\s*EUR\\s*/\\s*Liter\\s*$",
             Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern LONG_NUMERIC_CODE_LINE = Pattern.compile("^\\d{10,}$");
+    private static final Pattern ARTICLE_BARCODE_LINE = Pattern.compile(
+            "^\\s*Artikel\\s+\\d{8,}\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
     private final ReceiptParseValidator validator = new ReceiptParseValidator();
     private final ReceiptParserProperties parserProperties;
@@ -1384,6 +1387,9 @@ public class RuleBasedReceiptParser {
 
         BigDecimal totalPrice = GermanNumberParser.parse(matcher.group("total"));
         String description = cleanupDescription(matcher.group("description"));
+        if (description.isBlank()) {
+            return null;
+        }
         BigDecimal discountAmount = totalPrice.signum() < 0 || description.toUpperCase(Locale.ROOT).contains("RABATT")
                 ? totalPrice.abs()
                 : null;
@@ -1526,6 +1532,7 @@ public class RuleBasedReceiptParser {
                 || upper.contains("WWW.")
                 || upper.equals("EUR")
                 || upper.contains("ARTIKELPREIS")
+                || ARTICLE_BARCODE_LINE.matcher(line).matches()
                 || upper.startsWith("COUPON:")
                 || upper.startsWith("DM-RABATTE AUF RABATTFÄHIGE ARTIKEL")
                 || upper.startsWith("DM-RABATTE AUF RABATTFAEHIGE ARTIKEL")
@@ -1692,6 +1699,7 @@ public class RuleBasedReceiptParser {
 
     private boolean isPaymentDetailLine(String line) {
         String upper = line.toUpperCase(Locale.ROOT);
+        String compact = upper.replaceAll("[^A-Z0-9]", "");
         return isGiftCardPaymentLine(line)
                 || upper.contains("AUSZAHLUNG")
                 || upper.contains("CASHBACK")
@@ -1700,7 +1708,7 @@ public class RuleBasedReceiptParser {
                 || upper.contains("KARTENZAHLUNG")
                 || upper.contains("EC-KARTE")
                 || upper.contains("EC-CASH")
-                || upper.contains("GIROCARD")
+                || compact.contains("GIROCARD")
                 || upper.startsWith("NEUER WERT");
     }
 
@@ -1732,8 +1740,8 @@ public class RuleBasedReceiptParser {
 
     private boolean isTaxTableLine(String line) {
         String trimmed = line.trim();
-        return line.matches("^\\s*(?:\\d+|[A-Z])\\s*=?\\s*\\d{1,2}(?:,\\d{1,2})?%.*")
-                || trimmed.matches("^\\|\\s*[A-Z]\\s*=?\\s*\\d{1,2}(?:,\\d{1,2})?%.*")
+        return line.matches("^\\s*(?:\\d+|[A-Z])\\s*=?\\s*\\d{1,2}(?:,\\d{1,2})?\\s*%.*")
+                || trimmed.matches("^\\|\\s*[A-Z]\\s*=?\\s*\\d{1,2}(?:,\\d{1,2})?\\s*%.*")
                 || line.toUpperCase(Locale.ROOT).startsWith("GESAMTBETRAG ");
     }
 

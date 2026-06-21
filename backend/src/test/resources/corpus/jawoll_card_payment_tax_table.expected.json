@@ -1,0 +1,25 @@
+{
+  "parseStatus": "PARSED",
+  "receiptDate": "2026-06-12",
+  "receiptTime": "16:58:00",
+  "storeName": "Jawoll",
+  "storeBranch": "Musterstr. 27",
+  "totalAmount": 70.13,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {"positionIndex": 0, "description": "Schleierkraut 23cm", "quantity": null, "unit": null, "unitPrice": null, "totalPrice": 9.99, "discountAmount": null},
+    {"positionIndex": 1, "description": "100 Trinkbecher 0,2l", "quantity": null, "unit": null, "unitPrice": null, "totalPrice": 2.99, "discountAmount": null},
+    {"positionIndex": 2, "description": "Windrad bunt mit Bia", "quantity": null, "unit": null, "unitPrice": null, "totalPrice": 3.99, "discountAmount": null},
+    {"positionIndex": 3, "description": "Chlortaß-Super 1kg", "quantity": null, "unit": null, "unitPrice": null, "totalPrice": 9.99, "discountAmount": null},
+    {"positionIndex": 4, "description": "Milky Way Minis", "quantity": null, "unit": null, "unitPrice": null, "totalPrice": 2.69, "discountAmount": null},
+    {"positionIndex": 5, "description": "Bounty Minis", "quantity": null, "unit": null, "unitPrice": null, "totalPrice": 2.69, "discountAmount": null},
+    {"positionIndex": 6, "description": "Edelgeranie 23cm", "quantity": null, "unit": null, "unitPrice": null, "totalPrice": 9.99, "discountAmount": null},
+    {"positionIndex": 7, "description": "Wellenbox 17L", "quantity": 4, "unit": "Stk", "unitPrice": 3.99, "totalPrice": 15.96, "discountAmount": null},
+    {"positionIndex": 8, "description": "Gebäckschritten", "quantity": null, "unit": null, "unitPrice": null, "totalPrice": 2.69, "discountAmount": null},
+    {"positionIndex": 9, "description": "Da/He Bio Pantolette", "quantity": null, "unit": null, "unitPrice": null, "totalPrice": 6.66, "discountAmount": null},
+    {"positionIndex": 10, "description": "Super Dickmanns 9er", "quantity": null, "unit": null, "unitPrice": null, "totalPrice": 2.49, "discountAmount": null}
+  ]
+}

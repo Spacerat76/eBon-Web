@@ -1,0 +1,57 @@
+Jawoll
+Jawoll Muster GmbH
+Musterstr. 27
+40000 Musterstadt
+
+Artikel 2000001994139
+Schleierkraut 23cm 9,99 2
+Artikel 4018164004235
+100 Trinkbecher 0,2l 2,99 1
+Artikel 2000001936351
+Windrad bunt mit Bia 3,99 1
+Artikel 4029156049813
+Chlortaß-Super 1kg 9,99 1
+Artikel 5000159562676
+Milky Way Minis 2,69 2
+Artikel 5000159562508
+Bounty Minis 2,69 2
+Artikel 2000002093299
+Edelgeranie 23cm 9,99 2
+Artikel 5900791065828
+Wellenbox 17L
+4 x 3,99 15,96 1
+Artikel 8710434511554
+Gebäckschritten 2,69 2
+Artikel 4250432414630
+Da/He Bio Pantolette 6,66 1
+Artikel 4035800407007
+Super Dickmanns 9er 2,49 2
+
+Summe 70,13
+Giro Card EUR 70,13
+K-U-M-D-E-N-B-E-L-E-G
+Jawoll Muster GmbH
+Markt Musterstadt
+
+Kartenzahlung girocard
+
+Betrag 70,13 EUR
+
+12.06.2026 16:58 T-ID 64085381
+TA-Nr. 211739 Beleg-Nr. 1110
+Ktr. ###### 8668 02
+Kontaktlos Chip Online
+VU-Nummer 8000337142
+Autorisierungsnummer 464685
+Autorisierungsantwortcode 00
+EMV-Daten:
+0000840001/0000///020300//00000
+
+**Zahlung erfolgt**
+
+1 19,00 % von 39,59 6,32
+2 7,00 % von 30,54 2,00
+
+Datum Zeit Filiale Pos Bad Bon-Nr
+12.06.2026 16:58 4053 1 GuD 9611
+*** Vielen Dank für Ihren Einkauf ***

@@ -269,6 +269,57 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         assertThat(items.get(45).getCategorySource()).isNull();
     }
 
+    // Verifies the confirmed real-receipt rules stay specific and leave ambiguous labels open for review.
+    @Test
+    void seededRulesCategorizeConfirmedJawollAndCaItemsWithoutBroadFallbacks() {
+        Receipt receipt = new Receipt(4245, "raw paperless text");
+        receipt.setStoreName("Jawoll");
+        receipt.addItem(new ReceiptItem(0, "B-OUTDOOR Große 074", new BigDecimal("13.99")));
+        receipt.addItem(new ReceiptItem(1, "B-WAESCHE Große 074", new BigDecimal("9.99")));
+        receipt.addItem(new ReceiptItem(2, "E.Regio.Papr.Lyon.", new BigDecimal("1.00")));
+        receipt.addItem(new ReceiptItem(3, "Versch.Sorten", new BigDecimal("2.22")));
+        receipt.addItem(new ReceiptItem(4, "G&G B.O.Butte", new BigDecimal("1.18")));
+        receipt.addItem(new ReceiptItem(5, "Bounty Minis", new BigDecimal("2.69")));
+        receipt.addItem(new ReceiptItem(6, "Super Dickmanns 9er", new BigDecimal("2.49")));
+        receipt.addItem(new ReceiptItem(7, "Chlortaß-Super 1kg", new BigDecimal("9.99")));
+        receipt.addItem(new ReceiptItem(8, "Edelgeranie 23cm", new BigDecimal("9.99")));
+        receipt.addItem(new ReceiptItem(9, "Wellenbox 17L", new BigDecimal("15.96")));
+        receipt.addItem(new ReceiptItem(10, "Windrad bunt mit Bia", new BigDecimal("3.99")));
+        receipt.addItem(new ReceiptItem(11, "Da/He Bio Pantolette", new BigDecimal("6.66")));
+        receipt.addItem(new ReceiptItem(12, "ORIGINAL", new BigDecimal("1.39")));
+        receipt.addItem(new ReceiptItem(13, "LEBENSMITTEL", new BigDecimal("1.98")));
+        receiptRepository.saveAndFlush(receipt);
+
+        categorizationService.categorizeReceipt(receipt.getId());
+
+        List<ReceiptItem> items = receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId());
+        assertThat(items)
+                .extracting(item -> item.getCategory() == null ? null : item.getCategory().getName())
+                .containsExactly(
+                        "Baby und Kind",
+                        "Baby und Kind",
+                        "Fleisch und Wurst",
+                        "Fleisch und Wurst",
+                        "Milchprodukte und Eier",
+                        "Suesswaren und Snacks",
+                        "Suesswaren und Snacks",
+                        "Baumarkt und Garten",
+                        "Baumarkt und Garten",
+                        "Haushalt",
+                        "Baumarkt und Garten",
+                        "Kleidung und Schuhe",
+                        null,
+                        null);
+        assertThat(items.subList(0, 12)).allSatisfy(item -> {
+            assertThat(item.getCategorySource()).isEqualTo(CategorySource.RULE);
+            assertThat(item.isManuallyEdited()).isFalse();
+        });
+        assertThat(items.subList(12, 14)).allSatisfy(item -> {
+            assertThat(item.getCategory()).isNull();
+            assertThat(item.getCategorySource()).isNull();
+        });
+    }
+
     // Verifies V22 repairs C&A rule assignments created before its product-specific rules existed.
     @Test
     void caMigrationRepairsHistoricalRuleAssignmentsWithoutOverwritingManualItems() {
