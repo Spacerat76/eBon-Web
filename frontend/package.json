@@ -10,6 +10,7 @@
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "dev:e2e": "cross-env VITE_EBON_MOCK_API=true vite --host 127.0.0.1 --port 5173 --strictPort",
     "e2e": "node e2e/run-smoke.mjs",
+    "e2e:coverage": "cross-env EBON_E2E_COVERAGE=true node e2e/run-smoke.mjs && nyc report --temp-dir .nyc_output --report-dir coverage-e2e --reporter=text --reporter=html --reporter=lcov",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
@@ -33,9 +34,11 @@
     "cross-env": "^10.1.0",
     "edgedriver": "^6.3.0",
     "jsdom": "^29.1.1",
+    "nyc": "^18.0.0",
     "selenium-webdriver": "^4.38.0",
     "typescript": "6.0.3",
     "vite": "8.0.16",
+    "vite-plugin-istanbul": "^9.0.1",
     "vitest": "^4.1.9"
   }
 }

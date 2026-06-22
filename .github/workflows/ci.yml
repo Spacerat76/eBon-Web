@@ -60,9 +60,16 @@ jobs:
         run: npm run build
         working-directory: frontend
 
-      - name: Selenium smoke test
-        run: npm run e2e
+      - name: Selenium smoke test and browser coverage
+        run: npm run e2e:coverage
         working-directory: frontend
+
+      - name: Upload browser coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-e2e-coverage
+          path: frontend/coverage-e2e
+          if-no-files-found: error
 
   docker-config:
     name: Docker Compose Config

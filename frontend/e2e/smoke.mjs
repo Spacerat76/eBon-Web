@@ -3,64 +3,74 @@ import chrome from "selenium-webdriver/chrome.js";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 
-const baseUrl = process.env.EBON_E2E_BASE_URL ?? "http://127.0.0.1:5173";
+import { writeBrowserCoverage } from "./coverage-output.mjs";
+
 const require = createRequire(import.meta.url);
 const chromedriver = require("chromedriver");
 
-const driver = await createDriver();
+export async function runSmoke({
+  baseUrl = process.env.EBON_E2E_BASE_URL ?? "http://127.0.0.1:5173",
+  coverageOutputFile
+} = {}) {
+  const driver = await createDriver();
 
-try {
-  await driver.get(baseUrl);
-  await waitForText("API-Token erforderlich");
-  await waitForText("Dashboard");
-  await waitForText("Einstellungen");
+  try {
+    await driver.get(baseUrl);
+    await waitForText(driver, "API-Token erforderlich");
+    await waitForText(driver, "Dashboard");
+    await waitForText(driver, "Einstellungen");
 
-  const tokenInput = await driver.findElement(By.id("api-token"));
-  await tokenInput.sendKeys("mock-token");
-  await waitForText("Sync starten");
-  await waitForText("Letzte Bons");
+    const tokenInput = await driver.findElement(By.id("api-token"));
+    await tokenInput.sendKeys("mock-token");
+    await waitForText(driver, "Sync starten");
+    await waitForText(driver, "Letzte Bons");
 
-  await clickNav("#/settings");
-  await waitForText("Allgemein");
-  await waitForText("Software-Version");
+    await clickNav(driver, "#/settings");
+    await waitForText(driver, "Allgemein");
+    await waitForText(driver, "Software-Version");
 
-  await clickButton("Backup");
-  await waitForText("Backup herunterladen");
-  await waitForText("Dry-Run prüfen");
-  await waitForText("Restore-Bestätigung");
+    await clickButton(driver, "Backup");
+    await waitForText(driver, "Backup herunterladen");
+    await waitForText(driver, "Dry-Run prüfen");
+    await waitForText(driver, "Restore-Bestätigung");
 
-  await clickNav("#/search");
-  await waitForText("Suchergebnisse");
-  await waitForText("Bio Milch");
+    await clickNav(driver, "#/search");
+    await waitForText(driver, "Suchergebnisse");
+    await waitForText(driver, "Bio Milch");
 
-  await clickNav("#/receipts");
-  await waitForText("Bons");
-  await waitForText("REWE");
+    await clickNav(driver, "#/receipts");
+    await waitForText(driver, "Bons");
+    await waitForText(driver, "REWE");
 
-  // The mock receipt id is stable, so navigate directly to the detail route.
-  // Clicking a table row is unreliable in headless Edge because the row itself
-  // is not the interactive element that receives the application navigation.
-  await driver.get(`${baseUrl}/#/receipts/1`);
-  await waitForText("Erneut parsen");
-  await clickButton("Erneut parsen");
-  await waitForText("Paperless-Rohtext wurde seit dem Import geändert.");
-  await clickButton("Gespeicherten Rohtext verwenden");
-  await waitForText("Bon wurde erneut geparst.");
-} finally {
-  await driver.quit();
+    // The mock receipt id is stable, so navigate directly to the detail route.
+    // Clicking a table row is unreliable in headless Edge because the row itself
+    // is not the interactive element that receives the application navigation.
+    await driver.get(`${baseUrl}/#/receipts/1`);
+    await waitForText(driver, "Erneut parsen");
+    await clickButton(driver, "Erneut parsen");
+    await waitForText(driver, "Paperless-Rohtext wurde seit dem Import geändert.");
+    await clickButton(driver, "Gespeicherten Rohtext verwenden");
+    await waitForText(driver, "Bon wurde erneut geparst.");
+
+    if (coverageOutputFile) {
+      await writeBrowserCoverage(driver, coverageOutputFile);
+    }
+  } finally {
+    await driver.quit();
+  }
 }
 
-async function clickNav(href) {
+async function clickNav(driver, href) {
   const element = await driver.wait(until.elementLocated(By.css(`a[href="${href}"]`)), 10_000);
   await element.click();
 }
 
-async function clickButton(text) {
+async function clickButton(driver, text) {
   const element = await driver.wait(until.elementLocated(By.xpath(`//button[normalize-space(.)='${text}']`)), 10_000);
   await element.click();
 }
 
-async function waitForText(text) {
+async function waitForText(driver, text) {
   await driver.wait(
     until.elementLocated(By.xpath(`//*[contains(normalize-space(.), ${xpathLiteral(text)})]`)),
     10_000

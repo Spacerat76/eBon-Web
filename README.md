@@ -245,6 +245,15 @@ npm run e2e
 
 The E2E command starts Vite with `VITE_EBON_MOCK_API=true`, enters a mock API token, and checks Dashboard/navigation, Settings, Backup controls, Search, and Receipts. It does not need PostgreSQL, Paperless-NGX, OpenRouter, or private receipt data. A local Chrome/Chromium or Microsoft Edge installation is required. Chrome uses the bundled `chromedriver`; Edge uses the `edgedriver` package and may download the matching driver on first run. Set `EBON_E2E_BROWSER_BINARY` or `EDGE_BINARY_PATH` if the browser is installed in a non-standard location.
 
+To measure the source code exercised by that same browser flow, run:
+
+```bash
+cd frontend
+npm run e2e:coverage
+```
+
+This command starts the mock-only E2E server with Istanbul instrumentation, then writes an HTML report to `frontend/coverage-e2e/index.html` and LCOV data to `frontend/coverage-e2e/lcov.info`. The report is separate from the Vitest/V8 unit and component coverage. There is intentionally no E2E coverage threshold yet; the report first makes the current Selenium smoke coverage visible. CI runs this command too and uploads the HTML/LCOV directory as the `frontend-e2e-coverage` workflow artifact. The generated files and raw `.nyc_output` data are local and ignored by Git.
+
 ## Smoke Test
 
 After `docker compose up --build`, run these checks from another terminal:

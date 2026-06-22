@@ -10,5 +10,7 @@ Thumbs.db
 .idea/
 frontend/.devserver-*.log
 frontend/coverage/
+frontend/coverage-e2e/
+frontend/.nyc_output/
 backups/
 *.zip
