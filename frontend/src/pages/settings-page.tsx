@@ -56,7 +56,9 @@ const emptySettings: SettingsDTO = {
   aiParsingTextMode: "MINIMIZED",
   aiParsingStoreDebugSnippets: false,
   syncIntervalMinutes: 60,
-  currency: "EUR"
+  currency: "EUR",
+  productHistoryMinConfirmedMatches: 3,
+  productHistoryMinVariantShare: 0.9
 };
 
 const emptyCategory: CategoryRequest = {
@@ -609,6 +611,8 @@ function GeneralSettings({
   systemInfo: SystemInfoDTO | null;
 }) {
   const confidence = settings.aiCategorizationMinConfidence ?? 0.9;
+  const historyMinimum = settings.productHistoryMinConfirmedMatches ?? 3;
+  const historyShare = settings.productHistoryMinVariantShare ?? 0.9;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
@@ -709,6 +713,36 @@ function GeneralSettings({
               type="range"
               value={confidence}
             />
+          </div>
+
+          <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+            <div className="mb-3 text-sm font-medium">Automatische Produkt-Historie</div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field
+                help="So viele frühere manuelle oder regelbasierte Treffer derselben Position und desselben Geschäfts sind mindestens nötig. KI-only-Treffer zählen nicht."
+                label="Mindestens bestätigte Treffer"
+              >
+                <Input
+                  min={1}
+                  onChange={(event) => onSettingsChange({ ...settings, productHistoryMinConfirmedMatches: Number(event.target.value) })}
+                  type="number"
+                  value={historyMinimum}
+                />
+              </Field>
+              <Field
+                help="Anteil derselben Variante innerhalb dieser vertrauenswürdigen Historie. Höhere Werte vermeiden falsche Größen- oder Packungszuordnungen."
+                label="Erforderlicher Variantenanteil"
+              >
+                <Input
+                  max={1}
+                  min={0}
+                  onChange={(event) => onSettingsChange({ ...settings, productHistoryMinVariantShare: Number(event.target.value) })}
+                  step={0.001}
+                  type="number"
+                  value={historyShare}
+                />
+              </Field>
+            </div>
           </div>
 
           <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
@@ -1439,6 +1473,10 @@ function backupTableLabel(name: string): string {
     app_settings: "Einstellungen",
     categories: "Kategorien",
     categorization_rules: "Kategorisierungsregeln",
+    product_assignment_log: "Produktzuordnungsprotokoll",
+    product_families: "Produktfamilien",
+    product_rules: "Produktregeln",
+    product_variants: "Produktvarianten",
     parse_rules: "Parser-Regeln",
     receipt_items: "Bon-Positionen",
     receipts: "Bons",

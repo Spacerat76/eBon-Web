@@ -104,6 +104,73 @@ class BackupServiceTests extends PostgresIntegrationTestSupport {
         assertThat(settingsJson).contains("\"requiresReconfiguration\":true");
     }
 
+    // Verifies product master data, assignments, and assignment audit records are included in a restorable backup.
+    @Test
+    void createBackupIncludesProductDataAndReceiptItemAssignmentFields() throws Exception {
+        Long categoryId = upsertCategory("Produkt-Standardkategorie");
+        Long familyId = jdbcTemplate.queryForObject("""
+                insert into product_family (name, default_category_id)
+                values ('Bio Milch', ?)
+                returning id
+                """, Long.class, categoryId);
+        Long variantId = jdbcTemplate.queryForObject("""
+                insert into product_variant (product_family_id, name, unit_quantity, unit, total_quantity, total_unit)
+                values (?, 'Bio Milch 1 l', 1, 'l', 1, 'l')
+                returning id
+                """, Long.class, familyId);
+        jdbcTemplate.update("""
+                insert into product_rule (product_family_id, product_variant_id, match_type, match_value, priority)
+                values (?, ?, 'EXACT', 'BIO MILCH', 50)
+                """, familyId, variantId);
+        Long receiptId = seedReceipt(91004, categoryId, "BIO MILCH");
+        Long itemId = jdbcTemplate.queryForObject(
+                "select id from receipt_item where receipt_id = ?", Long.class, receiptId);
+        jdbcTemplate.update("""
+                update receipt_item
+                set product_family_id = ?, product_variant_id = ?, product_assignment_source = 'RULE',
+                    product_assignment_status = 'AUTO_ASSIGNED', product_assignment_confidence = 1.000
+                where id = ?
+                """, familyId, variantId, itemId);
+        jdbcTemplate.update("""
+                insert into product_assignment_log
+                    (receipt_item_id, product_family_id, product_variant_id, source, status, confidence, decision_reason)
+                values (?, ?, ?, 'RULE', 'AUTO_ASSIGNED', 1.000, 'PRODUCT_RULE')
+                """, itemId, familyId, variantId);
+
+        BackupService.BackupFile backupFile = backupService.createBackup();
+        String familiesJson = readZipEntry(backupFile.content(), "product_families.json");
+        String variantsJson = readZipEntry(backupFile.content(), "product_variants.json");
+        String rulesJson = readZipEntry(backupFile.content(), "product_rules.json");
+        String assignmentsJson = readZipEntry(backupFile.content(), "product_assignment_log.json");
+        String itemsJson = readZipEntry(backupFile.content(), "receipt_items.json");
+
+        assertThat(familiesJson).contains("Bio Milch");
+        assertThat(variantsJson).contains("Bio Milch 1 l");
+        assertThat(rulesJson).contains("BIO MILCH");
+        assertThat(assignmentsJson).contains("PRODUCT_RULE");
+        assertThat(itemsJson).contains("\"product_family_id\":\"" + familyId + "\"");
+        assertThat(itemsJson).contains("\"exclude_from_product_price_comparison\":\"false\"");
+
+        jdbcTemplate.update("delete from product_assignment_log");
+        jdbcTemplate.update("""
+                update receipt_item
+                set product_variant_id = null,
+                    product_family_id = null,
+                    product_assignment_source = null,
+                    product_assignment_status = null,
+                    product_assignment_confidence = null
+                """);
+        jdbcTemplate.update("delete from product_rule");
+        jdbcTemplate.update("delete from product_variant");
+        jdbcTemplate.update("delete from product_family");
+
+        backupService.restore(multipart(backupFile.content()));
+
+        assertThat(countRowsWhere("product_family", "name = 'Bio Milch'")).isEqualTo(1);
+        assertThat(countRowsWhere("product_variant", "name = 'Bio Milch 1 l'")).isEqualTo(1);
+        assertThat(countRows("product_assignment_log")).isGreaterThanOrEqualTo(1);
+    }
+
     // Verifies restore fully replaces mutable application data and requires masked secrets to be configured again.
     @Test
     void restoreReplacesDataAndLeavesMaskedSecretsEmpty() {

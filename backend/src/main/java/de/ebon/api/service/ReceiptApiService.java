@@ -20,6 +20,7 @@ import de.ebon.paperless.PaperlessDocument;
 import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
+import de.ebon.product.ProductAssignmentService;
 import de.ebon.parser.AiParsingTextMode;
 import de.ebon.parser.ParseExecutionOptions;
 import de.ebon.persistence.model.AiCategorizationLog;
@@ -28,6 +29,7 @@ import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.DeleteReason;
 import de.ebon.persistence.model.ParseRuleSuggestionStatus;
 import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.ProductVariant;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
@@ -39,6 +41,7 @@ import de.ebon.persistence.repository.ReceiptItemRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -69,6 +72,7 @@ public class ReceiptApiService {
     private final AppSettingRepository appSettingRepository;
     private final PaperlessProperties paperlessProperties;
     private final CategorizationService categorizationService;
+    private final ProductAssignmentService productAssignmentService;
     private final ReceiptParserService receiptParserService;
     private final ReceiptParseApplier receiptParseApplier;
     private final PaperlessClient paperlessClient;
@@ -93,6 +97,7 @@ public class ReceiptApiService {
                 appSettingRepository,
                 paperlessProperties,
                 categorizationService,
+                null,
                 receiptParserService,
                 receiptParseApplier,
                 null);
@@ -119,6 +124,7 @@ public class ReceiptApiService {
                 appSettingRepository,
                 paperlessProperties,
                 categorizationService,
+                null,
                 receiptParserService,
                 receiptParseApplier,
                 paperlessClient);
@@ -135,6 +141,7 @@ public class ReceiptApiService {
             AppSettingRepository appSettingRepository,
             PaperlessProperties paperlessProperties,
             CategorizationService categorizationService,
+            ProductAssignmentService productAssignmentService,
             ReceiptParserService receiptParserService,
             ReceiptParseApplier receiptParseApplier,
             PaperlessClient paperlessClient) {
@@ -147,6 +154,7 @@ public class ReceiptApiService {
         this.appSettingRepository = appSettingRepository;
         this.paperlessProperties = paperlessProperties;
         this.categorizationService = categorizationService;
+        this.productAssignmentService = productAssignmentService;
         this.receiptParserService = receiptParserService;
         this.receiptParseApplier = receiptParseApplier;
         this.paperlessClient = paperlessClient;
@@ -335,6 +343,9 @@ public class ReceiptApiService {
         receiptParseApplier.apply(receipt, parseResult);
         Receipt savedReceipt = receiptRepository.saveAndFlush(receipt);
         categorizationService.categorizeReceipt(savedReceipt.getId());
+        if (productAssignmentService != null) {
+            productAssignmentService.assignReceipt(savedReceipt.getId());
+        }
     }
 
     private String currentPaperlessRawText(Receipt receipt) {
@@ -510,6 +521,7 @@ public class ReceiptApiService {
     public ReceiptItemDto toItemDto(ReceiptItem item) {
         Category category = item.getCategory();
         AiSuggestionDto suggestion = category == null ? latestAiSuggestion(item.getId()) : null;
+        ComparableUnitPrice unitPrice = computedUnitPrice(item);
         return new ReceiptItemDto(
                 item.getId(),
                 item.getReceipt().getId(),
@@ -524,7 +536,60 @@ public class ReceiptApiService {
                 category == null ? null : category.getName(),
                 category == null ? null : item.getCategorySource(),
                 item.isManuallyEdited(),
-                suggestion);
+                suggestion,
+                item.getProductFamily() == null ? null : item.getProductFamily().getId(),
+                item.getProductFamily() == null ? null : item.getProductFamily().getName(),
+                item.getProductVariant() == null ? null : item.getProductVariant().getId(),
+                item.getProductVariant() == null ? null : item.getProductVariant().getName(),
+                item.getProductAssignmentSource(),
+                item.getProductAssignmentStatus(),
+                item.getProductAssignmentConfidence(),
+                unitPrice.value(),
+                unitPrice.unit(),
+                item.isExcludedFromProductPriceComparison(),
+                item.getProductPriceExclusionReason());
+    }
+
+    private ComparableUnitPrice computedUnitPrice(ReceiptItem item) {
+        ProductVariant variant = item.getProductVariant();
+        if (variant == null || variant.getTotalQuantity() == null
+                || variant.getTotalQuantity().signum() <= 0 || item.getTotalPrice() == null) {
+            return ComparableUnitPrice.empty();
+        }
+        ComparableQuantity comparableQuantity = comparableUnitQuantity(variant.getTotalQuantity(), variant.getTotalUnit());
+        if (comparableQuantity == null || comparableQuantity.quantity().signum() <= 0) {
+            return ComparableUnitPrice.empty();
+        }
+        return new ComparableUnitPrice(
+                item.getTotalPrice().divide(comparableQuantity.quantity(), 4, java.math.RoundingMode.HALF_UP),
+                comparableQuantity.unit());
+    }
+
+    /**
+     * Uses liter, kilogram, and piece as display-safe comparison bases. Unknown units stay incomparable.
+     */
+    private ComparableQuantity comparableUnitQuantity(BigDecimal quantity, String unit) {
+        if (unit == null || unit.isBlank()) {
+            return null;
+        }
+        return switch (unit.trim().toLowerCase(Locale.ROOT)) {
+            case "ml", "milliliter" -> new ComparableQuantity(quantity.movePointLeft(3), "l");
+            case "l", "liter", "ltr" -> new ComparableQuantity(quantity, "l");
+            case "g", "gramm" -> new ComparableQuantity(quantity.movePointLeft(3), "kg");
+            case "kg", "kilogramm" -> new ComparableQuantity(quantity, "kg");
+            case "stk", "st", "stück", "stueck", "piece", "pcs", "pc" -> new ComparableQuantity(quantity, "Stück");
+            default -> null;
+        };
+    }
+
+    private record ComparableQuantity(BigDecimal quantity, String unit) {
+    }
+
+    private record ComparableUnitPrice(BigDecimal value, String unit) {
+
+        private static ComparableUnitPrice empty() {
+            return new ComparableUnitPrice(null, null);
+        }
     }
 
     private AiSuggestionDto latestAiSuggestion(Long receiptItemId) {

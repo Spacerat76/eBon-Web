@@ -80,7 +80,9 @@ public class SettingsService {
                 enumValue("ai_parsing_text_mode", aiParsingProperties.getTextMode().name(), AiParsingTextMode.class),
                 booleanValue("ai_parsing_store_debug_snippets", aiParsingProperties.isStoreDebugSnippets()),
                 integerValue("sync_interval_minutes", 60),
-                value("currency", "EUR"));
+                value("currency", "EUR"),
+                integerValue("product_history_min_confirmed_matches", 3),
+                decimalValue("product_history_min_variant_share", new BigDecimal("0.900")));
     }
 
     @Transactional
@@ -136,6 +138,16 @@ public class SettingsService {
             save("sync_interval_minutes", request.syncIntervalMinutes().toString(), "Sync-Intervall in Minuten");
         }
         saveIfPresent("currency", request.currency(), "Anzuzeigende Waehrung");
+        if (request.productHistoryMinConfirmedMatches() != null) {
+            save("product_history_min_confirmed_matches",
+                    request.productHistoryMinConfirmedMatches().toString(),
+                    "Mindestens bestaetigte Produktzuordnungen fuer Historie");
+        }
+        if (request.productHistoryMinVariantShare() != null) {
+            save("product_history_min_variant_share",
+                    request.productHistoryMinVariantShare().toPlainString(),
+                    "Mindestanteil derselben Produktvariante fuer Historie");
+        }
         return getSettings();
     }
 

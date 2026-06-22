@@ -20,17 +20,24 @@ import de.ebon.parser.ParseExecutionOptions;
 import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
+import de.ebon.product.ProductAssignmentService;
 import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.CategorySource;
 import de.ebon.persistence.model.DeleteReason;
 import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.ProductAssignmentSource;
+import de.ebon.persistence.model.ProductAssignmentStatus;
+import de.ebon.persistence.model.ProductFamily;
+import de.ebon.persistence.model.ProductVariant;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
+import de.ebon.persistence.repository.AiParsingLogRepository;
 import de.ebon.persistence.repository.AppSettingRepository;
 import de.ebon.persistence.repository.CategoryRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
+import de.ebon.persistence.repository.ParseRuleSuggestionRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -78,10 +85,19 @@ class ReceiptApiServiceTests {
     private AiCategorizationLogRepository aiCategorizationLogRepository;
 
     @Mock
+    private AiParsingLogRepository aiParsingLogRepository;
+
+    @Mock
+    private ParseRuleSuggestionRepository parseRuleSuggestionRepository;
+
+    @Mock
     private AppSettingRepository appSettingRepository;
 
     @Mock
     private CategorizationService categorizationService;
+
+    @Mock
+    private ProductAssignmentService productAssignmentService;
 
     @Mock
     private ReceiptParserService receiptParserService;
@@ -165,6 +181,31 @@ class ReceiptApiServiceTests {
 
         assertThat(dto.paperlessDocumentUrl()).isEqualTo("http://paperless.web/documents/1234/details");
         assertThat(dto.paperlessDocumentUrl()).doesNotContain("token", "secret");
+    }
+
+    // Verifies product unit prices normalize milliliters to liters instead of exposing a price per milliliter.
+    @Test
+    void itemDtoComputesComparablePricePerLiterForMilliliterVariant() {
+        ProductFamily family = new ProductFamily("Mineralwasser", null);
+        ProductVariant variant = new ProductVariant(
+                family,
+                "Mineralwasser 500 ml",
+                new BigDecimal("500"),
+                "ml",
+                1,
+                null,
+                new BigDecimal("500"),
+                "ml",
+                null);
+        Receipt receipt = receipt(3L, 1235, "REWE", false, "Mineralwasser 500 ml");
+        ReceiptItem item = firstItem(receipt);
+        item.updateManualValues(null, null, null, null, null, new BigDecimal("2.00"), null);
+        item.assignProduct(family, variant, ProductAssignmentSource.RULE, ProductAssignmentStatus.AUTO_ASSIGNED, null);
+
+        ReceiptItemDto dto = service.toItemDto(item);
+
+        assertThat(dto.computedUnitPrice()).isEqualByComparingTo("4.0000");
+        assertThat(dto.computedUnitPriceUnit()).isEqualTo("l");
     }
 
     // Verifies that missing and soft-deleted receipts are hidden behind the same not-found contract.
@@ -403,11 +444,12 @@ class ReceiptApiServiceTests {
         receipt.addItem(cleanItem);
         when(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId())).thenReturn(List.of(cleanItem));
 
-        ReceiptDto dto = service.reparseReceipt(receipt.getId(), true);
+        ReceiptDto dto = serviceWithProductAssignment().reparseReceipt(receipt.getId(), true);
 
         assertThat(dto.storeBranch()).isEqualTo("Am Markt 1");
         verify(receiptParserService).parse(eq(receipt), any(ParseExecutionOptions.class));
         verify(categorizationService).categorizeReceipt(receipt.getId());
+        verify(productAssignmentService).assignReceipt(receipt.getId());
     }
 
     // Verifies the status check ignores transport-only line-ending differences and exposes no raw text.
@@ -541,6 +583,23 @@ class ReceiptApiServiceTests {
 
         assertThat(receipt.getDeletedAt()).isNotNull();
         assertThat(receipt.getDeleteReason()).isEqualTo(DeleteReason.USER_DELETED);
+    }
+
+    private ReceiptApiService serviceWithProductAssignment() {
+        return new ReceiptApiService(
+                receiptRepository,
+                receiptItemRepository,
+                categoryRepository,
+                aiCategorizationLogRepository,
+                aiParsingLogRepository,
+                parseRuleSuggestionRepository,
+                appSettingRepository,
+                paperlessProperties,
+                categorizationService,
+                productAssignmentService,
+                receiptParserService,
+                realReceiptParseApplier,
+                paperlessClient);
     }
 
     private Receipt receipt(long id, int paperlessDocumentId, String storeName, boolean deleted, String description) {

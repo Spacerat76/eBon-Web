@@ -58,7 +58,13 @@ public record SettingsDto(
         @Min(1)
         Integer syncIntervalMinutes,
         @Pattern(regexp = "^[A-Z]{3}$")
-        String currency) {
+        String currency,
+        @Min(1)
+        Integer productHistoryMinConfirmedMatches,
+        @DecimalMin("0.000")
+        @DecimalMax("1.000")
+        @Digits(integer = 1, fraction = 3)
+        BigDecimal productHistoryMinVariantShare) {
 
     public SettingsDto(
             String paperlessBaseUrl,
@@ -91,6 +97,8 @@ public record SettingsDto(
                 null,
                 null,
                 syncIntervalMinutes,
-                currency);
+                currency,
+                null,
+                null);
     }
 }

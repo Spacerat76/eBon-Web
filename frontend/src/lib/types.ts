@@ -8,6 +8,10 @@ export type CategorySource = "RULE" | "AI" | "MANUAL";
 
 export type DeleteReason = "USER_DELETED" | "TAG_REMOVED";
 
+export type ProductAssignmentSource = "RULE" | "AI" | "MANUAL" | "HISTORY";
+
+export type ProductAssignmentStatus = "CONFIRMED" | "AUTO_ASSIGNED" | "NEEDS_REVIEW" | "REJECTED" | "NO_PRODUCT";
+
 export type AiCategorizationRejectionReason =
   | "LOW_CONFIDENCE"
   | "UNKNOWN_CATEGORY"
@@ -204,6 +208,17 @@ export interface ReceiptItemDTO {
   categorySource: CategorySource | null;
   isManuallyEdited: boolean;
   aiSuggestion: AiSuggestionDTO | null;
+  productFamilyId: number | null;
+  productFamilyName: string | null;
+  productVariantId: number | null;
+  productVariantName: string | null;
+  productAssignmentSource: ProductAssignmentSource | null;
+  productAssignmentStatus: ProductAssignmentStatus | null;
+  productAssignmentConfidence: number | null;
+  computedUnitPrice: number | null;
+  computedUnitPriceUnit: string | null;
+  excludeFromProductPriceComparison: boolean;
+  productPriceExclusionReason: string | null;
 }
 
 export interface ReceiptDTO {
@@ -297,6 +312,8 @@ export interface SettingsDTO {
   aiParsingStoreDebugSnippets: boolean | null;
   syncIntervalMinutes: number | null;
   currency: string | null;
+  productHistoryMinConfirmedMatches: number | null;
+  productHistoryMinVariantShare: number | null;
 }
 
 export interface SettingsConnectionTestResponse {
@@ -422,6 +439,101 @@ export interface DataMaintenanceResultDTO {
   skippedManualReceipts: number;
   deletedReceipts: number;
   deletedSyncLogs: number;
+}
+
+export interface ProductDataResetResultDTO {
+  message: string;
+  clearedAssignments: number;
+  deletedAssignmentLogs: number;
+  deletedProductRules: number;
+  deletedProductVariants: number;
+  deletedProductFamilies: number;
+}
+
+export interface ProductFamilyDTO {
+  id: number;
+  name: string;
+  defaultCategoryId: number | null;
+  defaultCategoryName: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductFamilyRequest {
+  name: string;
+  defaultCategoryId?: number | null;
+  isActive?: boolean | null;
+}
+
+export interface ProductVariantDTO {
+  id: number;
+  productFamilyId: number;
+  productFamilyName: string;
+  name: string;
+  unitQuantity: number | null;
+  unit: string | null;
+  packageQuantity: number | null;
+  packageDescription: string | null;
+  totalQuantity: number | null;
+  totalUnit: string | null;
+  gtin: string | null;
+  isActive: boolean;
+}
+
+export interface ProductVariantRequest {
+  productFamilyId: number;
+  name: string;
+  unitQuantity?: number | null;
+  unit?: string | null;
+  packageQuantity?: number | null;
+  packageDescription?: string | null;
+  totalQuantity?: number | null;
+  totalUnit?: string | null;
+  gtin?: string | null;
+  isActive?: boolean | null;
+}
+
+export interface ProductRuleDTO {
+  id: number;
+  productFamilyId: number;
+  productFamilyName: string;
+  productVariantId: number | null;
+  productVariantName: string | null;
+  storeName: string | null;
+  matchType: RuleMatchType;
+  matchValue: string;
+  priority: number;
+  isActive: boolean;
+}
+
+export interface ProductRuleRequest {
+  productFamilyId: number;
+  productVariantId?: number | null;
+  storeName?: string | null;
+  matchType: RuleMatchType;
+  matchValue: string;
+  priority?: number | null;
+  isActive?: boolean | null;
+}
+
+export interface ProductRulePreviewRequest {
+  storeName?: string | null;
+  matchType: RuleMatchType;
+  matchValue: string;
+}
+
+export interface ProductRulePreviewResponse {
+  matchingItemsCount: number;
+}
+
+export interface ProductAssignmentRunRequest {
+  receiptId?: number | null;
+  openOnly?: boolean | null;
+}
+
+export interface ProductAssignmentRunResponse {
+  changedItemsCount: number;
 }
 
 export interface BackupTableValidationDTO {

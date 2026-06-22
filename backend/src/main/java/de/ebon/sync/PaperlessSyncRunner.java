@@ -7,6 +7,7 @@ import de.ebon.paperless.PaperlessDocument;
 import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
+import de.ebon.product.ProductAssignmentService;
 import de.ebon.parser.AiParsingBudget;
 import de.ebon.parser.ParseExecutionOptions;
 import de.ebon.persistence.model.DeleteReason;
@@ -36,6 +37,7 @@ class PaperlessSyncRunner {
     private final ReceiptParserService receiptParserService;
     private final ReceiptParseApplier receiptParseApplier;
     private final CategorizationService categorizationService;
+    private final ProductAssignmentService productAssignmentService;
     private final ReceiptRepository receiptRepository;
     private final SyncLogRepository syncLogRepository;
 
@@ -44,12 +46,14 @@ class PaperlessSyncRunner {
             ReceiptParserService receiptParserService,
             ReceiptParseApplier receiptParseApplier,
             CategorizationService categorizationService,
+            ProductAssignmentService productAssignmentService,
             ReceiptRepository receiptRepository,
             SyncLogRepository syncLogRepository) {
         this.paperlessClient = paperlessClient;
         this.receiptParserService = receiptParserService;
         this.receiptParseApplier = receiptParseApplier;
         this.categorizationService = categorizationService;
+        this.productAssignmentService = productAssignmentService;
         this.receiptRepository = receiptRepository;
         this.syncLogRepository = syncLogRepository;
     }
@@ -95,6 +99,7 @@ class PaperlessSyncRunner {
             receiptParseApplier.apply(receipt, parseResult);
             Receipt savedReceipt = receiptRepository.saveAndFlush(receipt);
             categorizationService.categorizeReceipt(savedReceipt.getId());
+            productAssignmentService.assignReceipt(savedReceipt.getId());
             syncLog.addEntry(new SyncLogEntry(
                     document.id(),
                     SyncLogEntryAction.IMPORTED,

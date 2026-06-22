@@ -2,6 +2,7 @@ package de.ebon.api;
 
 import de.ebon.api.dto.DataMaintenanceResetRequest;
 import de.ebon.api.dto.DataMaintenanceResultDto;
+import de.ebon.api.dto.ProductDataResetResultDto;
 import de.ebon.api.service.DataMaintenanceService;
 import de.ebon.api.service.ReceiptApiService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -40,5 +41,12 @@ public class DataMaintenanceController {
     public DataMaintenanceResultDto resetImportedReceipts(
             @Valid @RequestBody DataMaintenanceResetRequest request) {
         return dataMaintenanceService.resetImportedReceipts(request);
+    }
+
+    @PostMapping("/api/admin/data-reset/product-data")
+    @Operation(summary = "Produkt-Stammdaten und Produktzuordnungen nach expliziter Bestaetigung loeschen")
+    public ProductDataResetResultDto resetProductData(
+            @Valid @RequestBody DataMaintenanceResetRequest request) {
+        return dataMaintenanceService.resetProductData(request);
     }
 }

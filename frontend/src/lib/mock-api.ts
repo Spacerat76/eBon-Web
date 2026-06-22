@@ -244,7 +244,18 @@ const receipts: ReceiptDTO[] = [
         categoryName: "Milchprodukte und Eier",
         categorySource: "RULE",
         isManuallyEdited: false,
-        aiSuggestion: null
+        aiSuggestion: null,
+        productFamilyId: null,
+        productFamilyName: null,
+        productVariantId: null,
+        productVariantName: null,
+        productAssignmentSource: null,
+        productAssignmentStatus: null,
+        productAssignmentConfidence: null,
+        computedUnitPrice: null,
+        computedUnitPriceUnit: null,
+        excludeFromProductPriceComparison: false,
+        productPriceExclusionReason: null
       },
       {
         id: 12,
@@ -260,7 +271,18 @@ const receipts: ReceiptDTO[] = [
         categoryName: "Pfand und Rabatte",
         categorySource: "RULE",
         isManuallyEdited: false,
-        aiSuggestion: null
+        aiSuggestion: null,
+        productFamilyId: null,
+        productFamilyName: null,
+        productVariantId: null,
+        productVariantName: null,
+        productAssignmentSource: null,
+        productAssignmentStatus: "NO_PRODUCT",
+        productAssignmentConfidence: null,
+        computedUnitPrice: null,
+        computedUnitPriceUnit: null,
+        excludeFromProductPriceComparison: false,
+        productPriceExclusionReason: null
       }
     ]
   },
@@ -330,7 +352,9 @@ const settings: SettingsDTO = {
   aiParsingTextMode: "MINIMIZED",
   aiParsingStoreDebugSnippets: false,
   syncIntervalMinutes: 60,
-  currency: "EUR"
+  currency: "EUR",
+  productHistoryMinConfirmedMatches: 3,
+  productHistoryMinVariantShare: 0.9
 };
 
 const aiParsingLogs = [

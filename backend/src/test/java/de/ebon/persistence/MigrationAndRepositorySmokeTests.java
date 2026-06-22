@@ -119,6 +119,40 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
                 .satisfies(setting -> assertThat(setting.getValue()).isEqualTo("0.900"));
     }
 
+    // Verifies the Phase 15a schema provides product master data, assignments, and conservative history defaults.
+    @Test
+    void flywayCreatesProductAssignmentFoundation() {
+        Integer productTableCount = jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from information_schema.tables
+                        where table_schema = 'public'
+                          and table_name in ('product_family', 'product_variant', 'product_rule', 'product_assignment_log')
+                        """,
+                Integer.class);
+        Integer receiptItemProductColumnCount = jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from information_schema.columns
+                        where table_schema = 'public'
+                          and table_name = 'receipt_item'
+                          and column_name in (
+                              'product_family_id', 'product_variant_id', 'product_assignment_source',
+                              'product_assignment_status', 'product_assignment_confidence', 'product_assignment_updated_at',
+                              'exclude_from_product_price_comparison', 'product_price_exclusion_reason')
+                        """,
+                Integer.class);
+
+        assertThat(productTableCount).isEqualTo(4);
+        assertThat(receiptItemProductColumnCount).isEqualTo(8);
+        assertThat(jdbcTemplate.queryForObject(
+                "select value from app_settings where key = 'product_history_min_confirmed_matches'",
+                String.class)).isEqualTo("3");
+        assertThat(jdbcTemplate.queryForObject(
+                "select value from app_settings where key = 'product_history_min_variant_share'",
+                String.class)).isEqualTo("0.900");
+    }
+
     // Verifies seeded categorization rules cover confirmed real-item cases and leave unknown items uncategorized.
     @Test
     void seededRulesKeepUnknownStoreItemsUncategorized() {

@@ -51,6 +51,34 @@ public class ReceiptItem {
     private BigDecimal discountAmount;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_family_id")
+    private ProductFamily productFamily;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_variant_id")
+    private ProductVariant productVariant;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "product_assignment_source", length = 32)
+    private ProductAssignmentSource productAssignmentSource;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "product_assignment_status", length = 32)
+    private ProductAssignmentStatus productAssignmentStatus;
+
+    @Column(name = "product_assignment_confidence", precision = 4, scale = 3)
+    private BigDecimal productAssignmentConfidence;
+
+    @Column(name = "product_assignment_updated_at")
+    private OffsetDateTime productAssignmentUpdatedAt;
+
+    @Column(name = "exclude_from_product_price_comparison", nullable = false)
+    private boolean excludedFromProductPriceComparison;
+
+    @Column(name = "product_price_exclusion_reason", columnDefinition = "text")
+    private String productPriceExclusionReason;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;
 
@@ -146,6 +174,58 @@ public class ReceiptItem {
         this.discountAmount = discountAmount;
     }
 
+    public void assignProduct(
+            ProductFamily family,
+            ProductVariant variant,
+            ProductAssignmentSource source,
+            ProductAssignmentStatus status,
+            BigDecimal confidence) {
+        if (family == null || source == null || status == null) {
+            throw new IllegalArgumentException("Produktzuordnung braucht Familie, Quelle und Status.");
+        }
+        if (variant != null && variant.getProductFamily() != family) {
+            throw new IllegalArgumentException("Produktvariante gehoert nicht zur Produktfamilie.");
+        }
+        this.productFamily = family;
+        this.productVariant = variant;
+        this.productAssignmentSource = source;
+        this.productAssignmentStatus = status;
+        this.productAssignmentConfidence = confidence;
+        this.productAssignmentUpdatedAt = OffsetDateTime.now(ZoneOffset.UTC);
+    }
+
+    public void markProductNeedsReview(BigDecimal confidence) {
+        this.productFamily = null;
+        this.productVariant = null;
+        this.productAssignmentSource = null;
+        this.productAssignmentStatus = ProductAssignmentStatus.NEEDS_REVIEW;
+        this.productAssignmentConfidence = confidence;
+        this.productAssignmentUpdatedAt = OffsetDateTime.now(ZoneOffset.UTC);
+    }
+
+    public void markNoProduct() {
+        this.productFamily = null;
+        this.productVariant = null;
+        this.productAssignmentSource = null;
+        this.productAssignmentStatus = ProductAssignmentStatus.NO_PRODUCT;
+        this.productAssignmentConfidence = null;
+        this.productAssignmentUpdatedAt = OffsetDateTime.now(ZoneOffset.UTC);
+    }
+
+    public void clearProductAssignment() {
+        this.productFamily = null;
+        this.productVariant = null;
+        this.productAssignmentSource = null;
+        this.productAssignmentStatus = null;
+        this.productAssignmentConfidence = null;
+        this.productAssignmentUpdatedAt = OffsetDateTime.now(ZoneOffset.UTC);
+    }
+
+    public void setProductPriceExclusion(boolean excluded, String reason) {
+        this.excludedFromProductPriceComparison = excluded;
+        this.productPriceExclusionReason = excluded && reason != null && !reason.isBlank() ? reason.trim() : null;
+    }
+
     void setReceipt(Receipt receipt) {
         this.receipt = receipt;
     }
@@ -184,6 +264,38 @@ public class ReceiptItem {
 
     public BigDecimal getDiscountAmount() {
         return discountAmount;
+    }
+
+    public ProductFamily getProductFamily() {
+        return productFamily;
+    }
+
+    public ProductVariant getProductVariant() {
+        return productVariant;
+    }
+
+    public ProductAssignmentSource getProductAssignmentSource() {
+        return productAssignmentSource;
+    }
+
+    public ProductAssignmentStatus getProductAssignmentStatus() {
+        return productAssignmentStatus;
+    }
+
+    public BigDecimal getProductAssignmentConfidence() {
+        return productAssignmentConfidence;
+    }
+
+    public OffsetDateTime getProductAssignmentUpdatedAt() {
+        return productAssignmentUpdatedAt;
+    }
+
+    public boolean isExcludedFromProductPriceComparison() {
+        return excludedFromProductPriceComparison;
+    }
+
+    public String getProductPriceExclusionReason() {
+        return productPriceExclusionReason;
     }
 
     public Category getCategory() {

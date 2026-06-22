@@ -15,6 +15,17 @@ import type {
   CategoryRequest,
   DashboardDTO,
   DataMaintenanceResultDTO,
+  ProductAssignmentRunRequest,
+  ProductAssignmentRunResponse,
+  ProductDataResetResultDTO,
+  ProductFamilyDTO,
+  ProductFamilyRequest,
+  ProductRuleDTO,
+  ProductRulePreviewRequest,
+  ProductRulePreviewResponse,
+  ProductRuleRequest,
+  ProductVariantDTO,
+  ProductVariantRequest,
   MessageResponse,
   MigrationDraftDTO,
   PageResponse,
@@ -200,6 +211,59 @@ export class ApiClient {
     return this.request(`/categories/${id}`, { method: "DELETE" });
   }
 
+  productFamilies(): Promise<ProductFamilyDTO[]> {
+    return this.request("/products/families");
+  }
+
+  createProductFamily(request: ProductFamilyRequest): Promise<ProductFamilyDTO> {
+    return this.request("/products/families", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  updateProductFamily(id: number, request: ProductFamilyRequest): Promise<ProductFamilyDTO> {
+    return this.request(`/products/families/${id}`, { method: "PUT", body: JSON.stringify(request) });
+  }
+
+  productVariants(productFamilyId?: number): Promise<ProductVariantDTO[]> {
+    const query = productFamilyId === undefined ? "" : `?productFamilyId=${productFamilyId}`;
+    return this.request(`/products/variants${query}`);
+  }
+
+  createProductVariant(request: ProductVariantRequest): Promise<ProductVariantDTO> {
+    return this.request("/products/variants", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  updateProductVariant(id: number, request: ProductVariantRequest): Promise<ProductVariantDTO> {
+    return this.request(`/products/variants/${id}`, { method: "PUT", body: JSON.stringify(request) });
+  }
+
+  productRules(): Promise<ProductRuleDTO[]> {
+    return this.request("/products/rules");
+  }
+
+  createProductRule(request: ProductRuleRequest): Promise<ProductRuleDTO> {
+    return this.request("/products/rules", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  updateProductRule(id: number, request: ProductRuleRequest): Promise<ProductRuleDTO> {
+    return this.request(`/products/rules/${id}`, { method: "PUT", body: JSON.stringify(request) });
+  }
+
+  deleteProductRule(id: number): Promise<void> {
+    return this.request(`/products/rules/${id}`, { method: "DELETE" });
+  }
+
+  previewProductRule(request: ProductRulePreviewRequest): Promise<ProductRulePreviewResponse> {
+    return this.request("/products/rules/preview", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  applyProductRule(id: number): Promise<ProductAssignmentRunResponse> {
+    return this.request(`/products/rules/${id}/apply`, { method: "POST" });
+  }
+
+  runProductAssignments(request: ProductAssignmentRunRequest = {}): Promise<ProductAssignmentRunResponse> {
+    return this.request("/products/assignments/run", { method: "POST", body: JSON.stringify(request) });
+  }
+
   search(params: SearchParams): Promise<PageResponse<SearchResultDTO>> {
     return this.request(`/search?${toQuery({
       q: params.q || undefined,
@@ -344,6 +408,13 @@ export class ApiClient {
   reparseAllReceipts(overwriteManualEdits: boolean): Promise<DataMaintenanceResultDTO> {
     return this.request(`/receipts/reparse?overwriteManualEdits=${overwriteManualEdits ? "true" : "false"}`, {
       method: "POST"
+    });
+  }
+
+  resetProductData(confirmation: string): Promise<ProductDataResetResultDTO> {
+    return this.request("/admin/data-reset/product-data", {
+      method: "POST",
+      body: JSON.stringify({ confirmation })
     });
   }
 

@@ -41,6 +41,7 @@ import type {
   PaperlessRawTextStatus,
   ParseStatus,
   ParseRuleSuggestionDTO,
+  ProductAssignmentStatus,
   ReceiptDTO,
   ReceiptItemDTO,
   ReceiptItemUpdateRequest,
@@ -1038,6 +1039,8 @@ function ReceiptItemsTable({
             <th className="px-3 py-2 text-right font-medium">Gesamt</th>
             <th className="px-3 py-2 text-right font-medium">Rabatt</th>
             <th className="px-3 py-2 font-medium">Kategorie</th>
+            <th className="px-3 py-2 font-medium">Produkt</th>
+            <th className="px-3 py-2 text-right font-medium">Einheitspreis</th>
           </tr>
         </thead>
         <tbody>
@@ -1066,6 +1069,26 @@ function ReceiptItemsTable({
                     />
                   ) : null}
                 </div>
+              </td>
+              <td className="px-3 py-3">
+                {item.productAssignmentStatus === "NO_PRODUCT" ? (
+                  <Badge>Kein Produkt</Badge>
+                ) : item.productFamilyName ? (
+                  <div className="space-y-1">
+                    <div className="font-medium text-zinc-950 dark:text-zinc-50">{item.productFamilyName}</div>
+                    {item.productVariantName ? <div className="text-xs text-zinc-500 dark:text-zinc-400">{item.productVariantName}</div> : null}
+                    {item.productAssignmentStatus ? <ProductAssignmentBadge status={item.productAssignmentStatus} /> : null}
+                  </div>
+                ) : item.productAssignmentStatus === "NEEDS_REVIEW" ? (
+                  <Badge tone="yellow">Prüfung nötig</Badge>
+                ) : (
+                  <span className="text-zinc-500 dark:text-zinc-400">-</span>
+                )}
+              </td>
+              <td className="px-3 py-3 text-right">
+                {item.computedUnitPrice == null || item.computedUnitPriceUnit == null
+                  ? "-"
+                  : `${formatCurrency(item.computedUnitPrice)} / ${item.computedUnitPriceUnit}`}
               </td>
             </tr>
           ))}
@@ -1173,6 +1196,18 @@ function CategoryCell({ category, item }: { category: CategoryDTO | null | undef
       {item.categoryName ?? category?.name ?? "Kategorie"}
     </span>
   );
+}
+
+function ProductAssignmentBadge({ status }: { status: ProductAssignmentStatus }) {
+  const label = {
+    CONFIRMED: "Bestätigt",
+    AUTO_ASSIGNED: "Automatisch",
+    NEEDS_REVIEW: "Prüfung nötig",
+    REJECTED: "Abgelehnt",
+    NO_PRODUCT: "Kein Produkt"
+  }[status];
+  const tone = status === "NEEDS_REVIEW" || status === "REJECTED" ? "yellow" : "blue";
+  return <Badge tone={tone}>{label}</Badge>;
 }
 
 function AiSuggestionHint({ applying, item, onApply }: { applying: boolean; item: ReceiptItemDTO; onApply: () => void }) {

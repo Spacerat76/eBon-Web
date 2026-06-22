@@ -47,7 +47,10 @@ class PaperlessSyncServiceTests extends PostgresIntegrationTestSupport {
     @BeforeEach
     void resetState() {
         paperlessClient.reset();
-        jdbcTemplate.execute("truncate sync_log_entry, sync_log, receipt_item, receipt restart identity cascade");
+        jdbcTemplate.execute("""
+                truncate product_assignment_log, sync_log_entry, sync_log, receipt_item, receipt,
+                    product_rule, product_variant, product_family restart identity cascade
+                """);
     }
 
     // Verifies new Paperless documents are imported once and repeated syncs remain idempotent.
@@ -71,6 +74,39 @@ class PaperlessSyncServiceTests extends PostgresIntegrationTestSupport {
                     assertThat(receipt.getParseStatus()).isEqualTo(ParseStatus.PARSED);
                     assertThat(receipt.getDeletedAt()).isNull();
                 });
+    }
+
+    // Verifies the sync lifecycle runs product assignment after parsing and categorization for new receipts.
+    @Test
+    void assignsProductRuleToNewlySyncedReceiptItems() {
+        Long familyId = jdbcTemplate.queryForObject("""
+                insert into product_family (name)
+                values ('Bio Haferdrink')
+                returning id
+                """, Long.class);
+        Long variantId = jdbcTemplate.queryForObject("""
+                insert into product_variant (product_family_id, name, unit_quantity, unit, total_quantity, total_unit)
+                values (?, 'Bio Haferdrink 1 l', 1, 'l', 1, 'l')
+                returning id
+                """, Long.class, familyId);
+        jdbcTemplate.update("""
+                insert into product_rule (product_family_id, product_variant_id, store_name, match_type, match_value, priority)
+                values (?, ?, 'REWE', 'CONTAINS', 'BIO HAFERDRINK', 10)
+                """, familyId, variantId);
+        paperlessClient.respondWith(List.of(document(1010, "BIO HAFERDRINK")));
+
+        syncService.synchronize();
+
+        var assignment = jdbcTemplate.queryForMap("""
+                select product_family_id, product_variant_id, product_assignment_source, product_assignment_status
+                from receipt_item
+                where receipt_id = (select id from receipt where paperless_document_id = 1010)
+                """);
+
+        assertThat(assignment.get("product_family_id")).isEqualTo(familyId);
+        assertThat(assignment.get("product_variant_id")).isEqualTo(variantId);
+        assertThat(assignment.get("product_assignment_source")).isEqualTo("RULE");
+        assertThat(assignment.get("product_assignment_status")).isEqualTo("AUTO_ASSIGNED");
     }
 
     // Verifies TAG_REMOVED soft deletes happen only after a successful complete Paperless fetch.

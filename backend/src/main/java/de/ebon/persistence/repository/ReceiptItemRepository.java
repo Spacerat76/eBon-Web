@@ -2,8 +2,10 @@ package de.ebon.persistence.repository;
 
 import de.ebon.persistence.model.ReceiptItem;
 import java.util.List;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
 
 public interface ReceiptItemRepository extends JpaRepository<ReceiptItem, Long>, JpaSpecificationExecutor<ReceiptItem> {
 
@@ -14,4 +16,22 @@ public interface ReceiptItemRepository extends JpaRepository<ReceiptItem, Long>,
     long countByCategory_Id(Long categoryId);
 
     long countByCategoryIsNullAndReceipt_DeletedAtIsNull();
+
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
+    @Query(value = """
+            update receipt_item
+            set product_family_id = null,
+                product_variant_id = null,
+                product_assignment_source = null,
+                product_assignment_status = null,
+                product_assignment_confidence = null,
+                product_assignment_updated_at = current_timestamp,
+                exclude_from_product_price_comparison = false,
+                product_price_exclusion_reason = null
+            where product_family_id is not null
+               or product_variant_id is not null
+               or product_assignment_status is not null
+               or exclude_from_product_price_comparison = true
+            """, nativeQuery = true)
+    int clearProductAssignments();
 }

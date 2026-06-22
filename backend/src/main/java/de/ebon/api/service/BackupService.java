@@ -334,6 +334,8 @@ public class BackupService {
 
     private void validateReferences(Map<String, List<Map<String, Object>>> rowsByTable, List<String> errors) {
         Set<String> categoryIds = ids(rowsByTable, "categories");
+        Set<String> productFamilyIds = ids(rowsByTable, "product_families");
+        Set<String> productVariantIds = ids(rowsByTable, "product_variants");
         Set<String> receiptIds = ids(rowsByTable, "receipts");
         Set<String> receiptItemIds = ids(rowsByTable, "receipt_items");
         Set<String> aiParsingLogIds = ids(rowsByTable, "ai_parsing_log");
@@ -341,8 +343,17 @@ public class BackupService {
         Set<String> syncLogIds = ids(rowsByTable, "sync_log");
 
         validateReference(rowsByTable, "categorization_rules", "category_id", categoryIds, false, errors);
+        validateReference(rowsByTable, "product_families", "default_category_id", categoryIds, true, errors);
+        validateReference(rowsByTable, "product_variants", "product_family_id", productFamilyIds, false, errors);
+        validateReference(rowsByTable, "product_rules", "product_family_id", productFamilyIds, false, errors);
+        validateReference(rowsByTable, "product_rules", "product_variant_id", productVariantIds, true, errors);
         validateReference(rowsByTable, "receipt_items", "receipt_id", receiptIds, false, errors);
         validateReference(rowsByTable, "receipt_items", "category_id", categoryIds, true, errors);
+        validateReference(rowsByTable, "receipt_items", "product_family_id", productFamilyIds, true, errors);
+        validateReference(rowsByTable, "receipt_items", "product_variant_id", productVariantIds, true, errors);
+        validateReference(rowsByTable, "product_assignment_log", "receipt_item_id", receiptItemIds, false, errors);
+        validateReference(rowsByTable, "product_assignment_log", "product_family_id", productFamilyIds, true, errors);
+        validateReference(rowsByTable, "product_assignment_log", "product_variant_id", productVariantIds, true, errors);
         validateReference(rowsByTable, "ai_categorization_log", "receipt_item_id", receiptItemIds, false, errors);
         validateReference(rowsByTable, "ai_categorization_log", "assigned_category_id", categoryIds, true, errors);
         validateReference(rowsByTable, "ai_categorization_log", "suggested_category_id", categoryIds, true, errors);
@@ -427,11 +438,15 @@ public class BackupService {
                 "parse_rule_suggestion",
                 "ai_parsing_log",
                 "ai_categorization_log",
+                "product_assignment_log",
                 "receipt_item",
                 "sync_log",
                 "receipt",
                 "categorization_rule",
                 "parse_rule",
+                "product_rule",
+                "product_variant",
+                "product_family",
                 "app_settings",
                 "category"
         ).forEach(table -> jdbcTemplate.update("DELETE FROM " + table));
@@ -489,6 +504,20 @@ public class BackupService {
                 table("categories", "category", "categories.json", "id", "id", List.of(
                         col("id", "bigint"), col("name", "varchar"), col("color_hex", "varchar"),
                         col("icon", "varchar"), col("is_active", "boolean"), col("sort_order", "integer"))),
+                table("product_families", "product_family", "product_families.json", "id", "id", List.of(
+                        col("id", "bigint"), col("name", "varchar"), col("default_category_id", "bigint"),
+                        col("is_active", "boolean"), col("created_at", "timestamptz"), col("updated_at", "timestamptz"))),
+                table("product_variants", "product_variant", "product_variants.json", "id", "id", List.of(
+                        col("id", "bigint"), col("product_family_id", "bigint"), col("name", "varchar"),
+                        col("unit_quantity", "numeric"), col("unit", "varchar"), col("package_quantity", "integer"),
+                        col("package_description", "varchar"), col("total_quantity", "numeric"), col("total_unit", "varchar"),
+                        col("gtin", "varchar"), col("is_active", "boolean"), col("created_at", "timestamptz"),
+                        col("updated_at", "timestamptz"))),
+                table("product_rules", "product_rule", "product_rules.json", "id", "id", List.of(
+                        col("id", "bigint"), col("product_family_id", "bigint"), col("product_variant_id", "bigint"),
+                        col("store_name", "varchar"), col("match_type", "varchar"), col("match_value", "varchar"),
+                        col("priority", "integer"), col("is_active", "boolean"), col("created_at", "timestamptz"),
+                        col("updated_at", "timestamptz"))),
                 table("categorization_rules", "categorization_rule", "categorization_rules.json", "id", "id", List.of(
                         col("id", "bigint"), col("category_id", "bigint"), col("match_field", "varchar"),
                         col("match_type", "varchar"), col("match_value", "varchar"), col("priority", "integer"),
@@ -511,7 +540,16 @@ public class BackupService {
                         col("description", "varchar"), col("quantity", "numeric"), col("unit", "varchar"),
                         col("unit_price", "numeric"), col("total_price", "numeric"), col("discount_amount", "numeric"),
                         col("category_id", "bigint"), col("category_source", "varchar"), col("is_manually_edited", "boolean"),
+                        col("product_family_id", "bigint"), col("product_variant_id", "bigint"),
+                        col("product_assignment_source", "varchar"), col("product_assignment_status", "varchar"),
+                        col("product_assignment_confidence", "numeric"), col("product_assignment_updated_at", "timestamptz"),
+                        col("exclude_from_product_price_comparison", "boolean"), col("product_price_exclusion_reason", "text"),
                         col("updated_at", "timestamptz"))),
+                table("product_assignment_log", "product_assignment_log", "product_assignment_log.json", "id", "id", List.of(
+                        col("id", "bigint"), col("receipt_item_id", "bigint"), col("product_family_id", "bigint"),
+                        col("product_variant_id", "bigint"), col("source", "varchar"), col("status", "varchar"),
+                        col("confidence", "numeric"), col("model_used", "varchar"), col("decision_reason", "varchar"),
+                        col("created_at", "timestamptz"))),
                 table("ai_categorization_log", "ai_categorization_log", "ai_categorization_log.json", "id", "id", List.of(
                         col("id", "bigint"), col("receipt_item_id", "bigint"), col("prompt_sent", "text"),
                         col("response_received", "text"), col("assigned_category_id", "bigint"),

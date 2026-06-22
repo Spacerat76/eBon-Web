@@ -1,6 +1,8 @@
 package de.ebon.api.dto;
 
 import de.ebon.persistence.model.CategorySource;
+import de.ebon.persistence.model.ProductAssignmentSource;
+import de.ebon.persistence.model.ProductAssignmentStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 
@@ -23,5 +25,16 @@ public record ReceiptItemDto(
         CategorySource categorySource,
         boolean isManuallyEdited,
         @Schema(nullable = true)
-        AiSuggestionDto aiSuggestion) {
+        AiSuggestionDto aiSuggestion,
+        Long productFamilyId,
+        String productFamilyName,
+        Long productVariantId,
+        String productVariantName,
+        ProductAssignmentSource productAssignmentSource,
+        ProductAssignmentStatus productAssignmentStatus,
+        BigDecimal productAssignmentConfidence,
+        BigDecimal computedUnitPrice,
+        String computedUnitPriceUnit,
+        boolean excludeFromProductPriceComparison,
+        String productPriceExclusionReason) {
 }

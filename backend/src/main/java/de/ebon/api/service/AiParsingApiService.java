@@ -18,6 +18,7 @@ import de.ebon.parser.ParseRuleSuggestionValidator;
 import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
+import de.ebon.product.ProductAssignmentService;
 import de.ebon.persistence.model.AiParsingLog;
 import de.ebon.persistence.model.ParseRule;
 import de.ebon.persistence.model.ParseRuleSuggestion;
@@ -68,6 +69,7 @@ public class AiParsingApiService {
     private final ReceiptParserService receiptParserService;
     private final ReceiptParseApplier receiptParseApplier;
     private final CategorizationService categorizationService;
+    private final ProductAssignmentService productAssignmentService;
     private final ParseRuleSuggestionValidator suggestionValidator;
     private final ObjectMapper objectMapper;
 
@@ -79,6 +81,7 @@ public class AiParsingApiService {
             ReceiptParserService receiptParserService,
             ReceiptParseApplier receiptParseApplier,
             CategorizationService categorizationService,
+            ProductAssignmentService productAssignmentService,
             ParseRuleSuggestionValidator suggestionValidator,
             ObjectMapper objectMapper) {
         this.logRepository = logRepository;
@@ -88,6 +91,7 @@ public class AiParsingApiService {
         this.receiptParserService = receiptParserService;
         this.receiptParseApplier = receiptParseApplier;
         this.categorizationService = categorizationService;
+        this.productAssignmentService = productAssignmentService;
         this.suggestionValidator = suggestionValidator;
         this.objectMapper = objectMapper;
     }
@@ -253,6 +257,7 @@ public class AiParsingApiService {
             receiptParseApplier.apply(receipt, parseResult);
             receiptRepository.saveAndFlush(receipt);
             categorizationService.categorizeReceipt(receipt.getId());
+            productAssignmentService.assignReceipt(receipt.getId());
         }
     }
 
