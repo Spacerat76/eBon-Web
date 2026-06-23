@@ -536,6 +536,128 @@ export interface ProductAssignmentRunResponse {
   changedItemsCount: number;
 }
 
+export interface ProductReviewItemDTO {
+  receiptItemId: number;
+  receiptId: number;
+  receiptDate: string | null;
+  storeName: string | null;
+  storeBranch: string | null;
+  description: string;
+  quantity: number | null;
+  unit: string | null;
+  unitPrice: number | null;
+  totalPrice: number | null;
+  categoryId: number | null;
+  categoryName: string | null;
+  currentProductFamilyId: number | null;
+  currentProductFamilyName: string | null;
+  currentProductVariantId: number | null;
+  currentProductVariantName: string | null;
+  suggestedProductFamilyId: number | null;
+  suggestedProductFamilyName: string | null;
+  suggestedProductVariantId: number | null;
+  suggestedProductVariantName: string | null;
+  assignmentSource: ProductAssignmentSource | null;
+  assignmentStatus: ProductAssignmentStatus | null;
+  confidence: number | null;
+  reason: string | null;
+  possibleRetroactiveItems: number;
+}
+
+export interface ProductReviewParams {
+  page?: number;
+  size?: number;
+  store?: string;
+  productFamilyId?: number;
+  categoryId?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  source?: ProductAssignmentSource;
+  status?: ProductAssignmentStatus;
+  confidenceMax?: number;
+}
+
+export interface ProductAssignmentCorrectionRequest {
+  productFamilyId: number;
+  productVariantId?: number | null;
+}
+
+export interface ProductRuleSuggestionRequest {
+  matchType: RuleMatchType;
+  storeSpecific?: boolean;
+  priority?: number;
+}
+
+export interface ProductRuleSuggestionDTO {
+  rule: ProductRuleRequest;
+  preview: ProductRulePreviewResponse;
+}
+
+export interface ProductRuleSuggestionAcceptRequest {
+  rule: ProductRuleRequest;
+  applyToExisting?: boolean;
+  confirm: boolean;
+}
+
+export interface ProductRuleSuggestionAcceptResponse {
+  rule: ProductRuleDTO;
+  changedItemsCount: number;
+}
+
+export interface ProductChangePreviewDTO {
+  affectedItemsCount: number;
+  affectedStores: string[];
+  dateFrom: string | null;
+  dateTo: string | null;
+  previousProductFamilyId: number | null;
+  previousProductFamilyName: string | null;
+  newProductFamilyId: number | null;
+  newProductFamilyName: string | null;
+  previousProductVariantId: number | null;
+  previousProductVariantName: string | null;
+  newProductVariantId: number | null;
+  newProductVariantName: string | null;
+  reportImpact: string;
+}
+
+export interface ProductFamilyMergeRequest {
+  sourceFamilyId: number;
+  targetFamilyId: number;
+}
+
+export interface ProductFamilyMergeApplyRequest extends ProductFamilyMergeRequest {
+  confirm: boolean;
+}
+
+export interface ProductVariantMergeRequest {
+  sourceVariantId: number;
+  targetVariantId: number;
+}
+
+export interface ProductVariantMergeApplyRequest extends ProductVariantMergeRequest {
+  confirm: boolean;
+}
+
+export interface ProductFamilySplitRequest {
+  sourceFamilyId: number;
+  receiptItemIds: number[];
+  newFamily: ProductFamilyRequest;
+}
+
+export interface ProductFamilySplitApplyRequest extends ProductFamilySplitRequest {
+  confirm: boolean;
+}
+
+export interface ProductVariantSplitRequest {
+  sourceVariantId: number;
+  receiptItemIds: number[];
+  newVariant: ProductVariantRequest;
+}
+
+export interface ProductVariantSplitApplyRequest extends ProductVariantSplitRequest {
+  confirm: boolean;
+}
+
 export interface BackupTableValidationDTO {
   name: string;
   recordCount: number;

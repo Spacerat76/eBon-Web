@@ -9,6 +9,11 @@ import type {
   DataMaintenanceResultDTO,
   MessageResponse,
   PageResponse,
+  ProductChangePreviewDTO,
+  ProductFamilyDTO,
+  ProductReviewItemDTO,
+  ProductRuleDTO,
+  ProductVariantDTO,
   ReceiptDTO,
   ReportByCategoryDTO,
   ReportByPeriodDTO,
@@ -50,6 +55,42 @@ export async function mockRequest<T>(path: string, init: RequestInit = {}): Prom
   }
   if (url.pathname === "/categories/icons") {
     return categoryIcons as T;
+  }
+  if (url.pathname === "/products/families") {
+    return method === "GET" ? productFamilies as T : productFamilies[0] as T;
+  }
+  if (/^\/products\/families\/\d+$/.test(url.pathname)) {
+    return productFamilies[0] as T;
+  }
+  if (url.pathname === "/products/variants") {
+    return method === "GET" ? productVariants as T : productVariants[0] as T;
+  }
+  if (/^\/products\/variants\/\d+$/.test(url.pathname)) {
+    return productVariants[0] as T;
+  }
+  if (url.pathname === "/products/rules") {
+    return method === "GET" ? productRules as T : productRules[0] as T;
+  }
+  if (/^\/products\/rules\/\d+(?:\/apply)?$/.test(url.pathname)) {
+    return { changedItemsCount: 1 } as T;
+  }
+  if (url.pathname === "/products/review") {
+    return page(productReviewItems, Number(url.searchParams.get("page") ?? 0), Number(url.searchParams.get("size") ?? 20)) as T;
+  }
+  if (/^\/products\/review\/\d+\/(?:accept|correct|reject|no-product)$/.test(url.pathname)) {
+    return productReviewItems[0] as T;
+  }
+  if (/^\/products\/review\/\d+\/assignment$/.test(url.pathname)) {
+    return undefined as T;
+  }
+  if (/^\/products\/review\/\d+\/rule-suggestion$/.test(url.pathname)) {
+    return { rule: productRules[0], preview: { matchingItemsCount: 2 } } as T;
+  }
+  if (/^\/products\/review\/\d+\/rule-suggestion\/accept$/.test(url.pathname)) {
+    return { rule: productRules[0], changedItemsCount: 1 } as T;
+  }
+  if (/^\/products\/(?:families|variants)\/(?:merge|split)\/(?:preview|apply)$/.test(url.pathname)) {
+    return productChangePreview as T;
   }
   if (url.pathname === "/categorization-rules") {
     return rules as T;
@@ -206,6 +247,40 @@ const categoryIcons: CategoryIconDTO[] = [
   { value: "receipt", label: "Pfand und Rabatte" },
   { value: "tag", label: "Tag / Rabatt" }
 ];
+
+const productFamilies: ProductFamilyDTO[] = [
+  { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T10:00:00Z", updatedAt: "2026-06-01T10:00:00Z" },
+  { id: 11, name: "Coca-Cola Zero", defaultCategoryId: null, defaultCategoryName: null, isActive: true, createdAt: "2026-06-01T10:00:00Z", updatedAt: "2026-06-01T10:00:00Z" }
+];
+
+const productVariants: ProductVariantDTO[] = [
+  { id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true },
+  { id: 21, productFamilyId: 11, productFamilyName: "Coca-Cola Zero", name: "Coca-Cola Zero 0.5 l", unitQuantity: 0.5, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 0.5, totalUnit: "l", gtin: null, isActive: true }
+];
+
+const productRules: ProductRuleDTO[] = [
+  { id: 30, productFamilyId: 10, productFamilyName: "Haferdrink", productVariantId: 20, productVariantName: "Haferdrink 1 l", storeName: "dm", matchType: "EXACT", matchValue: "Haferdrink Barista", priority: 100, isActive: true }
+];
+
+const productReviewItems: ProductReviewItemDTO[] = [
+  { receiptItemId: 11, receiptId: 1, receiptDate: "2026-06-15", storeName: "REWE", storeBranch: "Mockstraße 1", description: "Haferdrink Barista", quantity: 1, unit: "l", unitPrice: 1.79, totalPrice: 1.79, categoryId: 2, categoryName: "Milchprodukte und Eier", currentProductFamilyId: null, currentProductFamilyName: null, currentProductVariantId: null, currentProductVariantName: null, suggestedProductFamilyId: 10, suggestedProductFamilyName: "Haferdrink", suggestedProductVariantId: 20, suggestedProductVariantName: "Haferdrink 1 l", assignmentSource: "AI", assignmentStatus: "NEEDS_REVIEW", confidence: 0.72, reason: "LOW_CONFIDENCE", possibleRetroactiveItems: 3 }
+];
+
+const productChangePreview: ProductChangePreviewDTO = {
+  affectedItemsCount: 1,
+  affectedStores: ["REWE"],
+  dateFrom: "2026-06-15",
+  dateTo: "2026-06-15",
+  previousProductFamilyId: 10,
+  previousProductFamilyName: "Haferdrink",
+  newProductFamilyId: 11,
+  newProductFamilyName: "Coca-Cola Zero",
+  previousProductVariantId: 20,
+  previousProductVariantName: "Haferdrink 1 l",
+  newProductVariantId: 21,
+  newProductVariantName: "Coca-Cola Zero 0.5 l",
+  reportImpact: "Preisreports werden erst in Phase 15c neu berechnet."
+};
 
 const receipts: ReceiptDTO[] = [
   {

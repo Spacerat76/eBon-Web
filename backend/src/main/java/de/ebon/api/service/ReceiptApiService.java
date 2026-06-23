@@ -21,6 +21,7 @@ import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
 import de.ebon.product.ProductAssignmentService;
+import de.ebon.product.ProductAssignmentTransferService;
 import de.ebon.parser.AiParsingTextMode;
 import de.ebon.parser.ParseExecutionOptions;
 import de.ebon.persistence.model.AiCategorizationLog;
@@ -73,6 +74,7 @@ public class ReceiptApiService {
     private final PaperlessProperties paperlessProperties;
     private final CategorizationService categorizationService;
     private final ProductAssignmentService productAssignmentService;
+    private final ProductAssignmentTransferService productAssignmentTransferService;
     private final ReceiptParserService receiptParserService;
     private final ReceiptParseApplier receiptParseApplier;
     private final PaperlessClient paperlessClient;
@@ -97,6 +99,7 @@ public class ReceiptApiService {
                 appSettingRepository,
                 paperlessProperties,
                 categorizationService,
+                null,
                 null,
                 receiptParserService,
                 receiptParseApplier,
@@ -125,6 +128,38 @@ public class ReceiptApiService {
                 paperlessProperties,
                 categorizationService,
                 null,
+                null,
+                receiptParserService,
+                receiptParseApplier,
+                paperlessClient);
+    }
+
+    public ReceiptApiService(
+            ReceiptRepository receiptRepository,
+            ReceiptItemRepository receiptItemRepository,
+            CategoryRepository categoryRepository,
+            AiCategorizationLogRepository aiCategorizationLogRepository,
+            AiParsingLogRepository aiParsingLogRepository,
+            ParseRuleSuggestionRepository parseRuleSuggestionRepository,
+            AppSettingRepository appSettingRepository,
+            PaperlessProperties paperlessProperties,
+            CategorizationService categorizationService,
+            ProductAssignmentService productAssignmentService,
+            ReceiptParserService receiptParserService,
+            ReceiptParseApplier receiptParseApplier,
+            PaperlessClient paperlessClient) {
+        this(
+                receiptRepository,
+                receiptItemRepository,
+                categoryRepository,
+                aiCategorizationLogRepository,
+                aiParsingLogRepository,
+                parseRuleSuggestionRepository,
+                appSettingRepository,
+                paperlessProperties,
+                categorizationService,
+                productAssignmentService,
+                null,
                 receiptParserService,
                 receiptParseApplier,
                 paperlessClient);
@@ -142,6 +177,7 @@ public class ReceiptApiService {
             PaperlessProperties paperlessProperties,
             CategorizationService categorizationService,
             ProductAssignmentService productAssignmentService,
+            ProductAssignmentTransferService productAssignmentTransferService,
             ReceiptParserService receiptParserService,
             ReceiptParseApplier receiptParseApplier,
             PaperlessClient paperlessClient) {
@@ -155,6 +191,7 @@ public class ReceiptApiService {
         this.paperlessProperties = paperlessProperties;
         this.categorizationService = categorizationService;
         this.productAssignmentService = productAssignmentService;
+        this.productAssignmentTransferService = productAssignmentTransferService;
         this.receiptParserService = receiptParserService;
         this.receiptParseApplier = receiptParseApplier;
         this.paperlessClient = paperlessClient;
@@ -337,10 +374,15 @@ public class ReceiptApiService {
     }
 
     private void reparseReceipt(Receipt receipt, ParseExecutionOptions options) {
+        List<ReceiptItem> previousItems = new ArrayList<>(
+                receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()));
         ReceiptParseResult parseResult = receiptParserService.parse(receipt, options);
         receipt.clearItems();
         receiptRepository.saveAndFlush(receipt);
         receiptParseApplier.apply(receipt, parseResult);
+        if (productAssignmentTransferService != null) {
+            productAssignmentTransferService.transferConfirmedAssignments(previousItems, receipt.getItems());
+        }
         Receipt savedReceipt = receiptRepository.saveAndFlush(receipt);
         categorizationService.categorizeReceipt(savedReceipt.getId());
         if (productAssignmentService != null) {

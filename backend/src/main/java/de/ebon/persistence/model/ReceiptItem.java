@@ -212,6 +212,15 @@ public class ReceiptItem {
         this.productAssignmentUpdatedAt = OffsetDateTime.now(ZoneOffset.UTC);
     }
 
+    public void markProductRejected() {
+        this.productFamily = null;
+        this.productVariant = null;
+        this.productAssignmentSource = null;
+        this.productAssignmentStatus = ProductAssignmentStatus.REJECTED;
+        this.productAssignmentConfidence = null;
+        this.productAssignmentUpdatedAt = OffsetDateTime.now(ZoneOffset.UTC);
+    }
+
     public void clearProductAssignment() {
         this.productFamily = null;
         this.productVariant = null;

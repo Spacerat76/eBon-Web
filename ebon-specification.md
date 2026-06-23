@@ -1145,7 +1145,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 1. Nutzer legt eine Produktfamilie an oder bearbeitet Name, Aktivstatus und optionale Standard-Kategorie.
 2. Nutzer legt Varianten mit Einheit, Menge, Packungsstruktur und optionaler GTIN an.
 3. Nutzer erstellt oder bearbeitet Produktregeln gegen Positionsbeschreibungen, optional mit Store-Kontext.
-4. Backend berechnet vor dem Speichern oder Anwenden eine Vorschau betroffener historischer Positionen.
+4. Backend berechnet vor dem rückwirkenden Anwenden eine Vorschau betroffener historischer Positionen.
 5. Nutzer entscheidet zwischen „nur künftig" und „auf bestehende Positionen anwenden".
 6. Backend wendet bestätigte rückwirkende Änderungen transaktional an.
 
@@ -1374,21 +1374,21 @@ Body für `/api/admin/reparse/bulk`:
 
 | Methode | Pfad | Beschreibung |
 |---|---|---|
-| GET | `/api/products/families` | Produktfamilien paginiert abrufen |
+| GET | `/api/products/families` | Produktfamilien abrufen |
 | POST | `/api/products/families` | Produktfamilie anlegen |
-| GET | `/api/products/families/{id}` | Produktfamilie im Detail abrufen |
 | PUT | `/api/products/families/{id}` | Produktfamilie aktualisieren |
-| PATCH | `/api/products/families/{id}` | Produktfamilie teilweise aktualisieren, z.B. aktivieren/deaktivieren |
-| POST | `/api/products/families/{id}/merge` | Produktfamilie mit anderer Familie zusammenführen, mit Vorschau/Bestätigung |
-| POST | `/api/products/families/{id}/split` | Produktfamilie trennen, mit Vorschau/Bestätigung |
-| GET | `/api/products/variants` | Produktvarianten paginiert abrufen |
+| POST | `/api/products/families/merge/preview` | Zusammenführung von Familien unveränderlich vorschauen |
+| POST | `/api/products/families/merge/apply` | Zusammenführung nach `confirm = true` transaktional anwenden |
+| POST | `/api/products/families/split/preview` | Trennung ausgewählter familienweiter Positionen unveränderlich vorschauen |
+| POST | `/api/products/families/split/apply` | Trennung nach `confirm = true` transaktional anwenden |
+| GET | `/api/products/variants` | Produktvarianten abrufen, optional nach `productFamilyId` filtern |
 | POST | `/api/products/variants` | Produktvariante anlegen |
-| GET | `/api/products/variants/{id}` | Produktvariante im Detail abrufen |
 | PUT | `/api/products/variants/{id}` | Produktvariante aktualisieren |
-| PATCH | `/api/products/variants/{id}` | Produktvariante teilweise aktualisieren |
-| POST | `/api/products/variants/{id}/merge` | Produktvariante mit anderer Variante zusammenführen, mit Vorschau/Bestätigung |
-| POST | `/api/products/variants/{id}/split` | Produktvariante trennen, mit Vorschau/Bestätigung |
-| GET | `/api/products/rules` | Produktregeln sortiert/paginiert abrufen |
+| POST | `/api/products/variants/merge/preview` | Zusammenführung von Varianten derselben Familie unveränderlich vorschauen |
+| POST | `/api/products/variants/merge/apply` | Zusammenführung nach `confirm = true` transaktional anwenden und Quelle deaktivieren |
+| POST | `/api/products/variants/split/preview` | Trennung ausgewählter Variantenpositionen unveränderlich vorschauen |
+| POST | `/api/products/variants/split/apply` | Trennung nach `confirm = true` transaktional anwenden |
+| GET | `/api/products/rules` | Produktregeln abrufen |
 | POST | `/api/products/rules` | Produktregel anlegen |
 | PUT | `/api/products/rules/{id}` | Produktregel aktualisieren |
 | DELETE | `/api/products/rules/{id}` | Produktregel löschen |
@@ -1400,9 +1400,13 @@ Body für `/api/admin/reparse/bulk`:
 | POST | `/api/products/review/{receiptItemId}/reject` | Produktvorschlag ablehnen |
 | POST | `/api/products/review/{receiptItemId}/no-product` | Position als `NO_PRODUCT` markieren |
 | DELETE | `/api/products/review/{receiptItemId}/assignment` | Produktzuordnung entfernen |
+| POST | `/api/products/review/{receiptItemId}/rule-suggestion` | Regelvorschlag aus manueller Zuordnung mit Vorschau erzeugen |
+| POST | `/api/products/review/{receiptItemId}/rule-suggestion/accept` | Vorschlag nach `confirm = true` als Produktregel speichern und optional anwenden |
 | POST | `/api/products/assignments/run` | Produktzuordnung für Bon oder offene Positionen neu ausführen |
 | POST | `/api/products/price-observations/{receiptItemId}/exclude` | Preisbeobachtung ausschließen |
 | POST | `/api/products/price-observations/{receiptItemId}/include` | Preisbeobachtung wieder einschließen |
+
+Für jede historisch wirkende Zusammenführung, Trennung oder Regelanwendung gilt: Der Client ruft zuerst den `preview`-Endpunkt auf und sendet danach einen separaten `apply`-Request mit `confirm = true`. Familien-Splits dürfen nur ausgewählte, aktuell familienweite Positionen verschieben. Varianten-Splits dürfen nur ausgewählte Positionen der Quellvariante verschieben. Bestehende Produktregeln werden beim Split nicht automatisch kopiert; bei Merge werden Variantenregeln auf die Zielvariante umgehängt. Die Quelle eines Merge wird nur deaktiviert, damit Audit-Logs ihren historischen Bezug behalten.
 
 Body für `/api/settings/test-connection`:
 ```json

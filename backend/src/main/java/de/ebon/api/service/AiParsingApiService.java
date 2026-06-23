@@ -19,6 +19,7 @@ import de.ebon.parser.ReceiptParseApplier;
 import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
 import de.ebon.product.ProductAssignmentService;
+import de.ebon.product.ProductAssignmentTransferService;
 import de.ebon.persistence.model.AiParsingLog;
 import de.ebon.persistence.model.ParseRule;
 import de.ebon.persistence.model.ParseRuleSuggestion;
@@ -70,6 +71,7 @@ public class AiParsingApiService {
     private final ReceiptParseApplier receiptParseApplier;
     private final CategorizationService categorizationService;
     private final ProductAssignmentService productAssignmentService;
+    private final ProductAssignmentTransferService productAssignmentTransferService;
     private final ParseRuleSuggestionValidator suggestionValidator;
     private final ObjectMapper objectMapper;
 
@@ -82,6 +84,7 @@ public class AiParsingApiService {
             ReceiptParseApplier receiptParseApplier,
             CategorizationService categorizationService,
             ProductAssignmentService productAssignmentService,
+            ProductAssignmentTransferService productAssignmentTransferService,
             ParseRuleSuggestionValidator suggestionValidator,
             ObjectMapper objectMapper) {
         this.logRepository = logRepository;
@@ -92,6 +95,7 @@ public class AiParsingApiService {
         this.receiptParseApplier = receiptParseApplier;
         this.categorizationService = categorizationService;
         this.productAssignmentService = productAssignmentService;
+        this.productAssignmentTransferService = productAssignmentTransferService;
         this.suggestionValidator = suggestionValidator;
         this.objectMapper = objectMapper;
     }
@@ -250,11 +254,13 @@ public class AiParsingApiService {
             case ALL_PARSE_ERROR -> receiptRepository.findByDeletedAtIsNullAndParseStatus(ParseStatus.PARSE_ERROR);
         };
         for (Receipt receipt : receipts) {
+            List<ReceiptItem> previousItems = receipt.getItems();
             ReceiptParseResult parseResult = receiptParserService.parse(
                     receipt,
                     ParseExecutionOptions.manual(false, AiParsingTextMode.MINIMIZED, false));
             receipt.clearItems();
             receiptParseApplier.apply(receipt, parseResult);
+            productAssignmentTransferService.transferConfirmedAssignments(previousItems, receipt.getItems());
             receiptRepository.saveAndFlush(receipt);
             categorizationService.categorizeReceipt(receipt.getId());
             productAssignmentService.assignReceipt(receipt.getId());

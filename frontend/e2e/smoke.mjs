@@ -38,6 +38,10 @@ export async function runSmoke({
     await waitForText(driver, "Suchergebnisse");
     await waitForText(driver, "Bio Milch");
 
+    await clickNav(driver, "#/products");
+    await waitForText(driver, "Produktzuordnung prüfen");
+    await waitForText(driver, "Haferdrink Barista");
+
     await clickNav(driver, "#/receipts");
     await waitForText(driver, "Bons");
     await waitForText(driver, "REWE");

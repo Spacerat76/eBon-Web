@@ -190,6 +190,29 @@ class PersistenceModelBehaviorTests {
         assertThat(item.getDiscountAmount()).isEqualByComparingTo("0.10");
     }
 
+    // A rejected product proposal remains visible as a review decision without retaining a product assignment.
+    @Test
+    void rejectingProductProposalClearsAssignmentAndKeepsRejectedStatus() {
+        ProductFamily family = new ProductFamily("Haferdrink", null);
+        ProductVariant variant = new ProductVariant(
+                family, "Haferdrink 1 l", BigDecimal.ONE, "l", 1, null, BigDecimal.ONE, "l", null);
+        ReceiptItem item = new ReceiptItem(0, "Haferdrink", new BigDecimal("1.79"));
+
+        item.assignProduct(
+                family,
+                variant,
+                ProductAssignmentSource.AI,
+                ProductAssignmentStatus.NEEDS_REVIEW,
+                new BigDecimal("0.720"));
+        item.markProductRejected();
+
+        assertThat(item.getProductFamily()).isNull();
+        assertThat(item.getProductVariant()).isNull();
+        assertThat(item.getProductAssignmentSource()).isNull();
+        assertThat(item.getProductAssignmentStatus()).isEqualTo(ProductAssignmentStatus.REJECTED);
+        assertThat(item.getProductAssignmentConfidence()).isNull();
+    }
+
     // Verifies parse-rule lifecycle defaults initialize timestamps without overwriting preset values.
     @Test
     void parseRulePrePersistInitializesCreatedAtAndKeepsPresetValues() throws Exception {

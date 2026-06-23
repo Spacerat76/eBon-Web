@@ -1080,7 +1080,9 @@ function ReceiptItemsTable({
                     {item.productAssignmentStatus ? <ProductAssignmentBadge status={item.productAssignmentStatus} /> : null}
                   </div>
                 ) : item.productAssignmentStatus === "NEEDS_REVIEW" ? (
-                  <Badge tone="yellow">Prüfung nötig</Badge>
+                  <a className="inline-flex" href="#/products" title="In der Produkt-Prüfliste korrigieren">
+                    <Badge tone="yellow">Prüfung nötig</Badge>
+                  </a>
                 ) : (
                   <span className="text-zinc-500 dark:text-zinc-400">-</span>
                 )}

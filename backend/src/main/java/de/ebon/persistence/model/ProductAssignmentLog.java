@@ -84,4 +84,32 @@ public class ProductAssignmentLog {
             createdAt = OffsetDateTime.now(ZoneOffset.UTC);
         }
     }
+
+    public ProductFamily getProductFamily() {
+        return productFamily;
+    }
+
+    public ProductVariant getProductVariant() {
+        return productVariant;
+    }
+
+    public ProductAssignmentSource getSource() {
+        return source;
+    }
+
+    public ProductAssignmentStatus getStatus() {
+        return status;
+    }
+
+    public BigDecimal getConfidence() {
+        return confidence;
+    }
+
+    public String getDecisionReason() {
+        return decisionReason;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
 }

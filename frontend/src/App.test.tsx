@@ -26,6 +26,10 @@ vi.mock("@/pages/settings-page", () => ({
   SettingsPage: () => <p>Settings page</p>
 }));
 
+vi.mock("@/pages/products-page", () => ({
+  ProductsPage: () => <p>Products page</p>
+}));
+
 vi.mock("@/pages/placeholder-page", () => ({
   PlaceholderPage: ({ title }: { title: string }) => <p>Placeholder: {title}</p>
 }));
@@ -55,7 +59,7 @@ describe("App routing and local token handling", () => {
     expect(sessionStorage.getItem("ebon.sessionApiToken")).toBeNull();
   });
 
-  it("maps receipt, search, report, settings, and fallback hashes to the expected screen", async () => {
+  it("maps receipt, search, report, product, settings, and fallback hashes to the expected screen", async () => {
     render(<App />);
 
     navigate("#/receipts/42");
@@ -69,6 +73,9 @@ describe("App routing and local token handling", () => {
 
     navigate("#/settings");
     expect(await screen.findByText("Settings page")).toBeInTheDocument();
+
+    navigate("#/products");
+    expect(await screen.findByText("Products page")).toBeInTheDocument();
 
     navigate("#unknown");
     expect(await screen.findByText("Placeholder: Dashboard")).toBeInTheDocument();

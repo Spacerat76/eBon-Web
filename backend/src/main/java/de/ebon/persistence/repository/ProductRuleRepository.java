@@ -7,4 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface ProductRuleRepository extends JpaRepository<ProductRule, Long> {
 
     List<ProductRule> findByActiveTrueOrderByPriorityAscIdAsc();
+
+    List<ProductRule> findByProductFamily_Id(Long productFamilyId);
+
+    List<ProductRule> findByProductVariant_Id(Long productVariantId);
 }

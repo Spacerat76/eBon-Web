@@ -118,6 +118,10 @@ public class ProductVariant {
         this.active = active;
     }
 
+    public void deactivate() {
+        this.active = false;
+    }
+
     private ProductFamily requireFamily(ProductFamily family) {
         if (family == null) {
             throw new IllegalArgumentException("Produktvariante braucht eine Produktfamilie.");

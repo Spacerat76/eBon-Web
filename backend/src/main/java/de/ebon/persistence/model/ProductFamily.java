@@ -66,6 +66,10 @@ public class ProductFamily {
         this.active = active;
     }
 
+    public void deactivate() {
+        this.active = false;
+    }
+
     private String requireName(String value) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException("Produktfamilienname darf nicht leer sein.");

@@ -17,15 +17,31 @@ import type {
   DataMaintenanceResultDTO,
   ProductAssignmentRunRequest,
   ProductAssignmentRunResponse,
+  ProductAssignmentCorrectionRequest,
+  ProductChangePreviewDTO,
   ProductDataResetResultDTO,
   ProductFamilyDTO,
+  ProductFamilyMergeApplyRequest,
+  ProductFamilyMergeRequest,
+  ProductFamilySplitApplyRequest,
+  ProductFamilySplitRequest,
   ProductFamilyRequest,
+  ProductReviewItemDTO,
+  ProductReviewParams,
   ProductRuleDTO,
   ProductRulePreviewRequest,
   ProductRulePreviewResponse,
   ProductRuleRequest,
+  ProductRuleSuggestionAcceptRequest,
+  ProductRuleSuggestionAcceptResponse,
+  ProductRuleSuggestionDTO,
+  ProductRuleSuggestionRequest,
   ProductVariantDTO,
+  ProductVariantMergeApplyRequest,
+  ProductVariantMergeRequest,
   ProductVariantRequest,
+  ProductVariantSplitApplyRequest,
+  ProductVariantSplitRequest,
   MessageResponse,
   MigrationDraftDTO,
   PageResponse,
@@ -257,11 +273,89 @@ export class ApiClient {
   }
 
   applyProductRule(id: number): Promise<ProductAssignmentRunResponse> {
-    return this.request(`/products/rules/${id}/apply`, { method: "POST" });
+    return this.request(`/products/rules/${id}/apply`, { method: "POST", body: JSON.stringify({ confirm: true }) });
   }
 
   runProductAssignments(request: ProductAssignmentRunRequest = {}): Promise<ProductAssignmentRunResponse> {
     return this.request("/products/assignments/run", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  productReview(params: ProductReviewParams = {}): Promise<PageResponse<ProductReviewItemDTO>> {
+    return this.request(`/products/review?${toQuery({
+      page: params.page ?? 0,
+      size: params.size ?? 20,
+      store: params.store || undefined,
+      productFamilyId: params.productFamilyId,
+      categoryId: params.categoryId,
+      dateFrom: params.dateFrom || undefined,
+      dateTo: params.dateTo || undefined,
+      source: params.source,
+      status: params.status,
+      confidenceMax: params.confidenceMax
+    })}`);
+  }
+
+  acceptProductReview(receiptItemId: number): Promise<ProductReviewItemDTO> {
+    return this.request(`/products/review/${receiptItemId}/accept`, { method: "POST", body: "{}" });
+  }
+
+  correctProductReview(receiptItemId: number, request: ProductAssignmentCorrectionRequest): Promise<ProductReviewItemDTO> {
+    return this.request(`/products/review/${receiptItemId}/correct`, { method: "POST", body: JSON.stringify(request) });
+  }
+
+  rejectProductReview(receiptItemId: number): Promise<ProductReviewItemDTO> {
+    return this.request(`/products/review/${receiptItemId}/reject`, { method: "POST", body: "{}" });
+  }
+
+  markProductReviewNoProduct(receiptItemId: number): Promise<ProductReviewItemDTO> {
+    return this.request(`/products/review/${receiptItemId}/no-product`, { method: "POST", body: "{}" });
+  }
+
+  clearProductReviewAssignment(receiptItemId: number): Promise<void> {
+    return this.request(`/products/review/${receiptItemId}/assignment`, { method: "DELETE" });
+  }
+
+  suggestProductRule(receiptItemId: number, request: ProductRuleSuggestionRequest): Promise<ProductRuleSuggestionDTO> {
+    return this.request(`/products/review/${receiptItemId}/rule-suggestion`, { method: "POST", body: JSON.stringify(request) });
+  }
+
+  acceptProductRuleSuggestion(
+    receiptItemId: number,
+    request: ProductRuleSuggestionAcceptRequest
+  ): Promise<ProductRuleSuggestionAcceptResponse> {
+    return this.request(`/products/review/${receiptItemId}/rule-suggestion/accept`, { method: "POST", body: JSON.stringify(request) });
+  }
+
+  previewProductFamilyMerge(request: ProductFamilyMergeRequest): Promise<ProductChangePreviewDTO> {
+    return this.request("/products/families/merge/preview", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  applyProductFamilyMerge(request: ProductFamilyMergeApplyRequest): Promise<ProductChangePreviewDTO> {
+    return this.request("/products/families/merge/apply", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  previewProductFamilySplit(request: ProductFamilySplitRequest): Promise<ProductChangePreviewDTO> {
+    return this.request("/products/families/split/preview", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  applyProductFamilySplit(request: ProductFamilySplitApplyRequest): Promise<ProductChangePreviewDTO> {
+    return this.request("/products/families/split/apply", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  previewProductVariantMerge(request: ProductVariantMergeRequest): Promise<ProductChangePreviewDTO> {
+    return this.request("/products/variants/merge/preview", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  applyProductVariantMerge(request: ProductVariantMergeApplyRequest): Promise<ProductChangePreviewDTO> {
+    return this.request("/products/variants/merge/apply", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  previewProductVariantSplit(request: ProductVariantSplitRequest): Promise<ProductChangePreviewDTO> {
+    return this.request("/products/variants/split/preview", { method: "POST", body: JSON.stringify(request) });
+  }
+
+  applyProductVariantSplit(request: ProductVariantSplitApplyRequest): Promise<ProductChangePreviewDTO> {
+    return this.request("/products/variants/split/apply", { method: "POST", body: JSON.stringify(request) });
   }
 
   search(params: SearchParams): Promise<PageResponse<SearchResultDTO>> {

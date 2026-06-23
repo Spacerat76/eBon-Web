@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { BarChart3, Home, ReceiptText, Search, Settings, SlidersHorizontal } from "lucide-react";
+import { BarChart3, Boxes, Home, ReceiptText, Search, Settings, SlidersHorizontal } from "lucide-react";
 
 import { AppShell, type NavigationItem } from "@/components/app-shell";
 import { ApiClient } from "@/lib/api";
@@ -10,6 +10,7 @@ const ReceiptsPage = lazy(() => import("@/pages/receipts-page").then((module) =>
 const ReportsPage = lazy(() => import("@/pages/reports-page").then((module) => ({ default: module.ReportsPage })));
 const SearchPage = lazy(() => import("@/pages/search-page").then((module) => ({ default: module.SearchPage })));
 const SettingsPage = lazy(() => import("@/pages/settings-page").then((module) => ({ default: module.SettingsPage })));
+const ProductsPage = lazy(() => import("@/pages/products-page").then((module) => ({ default: module.ProductsPage })));
 
 const TOKEN_STORAGE_KEY = "ebon.sessionApiToken";
 
@@ -18,6 +19,7 @@ const navigation: NavigationItem[] = [
   { href: "#/receipts", label: "Bons", icon: ReceiptText },
   { href: "#/search", label: "Suche", icon: Search },
   { href: "#/reports", label: "Reports", icon: BarChart3 },
+  { href: "#/products", label: "Produkte", icon: Boxes },
   { href: "#/settings", label: "Einstellungen", icon: Settings }
 ];
 
@@ -70,6 +72,8 @@ export default function App() {
           />
         ) : routePath === "/reports" ? (
           <ReportsPage apiClient={apiClient} hasApiToken={Boolean(apiToken.trim())} />
+        ) : routePath === "/products" ? (
+          <ProductsPage apiClient={apiClient} hasApiToken={Boolean(apiToken.trim())} />
         ) : routePath === "/settings" ? (
           <SettingsPage apiClient={apiClient} hasApiToken={Boolean(apiToken.trim())} />
         ) : (

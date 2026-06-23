@@ -170,6 +170,7 @@ public class ProductAssignmentService {
 
     private boolean isProtected(ReceiptItem item) {
         return item.getProductAssignmentStatus() == ProductAssignmentStatus.NO_PRODUCT
+                || item.getProductAssignmentStatus() == ProductAssignmentStatus.NEEDS_REVIEW
                 || item.getProductAssignmentSource() == ProductAssignmentSource.MANUAL
                 || item.getProductAssignmentStatus() == ProductAssignmentStatus.CONFIRMED;
     }
