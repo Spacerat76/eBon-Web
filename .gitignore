@@ -13,4 +13,5 @@ frontend/coverage/
 frontend/coverage-e2e/
 frontend/.nyc_output/
 backups/
+.superpowers/
 *.zip
