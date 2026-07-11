@@ -6,7 +6,8 @@ import { join } from "node:path";
 
 import { runSmoke } from "./smoke.mjs";
 
-const baseUrl = new URL(process.env.EBON_E2E_BASE_URL ?? "http://127.0.0.1:5173");
+// Keep the isolated mock server separate from the Devcontainer's forwarded frontend port.
+const baseUrl = new URL(process.env.EBON_E2E_BASE_URL ?? "http://127.0.0.1:5174");
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url));
 const collectCoverage = process.env.EBON_E2E_COVERAGE === "true";
 const coverageDirectory = join(frontendRoot, ".nyc_output");
@@ -23,7 +24,7 @@ const server = await createServer({
   root: frontendRoot,
   server: {
     host: baseUrl.hostname,
-    port: Number(baseUrl.port || "5173"),
+    port: Number(baseUrl.port || "5174"),
     strictPort: true
   }
 });

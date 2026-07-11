@@ -1520,6 +1520,9 @@ public class RuleBasedReceiptParser {
 
     private boolean isMetadataLine(String line) {
         String upper = line.toUpperCase(Locale.ROOT);
+        if (isEdekaCounterItemDescriptionLine(upper)) {
+            return false;
+        }
         return isDateOrTimeLine(line)
                 || upper.contains("KASSE")
                 || upper.contains("BON")
@@ -1572,6 +1575,12 @@ public class RuleBasedReceiptParser {
                 || isBranchLine(line)
                 || isPipeTableNoiseLine(line)
                 || isKnownStoreLine(line);
+    }
+
+    private boolean isEdekaCounterItemDescriptionLine(String upperLine) {
+        return upperLine.startsWith("BELEG ")
+                && (upperLine.contains("WURST") || upperLine.contains("SCHINKEN"))
+                && (upperLine.contains("PREPACK") || upperLine.contains("BED"));
     }
 
     private boolean isDateOrTimeLine(String line) {

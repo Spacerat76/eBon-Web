@@ -35,7 +35,13 @@ public class ReportsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String categoryIds,
-            @RequestParam(required = false) String store) {
+            @RequestParam(required = false) String store,
+            @RequestParam(required = false) Long productFamilyId,
+            @RequestParam(required = false) Long productVariantId) {
+        if (hasProductFilter(productFamilyId, productVariantId)) {
+            return queryApiService.reportByCategory(
+                    dateFrom, dateTo, parseIds(categoryIds), store, productFamilyId, productVariantId);
+        }
         return queryApiService.reportByCategory(dateFrom, dateTo, parseIds(categoryIds), store);
     }
 
@@ -46,7 +52,13 @@ public class ReportsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String categoryIds,
             @RequestParam(required = false) String store,
-            @RequestParam(defaultValue = "month") String groupBy) {
+            @RequestParam(defaultValue = "month") String groupBy,
+            @RequestParam(required = false) Long productFamilyId,
+            @RequestParam(required = false) Long productVariantId) {
+        if (hasProductFilter(productFamilyId, productVariantId)) {
+            return queryApiService.reportByPeriod(
+                    dateFrom, dateTo, parseIds(categoryIds), store, groupBy, productFamilyId, productVariantId);
+        }
         return queryApiService.reportByPeriod(dateFrom, dateTo, parseIds(categoryIds), store, groupBy);
     }
 
@@ -56,7 +68,13 @@ public class ReportsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String categoryIds,
-            @RequestParam(required = false) String store) {
+            @RequestParam(required = false) String store,
+            @RequestParam(required = false) Long productFamilyId,
+            @RequestParam(required = false) Long productVariantId) {
+        if (hasProductFilter(productFamilyId, productVariantId)) {
+            return queryApiService.reportByStore(
+                    dateFrom, dateTo, parseIds(categoryIds), store, productFamilyId, productVariantId);
+        }
         return queryApiService.reportByStore(dateFrom, dateTo, parseIds(categoryIds), store);
     }
 
@@ -67,8 +85,42 @@ public class ReportsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String categoryIds,
             @RequestParam(required = false) String store,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Long productFamilyId,
+            @RequestParam(required = false) Long productVariantId) {
+        if (hasProductFilter(productFamilyId, productVariantId)) {
+            return queryApiService.topItems(
+                    dateFrom, dateTo, parseIds(categoryIds), store, size, productFamilyId, productVariantId);
+        }
         return queryApiService.topItems(dateFrom, dateTo, parseIds(categoryIds), store, size);
+    }
+
+    @GetMapping("/api/reports/top-products")
+    @Operation(summary = "Haeufig oder teuer gekaufte Produktfamilien")
+    public List<ReportDto.TopProduct> topProducts(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String store,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "total") String sortBy) {
+        return queryApiService.topProducts(dateFrom, dateTo, store, size, sortBy);
+    }
+
+    @GetMapping("/api/reports/top-products/export")
+    @Operation(summary = "Top-Produktfamilien als CSV")
+    public ResponseEntity<String> topProductsExport(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
+            @RequestParam(required = false) String store,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "total") String sortBy) {
+        StringBuilder csv = new StringBuilder("productFamilyId,productFamilyName,total,count\n");
+        topProducts(dateFrom, dateTo, store, size, sortBy)
+                .forEach(row -> csv.append(row.productFamilyId()).append(',')
+                        .append(csv(row.productFamilyName())).append(',')
+                        .append(row.total()).append(',')
+                        .append(row.count()).append('\n'));
+        return csv("report-top-products.csv", csv.toString());
     }
 
     @GetMapping("/api/reports/bonus")
@@ -86,9 +138,11 @@ public class ReportsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String categoryIds,
-            @RequestParam(required = false) String store) {
+            @RequestParam(required = false) String store,
+            @RequestParam(required = false) Long productFamilyId,
+            @RequestParam(required = false) Long productVariantId) {
         StringBuilder csv = new StringBuilder("categoryId,categoryName,total\n");
-        byCategory(dateFrom, dateTo, categoryIds, store)
+        byCategory(dateFrom, dateTo, categoryIds, store, productFamilyId, productVariantId)
                 .forEach(row -> csv.append(row.categoryId()).append(',')
                         .append(csv(row.categoryName())).append(',')
                         .append(row.total()).append('\n'));
@@ -102,9 +156,11 @@ public class ReportsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String categoryIds,
             @RequestParam(required = false) String store,
-            @RequestParam(defaultValue = "month") String groupBy) {
+            @RequestParam(defaultValue = "month") String groupBy,
+            @RequestParam(required = false) Long productFamilyId,
+            @RequestParam(required = false) Long productVariantId) {
         StringBuilder csv = new StringBuilder("periodStart,period,total\n");
-        byPeriod(dateFrom, dateTo, categoryIds, store, groupBy)
+        byPeriod(dateFrom, dateTo, categoryIds, store, groupBy, productFamilyId, productVariantId)
                 .forEach(row -> csv.append(row.periodStart()).append(',')
                         .append(csv(row.period())).append(',')
                         .append(row.total()).append('\n'));
@@ -117,9 +173,11 @@ public class ReportsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String categoryIds,
-            @RequestParam(required = false) String store) {
+            @RequestParam(required = false) String store,
+            @RequestParam(required = false) Long productFamilyId,
+            @RequestParam(required = false) Long productVariantId) {
         StringBuilder csv = new StringBuilder("storeName,total,receiptCount\n");
-        byStore(dateFrom, dateTo, categoryIds, store)
+        byStore(dateFrom, dateTo, categoryIds, store, productFamilyId, productVariantId)
                 .forEach(row -> csv.append(csv(row.storeName())).append(',')
                         .append(row.total()).append(',')
                         .append(row.receiptCount()).append('\n'));
@@ -133,9 +191,11 @@ public class ReportsController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) String categoryIds,
             @RequestParam(required = false) String store,
-            @RequestParam(defaultValue = "20") int size) {
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Long productFamilyId,
+            @RequestParam(required = false) Long productVariantId) {
         StringBuilder csv = new StringBuilder("description,total,count\n");
-        topItems(dateFrom, dateTo, categoryIds, store, size)
+        topItems(dateFrom, dateTo, categoryIds, store, size, productFamilyId, productVariantId)
                 .forEach(row -> csv.append(csv(row.description())).append(',')
                         .append(row.total()).append(',')
                         .append(row.count()).append('\n'));
@@ -168,6 +228,10 @@ public class ReportsController {
             return "";
         }
         return '"' + value.replace("\"", "\"\"") + '"';
+    }
+
+    private boolean hasProductFilter(Long productFamilyId, Long productVariantId) {
+        return productFamilyId != null || productVariantId != null;
     }
 
     private List<Long> parseIds(String categoryIds) {

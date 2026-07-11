@@ -25,6 +25,8 @@ import de.ebon.persistence.repository.ReceiptItemRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -280,6 +282,62 @@ class ProductAssignmentServiceTests {
         assertThat(item.getProductVariant()).isNull();
         assertThat(item.getProductAssignmentSource()).isNull();
         assertThat(item.getProductAssignmentStatus()).isEqualTo(ProductAssignmentStatus.NO_PRODUCT);
+    }
+
+    // Verifies accounting lines from retailer receipts do not become product assignments.
+    @ParameterizedTest
+    @ValueSource(strings = {"Sofortstorno - Abteibrot", "PFAND 0,25 EURO", "CC gratis"})
+    void accountingLineIsMarkedNoProduct(String description) {
+        Receipt receipt = new Receipt(900010 + description.hashCode(), "mock raw text");
+        ReceiptItem item = new ReceiptItem(0, description, new BigDecimal("-0.25"));
+        receipt.addItem(item);
+        when(productRuleRepository.findByActiveTrueOrderByPriorityAscIdAsc()).thenReturn(List.of());
+
+        productAssignmentService().assignItems(receipt, List.of(item));
+
+        assertThat(item.getProductFamily()).isNull();
+        assertThat(item.getProductAssignmentStatus()).isEqualTo(ProductAssignmentStatus.NO_PRODUCT);
+    }
+
+    // Verifies a newly added rule resolves an item that was previously held for product review.
+    @Test
+    void newlyAddedRuleResolvesExistingReviewItem() {
+        ProductFamily family = new ProductFamily("Test Wasser", null);
+        ProductRule rule = new ProductRule(family, null, "REWE", RuleMatchType.EXACT, "TEST WASSER", 100);
+        Receipt receipt = new Receipt(900011, "mock raw text");
+        receipt.setStoreName("REWE");
+        ReceiptItem item = new ReceiptItem(0, "TEST WASSER", new BigDecimal("1.00"));
+        receipt.addItem(item);
+        item.markProductNeedsReview(null);
+        when(receiptItemRepository.findAll()).thenReturn(List.of(item));
+
+        int changedItems = productAssignmentService().applyRuleToExistingItems(rule);
+
+        assertThat(changedItems).isEqualTo(1);
+        assertThat(item.getProductFamily()).isSameAs(family);
+        assertThat(item.getProductAssignmentSource()).isEqualTo(ProductAssignmentSource.RULE);
+        assertThat(item.getProductAssignmentStatus()).isEqualTo(ProductAssignmentStatus.AUTO_ASSIGNED);
+    }
+
+    // Verifies a new rule cannot overwrite a product assignment confirmed by the user.
+    @Test
+    void newlyAddedRuleDoesNotOverwriteManualProductAssignment() {
+        ProductFamily manualFamily = new ProductFamily("Manual Wasser", null);
+        ProductFamily ruleFamily = new ProductFamily("Rule Wasser", null);
+        ProductRule rule = new ProductRule(ruleFamily, null, "REWE", RuleMatchType.EXACT, "TEST WASSER", 100);
+        Receipt receipt = new Receipt(900012, "mock raw text");
+        receipt.setStoreName("REWE");
+        ReceiptItem item = new ReceiptItem(0, "TEST WASSER", new BigDecimal("1.00"));
+        receipt.addItem(item);
+        item.assignProduct(manualFamily, null, ProductAssignmentSource.MANUAL, ProductAssignmentStatus.CONFIRMED, null);
+        when(receiptItemRepository.findAll()).thenReturn(List.of(item));
+
+        int changedItems = productAssignmentService().applyRuleToExistingItems(rule);
+
+        assertThat(changedItems).isZero();
+        assertThat(item.getProductFamily()).isSameAs(manualFamily);
+        assertThat(item.getProductAssignmentSource()).isEqualTo(ProductAssignmentSource.MANUAL);
+        assertThat(item.getProductAssignmentStatus()).isEqualTo(ProductAssignmentStatus.CONFIRMED);
     }
 
     // Verifies a product family default category fills an empty category but never replaces a manual user decision.

@@ -40,7 +40,7 @@ public class ProductAssignmentService {
     private static final BigDecimal DEFAULT_HISTORY_MIN_VARIANT_SHARE = new BigDecimal("0.900");
     private static final BigDecimal DEFAULT_AI_MIN_CONFIDENCE = new BigDecimal("0.900");
     private static final Pattern NON_PRODUCT_LINE = Pattern.compile(
-            "(?i)\\b(rabatt|coupon|gutschein|zahlung|ec[- ]?karte|kreditkarte|visa|mastercard|barzahlung|rundung|wechselgeld|summe|mwst|steuer)\\b");
+            "(?i)\\b(rabatt|coupon|gutschein|zahlung|ec[- ]?karte|kreditkarte|visa|mastercard|barzahlung|rundung|wechselgeld|summe|mwst|steuer|pfand|gratis|\\w*storno\\w*)\\b");
 
     private final ProductRuleRepository productRuleRepository;
     private final ProductFamilyRepository productFamilyRepository;
@@ -170,9 +170,9 @@ public class ProductAssignmentService {
 
     private boolean isProtected(ReceiptItem item) {
         return item.getProductAssignmentStatus() == ProductAssignmentStatus.NO_PRODUCT
-                || item.getProductAssignmentStatus() == ProductAssignmentStatus.NEEDS_REVIEW
                 || item.getProductAssignmentSource() == ProductAssignmentSource.MANUAL
-                || item.getProductAssignmentStatus() == ProductAssignmentStatus.CONFIRMED;
+                || item.getProductAssignmentStatus() == ProductAssignmentStatus.CONFIRMED
+                || item.getProductAssignmentStatus() == ProductAssignmentStatus.REJECTED;
     }
 
     private boolean isNonProductLine(ReceiptItem item) {

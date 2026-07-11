@@ -11,6 +11,8 @@ import type {
   PageResponse,
   ProductChangePreviewDTO,
   ProductFamilyDTO,
+  ProductPriceObservationDTO,
+  ProductPriceReportDTO,
   ProductReviewItemDTO,
   ProductRuleDTO,
   ProductVariantDTO,
@@ -24,7 +26,8 @@ import type {
   SyncLogDTO,
   SyncStatusDTO,
   SystemInfoDTO,
-  TopItemReportDTO
+  TopItemReportDTO,
+  TopProductReportDTO
 } from "@/lib/types";
 
 export function isMockApiEnabled(): boolean {
@@ -67,6 +70,18 @@ export async function mockRequest<T>(path: string, init: RequestInit = {}): Prom
   }
   if (/^\/products\/variants\/\d+$/.test(url.pathname)) {
     return productVariants[0] as T;
+  }
+  if (/^\/products\/(?:families|variants)\/\d+\/prices$/.test(url.pathname)) {
+    return productPriceReport as T;
+  }
+  if (/^\/products\/(?:families|variants)\/\d+\/price-observations$/.test(url.pathname)) {
+    return page(productPriceObservations, Number(url.searchParams.get("page") ?? 0), Number(url.searchParams.get("size") ?? 20)) as T;
+  }
+  if (/^\/products\/price-observations\/\d+\/exclude$/.test(url.pathname)) {
+    return { ...productPriceObservations[0], excluded: true, includedInComparison: false, exclusionReason: "Mock-Ausschluss" } as T;
+  }
+  if (/^\/products\/price-observations\/\d+\/include$/.test(url.pathname)) {
+    return { ...productPriceObservations[0], excluded: false, includedInComparison: true, exclusionReason: null } as T;
   }
   if (url.pathname === "/products/rules") {
     return method === "GET" ? productRules as T : productRules[0] as T;
@@ -153,6 +168,9 @@ export async function mockRequest<T>(path: string, init: RequestInit = {}): Prom
   }
   if (url.pathname === "/reports/top-items") {
     return topItemsReport as T;
+  }
+  if (url.pathname === "/reports/top-products") {
+    return topProductsReport as T;
   }
   if (url.pathname === "/reports/bonus") {
     return bonusReport as T;
@@ -264,6 +282,51 @@ const productRules: ProductRuleDTO[] = [
 
 const productReviewItems: ProductReviewItemDTO[] = [
   { receiptItemId: 11, receiptId: 1, receiptDate: "2026-06-15", storeName: "REWE", storeBranch: "Mockstraße 1", description: "Haferdrink Barista", quantity: 1, unit: "l", unitPrice: 1.79, totalPrice: 1.79, categoryId: 2, categoryName: "Milchprodukte und Eier", currentProductFamilyId: null, currentProductFamilyName: null, currentProductVariantId: null, currentProductVariantName: null, suggestedProductFamilyId: 10, suggestedProductFamilyName: "Haferdrink", suggestedProductVariantId: 20, suggestedProductVariantName: "Haferdrink 1 l", assignmentSource: "AI", assignmentStatus: "NEEDS_REVIEW", confidence: 0.72, reason: "LOW_CONFIDENCE", possibleRetroactiveItems: 3 }
+];
+
+const productPriceReport: ProductPriceReportDTO = {
+  scope: "FAMILY",
+  productFamilyId: 10,
+  productFamilyName: "Haferdrink",
+  productVariantId: null,
+  productVariantName: null,
+  primaryPriceBasis: "NORMALIZED_UNIT_PRICE",
+  statistics: [{ priceUnit: "l", latestPrice: 1.99, latestReceiptDate: "2026-06-15", minimumPrice: 1.59, averagePrice: 1.79, medianPrice: 1.79, observationCount: 3 }],
+  stores: [
+    { storeName: "REWE", storeBranch: null, label: "REWE", priceUnit: "l", latestPrice: 1.89, latestReceiptDate: "2026-06-14", minimumPrice: 1.59, averagePrice: 1.74, medianPrice: 1.74, observationCount: 2 },
+    { storeName: "dm", storeBranch: null, label: "dm", priceUnit: "l", latestPrice: 1.99, latestReceiptDate: "2026-06-15", minimumPrice: 1.99, averagePrice: 1.99, medianPrice: 1.99, observationCount: 1 }
+  ],
+  trend: [
+    { receiptItemId: 41, receiptDate: "2026-05-02", label: "REWE", price: 1.59, priceUnit: "l", outlier: false },
+    { receiptItemId: 42, receiptDate: "2026-06-14", label: "REWE", price: 1.89, priceUnit: "l", outlier: false },
+    { receiptItemId: 43, receiptDate: "2026-06-15", label: "dm", price: 1.99, priceUnit: "l", outlier: false }
+  ],
+  variants: [{ productVariantId: 20, productVariantName: "Haferdrink 1 l", latestEffectivePrice: 1.99, minimumEffectivePrice: 1.59, observationCount: 3 }]
+};
+
+const productPriceObservations: ProductPriceObservationDTO[] = [
+  {
+    receiptItemId: 43,
+    receiptId: 2,
+    receiptDate: "2026-06-15",
+    storeName: "dm",
+    storeBranch: "Mockallee 2",
+    description: "Haferdrink Barista",
+    productFamilyId: 10,
+    productFamilyName: "Haferdrink",
+    productVariantId: 20,
+    productVariantName: "Haferdrink 1 l",
+    assignmentSource: "RULE",
+    assignmentStatus: "AUTO_ASSIGNED",
+    effectivePrice: 1.99,
+    regularPrice: null,
+    normalizedUnitPrice: 1.99,
+    normalizedUnit: "l",
+    includedInComparison: true,
+    outlier: false,
+    excluded: false,
+    exclusionReason: null
+  }
 ];
 
 const productChangePreview: ProductChangePreviewDTO = {
@@ -533,7 +596,15 @@ const searchResults: SearchResultDTO[] = [
     totalPrice: 1.29,
     categoryId: 2,
     categoryName: "Milchprodukte und Eier",
-    highlights: ["Milch"]
+    highlights: ["Milch"],
+    productFamilyId: 10,
+    productFamilyName: "Haferdrink",
+    productVariantId: 20,
+    productVariantName: "Haferdrink 1 l",
+    productAssignmentSource: "RULE",
+    productAssignmentStatus: "AUTO_ASSIGNED",
+    normalizedUnitPrice: 1.29,
+    normalizedUnit: "l"
   }
 ];
 
@@ -553,6 +624,10 @@ const storeReport: ReportByStoreDTO[] = [
 
 const topItemsReport: TopItemReportDTO[] = [
   { description: "Bio Milch", total: 1.29, count: 1 }
+];
+
+const topProductsReport: TopProductReportDTO[] = [
+  { productFamilyId: 10, productFamilyName: "Haferdrink", total: 5.37, count: 3 }
 ];
 
 const bonusReport: BonusReportDTO[] = [

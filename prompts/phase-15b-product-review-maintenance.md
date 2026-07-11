@@ -57,8 +57,9 @@ Review-Queue-Anzeige:
 Review-Aktionen:
 - Vorschlag akzeptieren.
 - Produktfamilie/Variante korrigieren.
-- Neue Produktfamilie anlegen.
+- Neue Produktfamilie direkt im Korrekturdialog anlegen; Nutzer duerfen fuer typische Prueflistenfaelle nicht erst in die Stammdatenpflege wechseln muessen.
 - Neue Produktvariante anlegen.
+- Optional gleiche offene Positionen mit gleicher normalisierter Beschreibung im gleichen Store mit derselben Zuordnung uebernehmen; manuell bestaetigte Zuordnungen bleiben geschuetzt.
 - Vorschlag ablehnen.
 - Position als NO_PRODUCT markieren.
 - Produktzuordnung entfernen.

@@ -9,22 +9,23 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
 import { formatCurrency, formatNumber } from "@/lib/format";
-import type { BonusReportDTO, CategoryDTO, ReportByCategoryDTO, ReportByPeriodDTO, ReportByStoreDTO, ReportFilters, TopItemReportDTO } from "@/lib/types";
+import type { BonusReportDTO, CategoryDTO, ProductFamilyDTO, ProductVariantDTO, ReportByCategoryDTO, ReportByPeriodDTO, ReportByStoreDTO, ReportFilters, TopItemReportDTO, TopProductReportDTO } from "@/lib/types";
 
 interface ReportsPageProps {
   apiClient: ApiClient;
   hasApiToken: boolean;
 }
 
-type ReportTab = "category" | "period" | "store" | "topItems" | "bonus";
+type ReportTab = "category" | "period" | "store" | "topItems" | "topProducts" | "bonus";
 type RangePreset = "currentMonth" | "lastQuarter" | "currentYear" | "previousYear" | "custom";
-type ReportRow = ReportByCategoryDTO | ReportByPeriodDTO | ReportByStoreDTO | TopItemReportDTO | BonusReportDTO;
+type ReportRow = ReportByCategoryDTO | ReportByPeriodDTO | ReportByStoreDTO | TopItemReportDTO | TopProductReportDTO | BonusReportDTO;
 
 const tabs: Array<{ id: ReportTab; label: string }> = [
   { id: "category", label: "Kategorie" },
   { id: "period", label: "Zeitraum" },
   { id: "store", label: "Geschäft" },
   { id: "topItems", label: "Top-Artikel" },
+  { id: "topProducts", label: "Top-Produkte" },
   { id: "bonus", label: "Bonus" }
 ];
 
@@ -32,6 +33,8 @@ const chartColors = ["#2563eb", "#16a34a", "#eab308", "#dc2626", "#7c3aed", "#08
 
 export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [families, setFamilies] = useState<ProductFamilyDTO[]>([]);
+  const [variants, setVariants] = useState<ProductVariantDTO[]>([]);
   const [tab, setTab] = useState<ReportTab>("category");
   const [preset, setPreset] = useState<RangePreset>("currentMonth");
   const [filters, setFilters] = useState<ReportFilters>(() => ({
@@ -48,6 +51,8 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
     if (!hasApiToken) {
       setRows([]);
       setCategories([]);
+      setFamilies([]);
+      setVariants([]);
       return;
     }
 
@@ -55,11 +60,15 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
     setError(null);
 
     try {
-      const [categoryResponse, reportResponse] = await Promise.all([
+      const [categoryResponse, familyResponse, variantResponse, reportResponse] = await Promise.all([
         apiClient.categories(false),
+        apiClient.productFamilies(),
+        apiClient.productVariants(),
         loadTab(apiClient, tab, filters)
       ]);
       setCategories(categoryResponse);
+      setFamilies(familyResponse);
+      setVariants(variantResponse);
       setRows(reportResponse);
     } catch (loadError) {
       setError(toUserMessage(loadError));
@@ -73,6 +82,9 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
   }, [loadReport]);
 
   const title = useMemo(() => tabs.find((entry) => entry.id === tab)?.label ?? "Report", [tab]);
+  const visibleVariants = filters.productFamilyId == null
+    ? variants
+    : variants.filter((variant) => variant.productFamilyId === filters.productFamilyId);
 
   function updatePreset(nextPreset: RangePreset) {
     setPreset(nextPreset);
@@ -124,7 +136,7 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
             ))}
           </div>
 
-          <div className="grid gap-3 xl:grid-cols-[190px_150px_150px_minmax(240px,1fr)_180px_120px]">
+          <div className="grid gap-3 xl:grid-cols-[190px_150px_150px_minmax(220px,1fr)_180px_120px]">
             <Field label="Zeitraum">
               <select className={selectClassName} onChange={(event) => updatePreset(event.target.value as RangePreset)} value={preset}>
                 <option value="currentMonth">Aktueller Monat</option>
@@ -183,6 +195,33 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
               </select>
             </Field>
           </div>
+          {tab === "topProducts" ? <div className="max-w-xs"><Field label="Top-Produkte sortieren nach"><select className={selectClassName} onChange={(event) => setFilters((current) => ({ ...current, topProductSort: event.target.value as "total" | "count" }))} value={filters.topProductSort ?? "total"}><option value="total">Ausgaben</option><option value="count">Kaufhäufigkeit</option></select></Field></div> : null}
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="Produktfamilie">
+              <select
+                className={selectClassName}
+                onChange={(event) => setFilters((current) => ({
+                  ...current,
+                  productFamilyId: event.target.value ? Number(event.target.value) : null,
+                  productVariantId: null
+                }))}
+                value={filters.productFamilyId ?? ""}
+              >
+                <option value="">Alle Produktfamilien</option>
+                {families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Produktvariante">
+              <select
+                className={selectClassName}
+                onChange={(event) => setFilters((current) => ({ ...current, productVariantId: event.target.value ? Number(event.target.value) : null }))}
+                value={filters.productVariantId ?? ""}
+              >
+                <option value="">Alle Varianten</option>
+                {visibleVariants.map((variant) => <option key={variant.id} value={variant.id}>{variant.name}</option>)}
+              </select>
+            </Field>
+          </div>
         </CardContent>
       </Card>
 
@@ -213,7 +252,7 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
   );
 }
 
-function reportExportType(tab: ReportTab): "by-category" | "by-period" | "by-store" | "top-items" | "bonus" {
+function reportExportType(tab: ReportTab): "by-category" | "by-period" | "by-store" | "top-items" | "top-products" | "bonus" {
   if (tab === "category") {
     return "by-category";
   }
@@ -225,6 +264,9 @@ function reportExportType(tab: ReportTab): "by-category" | "by-period" | "by-sto
   }
   if (tab === "topItems") {
     return "top-items";
+  }
+  if (tab === "topProducts") {
+    return "top-products";
   }
   return "bonus";
 }
@@ -239,6 +281,8 @@ async function loadTab(apiClient: ApiClient, tab: ReportTab, filters: ReportFilt
       return apiClient.reportByStore(filters);
     case "topItems":
       return apiClient.topItems({ ...filters, size: 20 });
+    case "topProducts":
+      return apiClient.topProducts({ ...filters, size: 20 });
     case "bonus":
       return apiClient.bonusReport(filters);
   }
@@ -305,6 +349,10 @@ function chartData(rows: ReportRow[], tab: ReportTab): Array<{ label: string; va
       const value = row as TopItemReportDTO;
       return { label: value.description, value: value.total };
     }
+    if (tab === "topProducts") {
+      const value = row as TopProductReportDTO;
+      return { label: value.productFamilyName, value: value.total };
+    }
     const value = row as BonusReportDTO;
     return { label: value.bonusType, value: value.totalEarnedBalance ?? value.totalPoints ?? 0 };
   });
@@ -326,6 +374,10 @@ function tableCells(row: ReportRow, tab: ReportTab): string[] {
   if (tab === "topItems") {
     const value = row as TopItemReportDTO;
     return [value.description, formatCurrency(value.total), `${formatNumber(value.count)}×`];
+  }
+  if (tab === "topProducts") {
+    const value = row as TopProductReportDTO;
+    return [value.productFamilyName, formatCurrency(value.total), `${formatNumber(value.count)}×`];
   }
   const value = row as BonusReportDTO;
   return [value.bonusType, `${formatNumber(value.totalPoints)} Punkte`, formatCurrency(value.totalEarnedBalance)];

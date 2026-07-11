@@ -5,6 +5,7 @@ import de.ebon.api.dto.PageResponse;
 import de.ebon.api.dto.ReceiptDto;
 import de.ebon.api.dto.ReportDto;
 import de.ebon.api.dto.SearchResultDto;
+import de.ebon.product.ProductPriceCalculator;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.ReceiptItemRepository;
@@ -65,6 +66,39 @@ public class QueryApiService {
             int size,
             String sortBy,
             String sortDir) {
+        return search(
+                q,
+                store,
+                dateFrom,
+                dateTo,
+                categoryIds,
+                uncategorizedOnly,
+                amountMin,
+                amountMax,
+                null,
+                null,
+                page,
+                size,
+                sortBy,
+                sortDir);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<SearchResultDto> search(
+            String q,
+            String store,
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            List<Long> categoryIds,
+            boolean uncategorizedOnly,
+            BigDecimal amountMin,
+            BigDecimal amountMax,
+            Long productFamilyId,
+            Long productVariantId,
+            int page,
+            int size,
+            String sortBy,
+            String sortDir) {
         String safeSortBy = safeItemSort(sortBy);
         String safeSortDir = safeSortDirection(sortDir);
         Pageable pageable = PageRequest.of(
@@ -72,7 +106,17 @@ public class QueryApiService {
                 Math.min(Math.max(size, 1), MAX_PAGE_SIZE),
                 Sort.by(Sort.Direction.fromString(safeSortDir), safeSortBy));
         return PageResponse.from(receiptItemRepository.findAll(
-                itemSpecification(q, store, dateFrom, dateTo, categoryIds, uncategorizedOnly, amountMin, amountMax),
+                itemSpecification(
+                        q,
+                        store,
+                        dateFrom,
+                        dateTo,
+                        categoryIds,
+                        uncategorizedOnly,
+                        amountMin,
+                        amountMax,
+                        productFamilyId,
+                        productVariantId),
                 pageable).map(item -> toSearchResult(item, q)), safeSortBy, safeSortDir);
     }
 
@@ -82,7 +126,19 @@ public class QueryApiService {
             LocalDate dateTo,
             List<Long> categoryIds,
             String store) {
-        Map<CategoryKey, BigDecimal> totals = filteredItems(dateFrom, dateTo, categoryIds, store).stream()
+        return reportByCategory(dateFrom, dateTo, categoryIds, store, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ReportDto.ByCategory> reportByCategory(
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            List<Long> categoryIds,
+            String store,
+            Long productFamilyId,
+            Long productVariantId) {
+        Map<CategoryKey, BigDecimal> totals = filteredItems(
+                dateFrom, dateTo, categoryIds, store, productFamilyId, productVariantId).stream()
                 .collect(Collectors.groupingBy(
                         item -> new CategoryKey(
                                 item.getCategory() == null ? null : item.getCategory().getId(),
@@ -102,7 +158,20 @@ public class QueryApiService {
             List<Long> categoryIds,
             String store,
             String groupBy) {
-        Map<LocalDate, BigDecimal> totals = filteredItems(dateFrom, dateTo, categoryIds, store).stream()
+        return reportByPeriod(dateFrom, dateTo, categoryIds, store, groupBy, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ReportDto.ByPeriod> reportByPeriod(
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            List<Long> categoryIds,
+            String store,
+            String groupBy,
+            Long productFamilyId,
+            Long productVariantId) {
+        Map<LocalDate, BigDecimal> totals = filteredItems(
+                dateFrom, dateTo, categoryIds, store, productFamilyId, productVariantId).stream()
                 .filter(item -> item.getReceipt().getReceiptDate() != null)
                 .collect(Collectors.groupingBy(
                         item -> periodStart(item.getReceipt().getReceiptDate(), groupBy),
@@ -120,7 +189,19 @@ public class QueryApiService {
             LocalDate dateTo,
             List<Long> categoryIds,
             String store) {
-        Map<String, List<ReceiptItem>> byStore = filteredItems(dateFrom, dateTo, categoryIds, store).stream()
+        return reportByStore(dateFrom, dateTo, categoryIds, store, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ReportDto.ByStore> reportByStore(
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            List<Long> categoryIds,
+            String store,
+            Long productFamilyId,
+            Long productVariantId) {
+        Map<String, List<ReceiptItem>> byStore = filteredItems(
+                dateFrom, dateTo, categoryIds, store, productFamilyId, productVariantId).stream()
                 .collect(Collectors.groupingBy(
                         item -> blankToFallback(item.getReceipt().getStoreName(), "Unbekannt"),
                         LinkedHashMap::new,
@@ -141,7 +222,20 @@ public class QueryApiService {
             List<Long> categoryIds,
             String store,
             int limit) {
-        Map<String, List<ReceiptItem>> byDescription = filteredItems(dateFrom, dateTo, categoryIds, store).stream()
+        return topItems(dateFrom, dateTo, categoryIds, store, limit, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ReportDto.TopItem> topItems(
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            List<Long> categoryIds,
+            String store,
+            int limit,
+            Long productFamilyId,
+            Long productVariantId) {
+        Map<String, List<ReceiptItem>> byDescription = filteredItems(
+                dateFrom, dateTo, categoryIds, store, productFamilyId, productVariantId).stream()
                 .collect(Collectors.groupingBy(
                         item -> blankToFallback(item.getDescription(), "Unbekannte Position"),
                         LinkedHashMap::new,
@@ -152,6 +246,35 @@ public class QueryApiService {
                         entry.getValue().stream().map(this::totalPrice).reduce(BigDecimal.ZERO, BigDecimal::add),
                         entry.getValue().size()))
                 .sorted(Comparator.comparing(ReportDto.TopItem::total).reversed())
+                .limit(Math.min(Math.max(limit, 1), 100))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ReportDto.TopProduct> topProducts(
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            String store,
+            int limit,
+            String sortBy) {
+        Comparator<ReportDto.TopProduct> comparator = "count".equalsIgnoreCase(sortBy)
+                ? Comparator.comparingLong(ReportDto.TopProduct::count).reversed()
+                        .thenComparing(ReportDto.TopProduct::total, Comparator.reverseOrder())
+                : Comparator.comparing(ReportDto.TopProduct::total).reversed()
+                        .thenComparing(ReportDto.TopProduct::count, Comparator.reverseOrder());
+        return filteredItems(dateFrom, dateTo, List.of(), store, null, null).stream()
+                .filter(item -> item.getProductFamily() != null)
+                .collect(Collectors.groupingBy(
+                        item -> new ProductKey(item.getProductFamily().getId(), item.getProductFamily().getName()),
+                        LinkedHashMap::new,
+                        Collectors.toList()))
+                .entrySet().stream()
+                .map(entry -> new ReportDto.TopProduct(
+                        entry.getKey().id(),
+                        entry.getKey().name(),
+                        entry.getValue().stream().map(this::totalPrice).reduce(BigDecimal.ZERO, BigDecimal::add),
+                        entry.getValue().size()))
+                .sorted(comparator)
                 .limit(Math.min(Math.max(limit, 1), 100))
                 .toList();
     }
@@ -214,7 +337,18 @@ public class QueryApiService {
             LocalDate dateTo,
             List<Long> categoryIds,
             String store) {
-        return receiptItemRepository.findAll(itemSpecification(null, store, dateFrom, dateTo, categoryIds, false, null, null));
+        return filteredItems(dateFrom, dateTo, categoryIds, store, null, null);
+    }
+
+    private List<ReceiptItem> filteredItems(
+            LocalDate dateFrom,
+            LocalDate dateTo,
+            List<Long> categoryIds,
+            String store,
+            Long productFamilyId,
+            Long productVariantId) {
+        return receiptItemRepository.findAll(itemSpecification(
+                null, store, dateFrom, dateTo, categoryIds, false, null, null, productFamilyId, productVariantId));
     }
 
     private Specification<Receipt> receiptSpecification(LocalDate dateFrom, LocalDate dateTo, String store) {
@@ -244,7 +378,9 @@ public class QueryApiService {
             List<Long> categoryIds,
             boolean uncategorizedOnly,
             BigDecimal amountMin,
-            BigDecimal amountMax) {
+            BigDecimal amountMax,
+            Long productFamilyId,
+            Long productVariantId) {
         return (root, query, builder) -> {
             List<Predicate> predicates = new ArrayList<>();
             predicates.add(builder.isNull(root.get("receipt").get("deletedAt")));
@@ -278,11 +414,18 @@ public class QueryApiService {
             if (amountMax != null) {
                 predicates.add(builder.lessThanOrEqualTo(root.get("totalPrice"), amountMax));
             }
+            if (productFamilyId != null) {
+                predicates.add(builder.equal(root.get("productFamily").get("id"), productFamilyId));
+            }
+            if (productVariantId != null) {
+                predicates.add(builder.equal(root.get("productVariant").get("id"), productVariantId));
+            }
             return builder.and(predicates.toArray(Predicate[]::new));
         };
     }
 
     private SearchResultDto toSearchResult(ReceiptItem item, String query) {
+        ProductPriceCalculator.PriceQuote priceQuote = ProductPriceCalculator.quote(item);
         return new SearchResultDto(
                 item.getReceipt().getId(),
                 item.getId(),
@@ -292,7 +435,15 @@ public class QueryApiService {
                 item.getTotalPrice(),
                 item.getCategory() == null ? null : item.getCategory().getId(),
                 item.getCategory() == null ? null : item.getCategory().getName(),
-                query == null || query.isBlank() ? List.of() : List.of(query));
+                query == null || query.isBlank() ? List.of() : List.of(query),
+                item.getProductFamily() == null ? null : item.getProductFamily().getId(),
+                item.getProductFamily() == null ? null : item.getProductFamily().getName(),
+                item.getProductVariant() == null ? null : item.getProductVariant().getId(),
+                item.getProductVariant() == null ? null : item.getProductVariant().getName(),
+                item.getProductAssignmentSource(),
+                item.getProductAssignmentStatus(),
+                priceQuote.normalizedUnitPrice(),
+                priceQuote.normalizedUnit());
     }
 
     private BigDecimal totalPrice(ReceiptItem item) {
@@ -343,5 +494,8 @@ public class QueryApiService {
     }
 
     private record CategoryKey(Long id, String name) {
+    }
+
+    private record ProductKey(Long id, String name) {
     }
 }

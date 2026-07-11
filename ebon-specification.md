@@ -833,13 +833,14 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 - **F-19.15:** Reine Rabatte, Coupons, Zahlungszeilen und Rundungsdifferenzen werden standardmäßig als `NO_PRODUCT` geführt. Pfand und Tüten werden nicht pauschal ausgeschlossen und können normale Produktfamilien sein.
 - **F-19.16:** Phase 15b stellt eine Prüfliste „Produktzuordnung prüfen" bereit. Sie zeigt Positionen mit `NEEDS_REVIEW`, niedriger oder widersprüchlicher Konfidenz, unklarer Größe, Konflikten zwischen Regel/Historie/KI und auffälligen Preisen. Standardsortierung ist nach Nutzen: häufige und teure Positionen zuerst.
 - **F-19.17:** Die Prüfliste unterstützt Filter nach Unsicherheit, Store, Produktfamilie, Kategorie, Zeitraum, Zuordnungsquelle und Status. Jeder Eintrag zeigt Bon-Datum, Store/Filiale, Positionsbeschreibung, Menge/Einheit/Preis, vorgeschlagene Familie/Variante, Konfidenz, Begründung und mögliche rückwirkende Auswirkungen.
-- **F-19.18:** Der Nutzer kann Vorschläge akzeptieren, korrigieren, ablehnen, neue Produktfamilien/Varianten anlegen, die Zuordnung entfernen, als `NO_PRODUCT` markieren oder aus einer manuellen Zuordnung eine Produktregel mit Vorschau erstellen.
+- **F-19.18:** Der Nutzer kann Vorschläge akzeptieren, korrigieren, ablehnen, neue Produktfamilien/Varianten anlegen, die Zuordnung entfernen, als `NO_PRODUCT` markieren oder aus einer manuellen Zuordnung eine Produktregel mit Vorschau erstellen. In der Prüfliste muss das Anlegen einer fehlenden Produktfamilie direkt im Korrekturdialog möglich sein; der Nutzer darf nicht erst in die Stammdatenpflege wechseln müssen.
+- **F-19.18a:** Wenn mehrere offene Positionen mit gleicher normalisierter Beschreibung im gleichen `store_name` existieren, kann der Nutzer eine manuelle Produktzuordnung optional auf diese gleichartigen offenen Positionen anwenden. Bereits manuell bestätigte Produktzuordnungen dürfen dadurch nicht überschrieben werden.
 - **F-19.19:** Korrektur-Workflows sind Pflicht: Produktfamilien/Varianten zusammenführen, falsch zusammengelegte Einträge trennen, einzelne Bon-Positionen umhängen oder Zuordnungen entfernen. Historisch wirkende Änderungen benötigen immer Vorschau und Bestätigung und müssen transaktional sein.
 - **F-19.20:** Beim Reparse werden Produktzuordnungen neu abgeleitet. Bestätigte Zuordnungen sollen bestmöglich übertragen werden, wenn Beschreibung, Preis und Menge plausibel passen. Konflikte werden sichtbar gemacht, nicht still überschrieben.
 - **F-19.21:** Produktpreisreports verwenden bestätigte und automatisch zugeordnete Preisbeobachtungen. Positionen mit `NEEDS_REVIEW`, `REJECTED`, `NO_PRODUCT` oder `exclude_from_product_price_comparison = true` werden nicht still in Vergleichszahlen gemischt.
 - **F-19.22:** Produktfamilienreports vergleichen normalisierte Einheitenpreise, z.B. `€/l`, `€/kg` oder `€/Stück`, und können nach `store_name` oder `store_name + store_branch` gruppieren. Ein eigenes Store-Stammdatenmodell ist nicht Teil von Phase 15.
 - **F-19.23:** Produktvariantenreports zeigen konkreten Positionspreis, Einheitenpreis, letzten bekannten Preis je Store, historisches Minimum, Durchschnitt, Median, Preisverlauf und zugrunde liegende Bon-Positionen.
-- **F-19.24:** Standardpreislogik ist der effektiv gezahlte Preis inklusive Rabatten und Aktionen. Ein regulärer Preis ohne Rabatt wird zusätzlich nur angezeigt, wenn er aus `unit_price`, `discount_amount` oder erkennbaren Rabattpositionen sicher ableitbar ist.
+- **F-19.24:** Standardpreislogik ist der effektiv gezahlte Preis inklusive Rabatten und Aktionen. Ein regulärer Preis wird zusätzlich nur angezeigt, wenn er sicher ableitbar ist. In der ersten Implementierung gilt ausschließlich ein positionsbezogener negativer `discount_amount` als sichere Grundlage (`regularPrice = effectivePrice + abs(discount_amount)`); `unit_price` und nicht eindeutig zuordenbare Rabattzeilen werden nicht geraten oder positionsübergreifend verrechnet.
 - **F-19.25:** Auffällige Preise werden markiert. Der Nutzer kann einzelne Preisbeobachtungen vom Produktpreisvergleich ausschließen und wieder einschließen. Ausschlüsse bleiben auditierbar und reversibel.
 - **F-19.26:** Suche, Reports und CSV-Exports werden um Produktfamilie, Produktvariante, Einheitenpreis, Zuordnungsquelle, Zuordnungsstatus und Ausschlussstatus erweitert.
 
@@ -1289,7 +1290,7 @@ Query-Parameter für `GET /api/receipts`:
 |---|---|---|
 | GET | `/api/search` | Suche über Bons und Positionen |
 
-Query-Parameter: `q`, `store`, `dateFrom`, `dateTo`, `categoryIds` (kommagetrennt), `productFamilyIds` (kommagetrennt), `productVariantIds` (kommagetrennt), `uncategorizedOnly`, `amountMin`, `amountMax`, `page`, `size`, `sortBy`, `sortDir`.
+Query-Parameter: `q`, `store`, `dateFrom`, `dateTo`, `categoryIds` (kommagetrennt), `productFamilyId`, `productVariantId`, `uncategorizedOnly`, `amountMin`, `amountMax`, `page`, `size`, `sortBy`, `sortDir`.
 
 #### Reports
 
@@ -1300,16 +1301,13 @@ Query-Parameter: `q`, `store`, `dateFrom`, `dateTo`, `categoryIds` (kommagetrenn
 | GET | `/api/reports/by-store` | Ausgaben gruppiert nach Geschäft |
 | GET | `/api/reports/top-items` | Häufigste/teuerste Positionen |
 | GET | `/api/reports/bonus` | Neu gesammeltes Bonusguthaben und neu gesammelte Punkte aggregiert |
-| GET | `/api/reports/products/families/{id}` | Produktfamilien-Preisvergleich |
-| GET | `/api/reports/products/variants/{id}` | Produktvarianten-Preisvergleich |
-| GET | `/api/reports/products/top` | Häufige/teure Produkte und einfache Preisänderungen |
+| GET | `/api/reports/top-products` | Häufige/teure Produktfamilien, `sortBy=total` oder `sortBy=count` |
 | GET | `/api/reports/by-category/export` | CSV-Export |
 | GET | `/api/reports/by-period/export` | CSV-Export |
 | GET | `/api/reports/by-store/export` | CSV-Export |
-| GET | `/api/reports/products/families/{id}/export` | Produktfamilien-CSV-Export |
-| GET | `/api/reports/products/variants/{id}/export` | Produktvarianten-CSV-Export |
+| GET | `/api/reports/top-products/export` | Top-Produktfamilien als CSV-Export |
 
-Gemeinsame Query-Parameter: `dateFrom`, `dateTo`, `categoryIds`, `productFamilyIds`, `productVariantIds`, `store`, `groupBy` (`day`/`week`/`month`/`year`). Produktpreisreports unterstützen zusätzlich `storeGrouping` (`STORE` oder `STORE_BRANCH`), `includeExcluded`, `page` und `size` für Preisbeobachtungen.
+Gemeinsame Query-Parameter: `dateFrom`, `dateTo`, `categoryIds`, `productFamilyId`, `productVariantId`, `store`, `groupBy` (`day`/`week`/`month`/`year`). Die Produktpreisendpunkte unterstützen zusätzlich `grouping` (`STORE` oder `STORE_BRANCH`), `includeExcluded` (Default `true`, betrifft nur die Detailtabelle) sowie `page` und `size` für Preisbeobachtungen. Ausgeschlossene Positionen fließen unabhängig von `includeExcluded` nie in Kennzahlen ein.
 
 #### Backup & Restore
 
@@ -1403,6 +1401,12 @@ Body für `/api/admin/reparse/bulk`:
 | POST | `/api/products/review/{receiptItemId}/rule-suggestion` | Regelvorschlag aus manueller Zuordnung mit Vorschau erzeugen |
 | POST | `/api/products/review/{receiptItemId}/rule-suggestion/accept` | Vorschlag nach `confirm = true` als Produktregel speichern und optional anwenden |
 | POST | `/api/products/assignments/run` | Produktzuordnung für Bon oder offene Positionen neu ausführen |
+| GET | `/api/products/families/{productFamilyId}/prices` | Produktfamilien-Preisvergleich über normalisierte Einheitenpreise |
+| GET | `/api/products/families/{productFamilyId}/price-observations` | Paginierte Preisbeobachtungen der Produktfamilie |
+| GET | `/api/products/families/{productFamilyId}/prices/export` | Produktfamilien-Preisvergleich als CSV |
+| GET | `/api/products/variants/{productVariantId}/prices` | Produktvarianten-Preisvergleich über effektive Positionspreise |
+| GET | `/api/products/variants/{productVariantId}/price-observations` | Paginierte Preisbeobachtungen der Produktvariante |
+| GET | `/api/products/variants/{productVariantId}/prices/export` | Produktvarianten-Preisvergleich als CSV |
 | POST | `/api/products/price-observations/{receiptItemId}/exclude` | Preisbeobachtung ausschließen |
 | POST | `/api/products/price-observations/{receiptItemId}/include` | Preisbeobachtung wieder einschließen |
 
@@ -1517,7 +1521,7 @@ Validierung:
   "description": "Bio Milch",
   "quantity": 1.0,
   "unit": "Stk",
-  "unitPrice": 1.49,
+  "normalizedUnitPrice": 1.49,
   "totalPrice": 1.49,
   "discountAmount": 0.0,
   "categoryId": 2,

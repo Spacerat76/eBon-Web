@@ -44,10 +44,27 @@ public class SearchController {
             @RequestParam(defaultValue = "false") boolean uncategorizedOnly,
             @RequestParam(required = false) @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal amountMin,
             @RequestParam(required = false) @DecimalMin("0.00") @Digits(integer = 8, fraction = 2) BigDecimal amountMax,
+            @RequestParam(required = false) Long productFamilyId,
+            @RequestParam(required = false) Long productVariantId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(defaultValue = "receiptDate") String sortBy,
             @RequestParam(defaultValue = "desc") @Pattern(regexp = "asc|desc") String sortDir) {
+        if (productFamilyId == null && productVariantId == null) {
+            return queryApiService.search(
+                    q,
+                    store,
+                    dateFrom,
+                    dateTo,
+                    parseIds(categoryIds),
+                    uncategorizedOnly,
+                    amountMin,
+                    amountMax,
+                    page,
+                    size,
+                    sortBy,
+                    sortDir);
+        }
         return queryApiService.search(
                 q,
                 store,
@@ -57,6 +74,8 @@ public class SearchController {
                 uncategorizedOnly,
                 amountMin,
                 amountMax,
+                productFamilyId,
+                productVariantId,
                 page,
                 size,
                 sortBy,

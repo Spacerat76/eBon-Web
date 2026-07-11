@@ -144,8 +144,9 @@ class ProductsApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(queueResponse.statusCode()).isEqualTo(200);
         JsonNode queue = objectMapper.readTree(queueResponse.body());
         assertThat(queue.get("page").asInt()).isZero();
-        assertThat(queue.get("content").get(0).get("receiptItemId").asLong()).isEqualTo(itemId);
-        assertThat(queue.get("content").get(0).get("suggestedProductVariantId").asLong()).isEqualTo(variantId);
+        JsonNode reviewItem = findContentItem(queue, itemId);
+        assertThat(reviewItem).isNotNull();
+        assertThat(reviewItem.get("suggestedProductVariantId").asLong()).isEqualTo(variantId);
 
         HttpResponse<String> accepted = post("/api/products/review/" + itemId + "/accept", "{}");
 
@@ -169,6 +170,45 @@ class ProductsApiContractTests extends PostgresIntegrationTestSupport {
                  "applyToExisting":false,"confirm":true}
                 """.formatted(familyId, variantId, marker)));
         assertThat(acceptedRule.get("rule").get("productVariantId").asLong()).isEqualTo(variantId);
+    }
+
+    // Verifies a review correction can create a missing family inline and apply it to repeated open positions in the same store.
+    @Test
+    void reviewCorrectionCreatesFamilyAndAppliesToSameStoreDescription() throws Exception {
+        String marker = "PHASE15INLINEFAMILY" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
+        Long firstReceiptId = insertReceipt(marker, "REWE", 2.00);
+        Long secondReceiptId = insertReceipt(marker + "SECOND", "REWE", 2.00);
+        Long otherStoreReceiptId = insertReceipt(marker + "OTHER", "dm", 2.00);
+        Long firstItemId = jdbcTemplate.queryForObject("""
+                insert into receipt_item (receipt_id, position_index, description, total_price, product_assignment_status)
+                values (?, 0, ?, 2.00, 'NEEDS_REVIEW') returning id
+                """, Long.class, firstReceiptId, marker + " SERVICE GEW");
+        Long secondItemId = jdbcTemplate.queryForObject("""
+                insert into receipt_item (receipt_id, position_index, description, total_price, product_assignment_status)
+                values (?, 0, ?, 2.00, 'NEEDS_REVIEW') returning id
+                """, Long.class, secondReceiptId, marker + " SERVICE GEW");
+        Long otherStoreItemId = jdbcTemplate.queryForObject("""
+                insert into receipt_item (receipt_id, position_index, description, total_price, product_assignment_status)
+                values (?, 0, ?, 2.00, 'NEEDS_REVIEW') returning id
+                """, Long.class, otherStoreReceiptId, marker + " SERVICE GEW");
+
+        JsonNode corrected = body(post("/api/products/review/" + firstItemId + "/correct", """
+                {"newProductFamilyName":"%s Thekenware","productVariantId":null,"applyToSameStoreDescription":true}
+                """.formatted(marker)));
+
+        assertThat(corrected.get("currentProductFamilyName").asString()).isEqualTo(marker + " Thekenware");
+        assertThat(corrected.get("possibleRetroactiveItems").asLong()).isEqualTo(2);
+        Long familyId = jdbcTemplate.queryForObject(
+                "select id from product_family where name = ?", Long.class, marker + " Thekenware");
+        assertThat(jdbcTemplate.queryForObject(
+                "select product_family_id from receipt_item where id = ?", Long.class, firstItemId))
+                .isEqualTo(familyId);
+        assertThat(jdbcTemplate.queryForObject(
+                "select product_family_id from receipt_item where id = ?", Long.class, secondItemId))
+                .isEqualTo(familyId);
+        assertThat(jdbcTemplate.queryForObject(
+                "select product_family_id from receipt_item where id = ?", Long.class, otherStoreItemId))
+                .isNull();
     }
 
     // Verifies a historical family correction is previewed first and changes assignments only after explicit confirmation.
@@ -353,12 +393,92 @@ class ProductsApiContractTests extends PostgresIntegrationTestSupport {
                 Long.class, selectedItemId)).isEqualTo(1);
     }
 
+    // Verifies protected price reports expose normalized prices and keep manual exclusion reversible and auditable.
+    @Test
+    void productPriceEndpointsReportObservationsExcludeThemAndExportCsv() throws Exception {
+        String marker = "PHASE15PRICE" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
+        Long familyId = jdbcTemplate.queryForObject(
+                "insert into product_family (name) values (?) returning id", Long.class, marker + " Haferdrink");
+        Long variantId = jdbcTemplate.queryForObject("""
+                insert into product_variant (product_family_id, name, total_quantity, total_unit)
+                values (?, ?, 1.000, 'l') returning id
+                """, Long.class, familyId, marker + " Haferdrink 1 l");
+
+        Long firstItemId = insertPricedItem(marker, 1, familyId, variantId, "REWE", "Filiale A", "2026-01-10", "1.99");
+        insertPricedItem(marker, 2, familyId, variantId, "REWE", "Filiale B", "2026-02-10", "2.49");
+        insertPricedItem(marker, 3, familyId, variantId, "dm", "Innenstadt", "2026-03-10", "2.99");
+
+        HttpResponse<String> unauthorized = send(HttpRequest.newBuilder()
+                .uri(uri("/api/products/families/" + familyId + "/prices"))
+                .GET(), false);
+        assertThat(unauthorized.statusCode()).isEqualTo(401);
+
+        JsonNode report = body(send(HttpRequest.newBuilder()
+                .uri(uri("/api/products/families/" + familyId + "/prices?grouping=STORE_BRANCH"))
+                .GET(), true));
+        assertThat(report.get("primaryPriceBasis").asString()).isEqualTo("NORMALIZED_UNIT_PRICE");
+        assertThat(report.get("statistics").get(0).get("observationCount").asLong()).isEqualTo(3);
+        assertThat(report.get("stores")).hasSize(3);
+
+        JsonNode excluded = body(post("/api/products/price-observations/" + firstItemId + "/exclude", """
+                {"reason":"Duplikat aus Testdaten"}
+                """));
+        assertThat(excluded.get("excluded").asBoolean()).isTrue();
+        assertThat(jdbcTemplate.queryForObject(
+                "select exclude_from_product_price_comparison from receipt_item where id = ?", Boolean.class, firstItemId))
+                .isTrue();
+
+        HttpResponse<String> export = send(HttpRequest.newBuilder()
+                .uri(uri("/api/products/families/" + familyId + "/prices/export"))
+                .GET(), true);
+        assertThat(export.statusCode()).isEqualTo(200);
+        assertThat(export.body()).startsWith("receiptItemId;receiptId;receiptDate;storeName");
+        assertThat(export.body()).contains("excludedFromProductPriceComparison");
+
+        JsonNode included = body(post("/api/products/price-observations/" + firstItemId + "/include", "{}"));
+        assertThat(included.get("excluded").asBoolean()).isFalse();
+        assertThat(jdbcTemplate.queryForObject(
+                "select count(*) from product_assignment_log where receipt_item_id = ? and decision_reason = 'PRICE_INCLUDED'",
+                Long.class, firstItemId)).isEqualTo(1);
+    }
+
     private Long insertReceipt(String marker, String storeName, double totalAmount) {
         return jdbcTemplate.queryForObject("""
                 insert into receipt (paperless_document_id, receipt_date, store_name, total_amount, raw_text, parse_status)
                 values (?, date '2026-06-23', ?, ?, 'contract test receipt', 'PARSED')
                 returning id
                 """, Long.class, marker.hashCode() & Integer.MAX_VALUE, storeName, totalAmount);
+    }
+
+    private Long insertPricedItem(
+            String marker,
+            int suffix,
+            Long familyId,
+            Long variantId,
+            String storeName,
+            String storeBranch,
+            String receiptDate,
+            String totalPrice) {
+        Long receiptId = jdbcTemplate.queryForObject("""
+                insert into receipt (paperless_document_id, receipt_date, store_name, store_branch, total_amount, raw_text, parse_status)
+                values (?, cast(? as date), ?, ?, cast(? as numeric), 'contract test receipt', 'PARSED')
+                returning id
+                """, Long.class, (marker.hashCode() & Integer.MAX_VALUE) + suffix, receiptDate, storeName, storeBranch, totalPrice);
+        return jdbcTemplate.queryForObject("""
+                insert into receipt_item (receipt_id, position_index, description, total_price,
+                                          product_family_id, product_variant_id, product_assignment_source, product_assignment_status)
+                values (?, 0, ?, cast(? as numeric), ?, ?, 'MANUAL', 'CONFIRMED')
+                returning id
+                """, Long.class, receiptId, marker + " Haferdrink", totalPrice, familyId, variantId);
+    }
+
+    private JsonNode findContentItem(JsonNode page, Long receiptItemId) {
+        for (JsonNode item : page.get("content")) {
+            if (item.get("receiptItemId").asLong() == receiptItemId) {
+                return item;
+            }
+        }
+        return null;
     }
 
     private HttpResponse<String> post(String path, String json) throws Exception {

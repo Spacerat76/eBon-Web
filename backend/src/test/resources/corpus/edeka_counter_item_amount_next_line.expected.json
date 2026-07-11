@@ -1,0 +1,49 @@
+{
+  "receiptDate": "2026-06-29",
+  "receiptTime": "19:56:02",
+  "storeName": "EDEKA",
+  "storeBranch": "Hochstadenstr. 19",
+  "totalAmount": 11.44,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": 5,
+  "bonusType": "Payback",
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Vollk.Vollkornbrot",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 3.29,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Paprikalyoner",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.36,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "BRATKASSELER",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.80,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 3,
+      "description": "Beleg Wurst/Schinken BED / PREPACK",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.99,
+      "discountAmount": null
+    }
+  ]
+}

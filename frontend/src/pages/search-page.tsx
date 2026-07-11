@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
-import type { CategoryDTO, PageResponse, SearchParams, SearchResultDTO } from "@/lib/types";
+import type { CategoryDTO, PageResponse, ProductFamilyDTO, ProductVariantDTO, SearchParams, SearchResultDTO } from "@/lib/types";
 
 interface SearchPageProps {
   apiClient: ApiClient;
@@ -21,6 +21,8 @@ const pageSize = 20;
 
 export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = false }: SearchPageProps) {
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [families, setFamilies] = useState<ProductFamilyDTO[]>([]);
+  const [variants, setVariants] = useState<ProductVariantDTO[]>([]);
   const [results, setResults] = useState<PageResponse<SearchResultDTO> | null>(null);
   const [filters, setFilters] = useState<SearchParams>({
     page: 0,
@@ -40,6 +42,8 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
     if (!hasApiToken) {
       setResults(null);
       setCategories([]);
+      setFamilies([]);
+      setVariants([]);
       return;
     }
 
@@ -47,12 +51,16 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
     setError(null);
 
     try {
-      const [categoryResponse, resultResponse] = await Promise.all([
+      const [categoryResponse, resultResponse, familyResponse, variantResponse] = await Promise.all([
         apiClient.categories(false),
-        apiClient.search(filters)
+        apiClient.search(filters),
+        apiClient.productFamilies(),
+        apiClient.productVariants()
       ]);
       setCategories(categoryResponse);
       setResults(resultResponse);
+      setFamilies(familyResponse);
+      setVariants(variantResponse);
     } catch (loadError) {
       setError(toUserMessage(loadError));
     } finally {
@@ -76,6 +84,10 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
       sortDir: current.sortBy === sortBy && current.sortDir === "desc" ? "asc" : "desc"
     }));
   }
+
+  const visibleVariants = filters.productFamilyId == null
+    ? variants
+    : variants.filter((variant) => variant.productFamilyId === filters.productFamilyId);
 
   if (!hasApiToken) {
     return <AuthRequired />;
@@ -113,7 +125,7 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
             </Field>
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_140px_140px_190px]">
+          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_140px_140px_190px]">
             <Field label="Kategorien">
               <select
                 className={selectClassName}
@@ -129,6 +141,29 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
                     {category.name}
                   </option>
                 ))}
+              </select>
+            </Field>
+            <Field label="Produktfamilie">
+              <select
+                className={selectClassName}
+                onChange={(event) => updateFilter({
+                  productFamilyId: event.target.value ? Number(event.target.value) : null,
+                  productVariantId: null
+                })}
+                value={filters.productFamilyId ?? ""}
+              >
+                <option value="">Alle Produktfamilien</option>
+                {families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Produktvariante">
+              <select
+                className={selectClassName}
+                onChange={(event) => updateFilter({ productVariantId: event.target.value ? Number(event.target.value) : null })}
+                value={filters.productVariantId ?? ""}
+              >
+                <option value="">Alle Varianten</option>
+                {visibleVariants.map((variant) => <option key={variant.id} value={variant.id}>{variant.name}</option>)}
               </select>
             </Field>
             <Field label="Betrag von">
@@ -167,7 +202,7 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
               <Skeleton className="h-10 w-full" />
             </div>
           ) : results?.content.length ? (
-            <table className="w-full min-w-[760px] text-sm">
+            <table className="w-full min-w-[940px] text-sm">
               <thead>
                 <tr className="border-b border-zinc-100 text-left text-xs uppercase text-zinc-500 dark:border-zinc-900 dark:text-zinc-400">
                   <SortableHeader active={filters.sortBy === "receiptDate"} direction={filters.sortDir ?? "desc"} label="Datum" onClick={() => toggleSort("receiptDate")} />
@@ -175,6 +210,7 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
                   <SortableHeader active={filters.sortBy === "description"} direction={filters.sortDir ?? "desc"} label="Position" onClick={() => toggleSort("description")} />
                   <SortableHeader active={filters.sortBy === "totalPrice"} direction={filters.sortDir ?? "desc"} label="Betrag" onClick={() => toggleSort("totalPrice")} right />
                   <th className="px-3 py-2 font-medium">Kategorie</th>
+                  <th className="px-3 py-2 font-medium">Produkt</th>
                 </tr>
               </thead>
               <tbody>
@@ -194,6 +230,9 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
                     <td className="px-3 py-2 text-right font-medium">{formatCurrency(result.totalPrice)}</td>
                     <td className="px-3 py-2">
                       {result.categoryId == null ? <Badge>Ohne Kategorie</Badge> : <Badge tone="blue">{result.categoryName}</Badge>}
+                    </td>
+                    <td className="px-3 py-2">
+                      {result.productFamilyName ? <><div className="font-medium">{result.productFamilyName}</div><div className="text-xs text-zinc-500">{result.productVariantName ?? "Variante offen"}{result.normalizedUnitPrice == null ? "" : ` · ${formatCurrency(result.normalizedUnitPrice)} / ${result.normalizedUnit}`}</div></> : <span className="text-zinc-500">Ohne Produkt</span>}
                     </td>
                   </tr>
                 ))}

@@ -126,15 +126,20 @@ public class ProductReviewService {
     @Transactional
     public ProductReviewItemDto correct(Long receiptItemId, ProductAssignmentCorrectionRequest request) {
         ReceiptItem item = item(receiptItemId);
-        ProductFamily family = productFamilyRepository.findById(request.productFamilyId())
-                .orElseThrow(() -> new EntityNotFoundException("Produktfamilie nicht gefunden."));
+        ProductFamily family = request.productFamilyId() == null
+                ? findOrCreateFamily(request.newProductFamilyName(), item)
+                : productFamilyRepository.findById(request.productFamilyId())
+                        .orElseThrow(() -> new EntityNotFoundException("Produktfamilie nicht gefunden."));
         ProductVariant variant = request.productVariantId() == null ? null : productVariantRepository.findById(request.productVariantId())
                 .orElseThrow(() -> new EntityNotFoundException("Produktvariante nicht gefunden."));
         if (variant != null && !variant.getProductFamily().getId().equals(family.getId())) {
             throw new IllegalArgumentException("Produktvariante gehoert nicht zur Produktfamilie.");
         }
-        assignManual(item, family, variant, "MANUAL_CORRECTION");
-        return toDto(item, 1L);
+        List<ReceiptItem> itemsToAssign = Boolean.TRUE.equals(request.applyToSameStoreDescription())
+                ? sameStoreDescriptionItems(item)
+                : List.of(item);
+        itemsToAssign.forEach(candidate -> assignManual(candidate, family, variant, "MANUAL_CORRECTION"));
+        return toDto(item, itemsToAssign.size());
     }
 
     @Transactional
@@ -203,6 +208,34 @@ public class ProductReviewService {
         audit(item, family, variant, ProductAssignmentStatus.CONFIRMED, reason);
     }
 
+    private ProductFamily findOrCreateFamily(String name, ReceiptItem item) {
+        String trimmedName = name == null ? "" : name.trim();
+        if (trimmedName.isBlank()) {
+            throw new IllegalArgumentException("Produktfamilienname darf nicht leer sein.");
+        }
+        return productFamilyRepository.findByNameIgnoreCase(trimmedName)
+                .orElseGet(() -> productFamilyRepository.saveAndFlush(new ProductFamily(trimmedName, item.getCategory())));
+    }
+
+    private List<ReceiptItem> sameStoreDescriptionItems(ReceiptItem reference) {
+        String referenceKey = contextKey(reference);
+        return receiptItemRepository.findAll().stream()
+                .filter(item -> item.getReceipt() != null && item.getReceipt().getDeletedAt() == null)
+                .filter(item -> referenceKey.equals(contextKey(item)))
+                .filter(item -> item.getId().equals(reference.getId()) || canBulkAssign(item))
+                .toList();
+    }
+
+    private boolean canBulkAssign(ReceiptItem item) {
+        if (item.getProductAssignmentSource() == ProductAssignmentSource.MANUAL
+                && item.getProductAssignmentStatus() == ProductAssignmentStatus.CONFIRMED) {
+            return false;
+        }
+        return item.getProductAssignmentStatus() == null
+                || item.getProductAssignmentStatus() == ProductAssignmentStatus.NEEDS_REVIEW
+                || item.getProductAssignmentStatus() == ProductAssignmentStatus.REJECTED;
+    }
+
     private void audit(
             ReceiptItem item,
             ProductFamily family,
@@ -261,8 +294,7 @@ public class ProductReviewService {
 
     private boolean isReviewCandidate(ProductReviewItemDto item, BigDecimal confidenceMax) {
         return item.assignmentStatus() == ProductAssignmentStatus.NEEDS_REVIEW
-                || item.confidence() != null && item.confidence().compareTo(confidenceMax) < 0
-                || item.currentProductFamilyId() != null && item.currentProductVariantId() == null;
+                || item.confidence() != null && item.confidence().compareTo(confidenceMax) < 0;
     }
 
     private String reviewReason(ReceiptItem item) {

@@ -9,7 +9,7 @@ const require = createRequire(import.meta.url);
 const chromedriver = require("chromedriver");
 
 export async function runSmoke({
-  baseUrl = process.env.EBON_E2E_BASE_URL ?? "http://127.0.0.1:5173",
+  baseUrl = process.env.EBON_E2E_BASE_URL ?? "http://127.0.0.1:5174",
   coverageOutputFile
 } = {}) {
   const driver = await createDriver();
@@ -41,6 +41,9 @@ export async function runSmoke({
     await clickNav(driver, "#/products");
     await waitForText(driver, "Produktzuordnung prüfen");
     await waitForText(driver, "Haferdrink Barista");
+    await clickButton(driver, "Preisvergleich");
+    await waitForText(driver, "Produktpreisvergleich");
+    await waitForText(driver, "Historisches Minimum");
 
     await clickNav(driver, "#/receipts");
     await waitForText(driver, "Bons");

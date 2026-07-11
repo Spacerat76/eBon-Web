@@ -26,6 +26,9 @@ import type {
   ProductFamilySplitApplyRequest,
   ProductFamilySplitRequest,
   ProductFamilyRequest,
+  ProductPriceObservationDTO,
+  ProductPriceParams,
+  ProductPriceReportDTO,
   ProductReviewItemDTO,
   ProductReviewParams,
   ProductRuleDTO,
@@ -68,7 +71,8 @@ import type {
   SystemInfoDTO,
   SyncLogDTO,
   SyncStatusDTO,
-  TopItemReportDTO
+  TopItemReportDTO,
+  TopProductReportDTO
 } from "@/lib/types";
 import { isMockApiEnabled, mockDownload, mockRequest, mockUploadFile } from "@/lib/mock-api";
 
@@ -358,6 +362,47 @@ export class ApiClient {
     return this.request("/products/variants/split/apply", { method: "POST", body: JSON.stringify(request) });
   }
 
+  productFamilyPrices(productFamilyId: number, params: ProductPriceParams = {}): Promise<ProductPriceReportDTO> {
+    return this.request(`/products/families/${productFamilyId}/prices?${productPriceQuery(params)}`);
+  }
+
+  productVariantPrices(productVariantId: number, params: ProductPriceParams = {}): Promise<ProductPriceReportDTO> {
+    return this.request(`/products/variants/${productVariantId}/prices?${productPriceQuery(params)}`);
+  }
+
+  productFamilyPriceObservations(
+    productFamilyId: number,
+    params: ProductPriceParams & { page?: number; size?: number } = {}
+  ): Promise<PageResponse<ProductPriceObservationDTO>> {
+    return this.request(`/products/families/${productFamilyId}/price-observations?${productPriceQuery(params)}`);
+  }
+
+  productVariantPriceObservations(
+    productVariantId: number,
+    params: ProductPriceParams & { page?: number; size?: number } = {}
+  ): Promise<PageResponse<ProductPriceObservationDTO>> {
+    return this.request(`/products/variants/${productVariantId}/price-observations?${productPriceQuery(params)}`);
+  }
+
+  excludeProductPriceObservation(receiptItemId: number, reason: string): Promise<ProductPriceObservationDTO> {
+    return this.request(`/products/price-observations/${receiptItemId}/exclude`, {
+      method: "POST",
+      body: JSON.stringify({ reason })
+    });
+  }
+
+  includeProductPriceObservation(receiptItemId: number): Promise<ProductPriceObservationDTO> {
+    return this.request(`/products/price-observations/${receiptItemId}/include`, { method: "POST", body: "{}" });
+  }
+
+  downloadProductFamilyPricesCsv(productFamilyId: number, params: ProductPriceParams = {}): Promise<Blob> {
+    return this.download(`/products/families/${productFamilyId}/prices/export?${productPriceQuery(params)}`);
+  }
+
+  downloadProductVariantPricesCsv(productVariantId: number, params: ProductPriceParams = {}): Promise<Blob> {
+    return this.download(`/products/variants/${productVariantId}/prices/export?${productPriceQuery(params)}`);
+  }
+
   search(params: SearchParams): Promise<PageResponse<SearchResultDTO>> {
     return this.request(`/search?${toQuery({
       q: params.q || undefined,
@@ -368,6 +413,8 @@ export class ApiClient {
       uncategorizedOnly: params.uncategorizedOnly ? "true" : undefined,
       amountMin: params.amountMin ?? undefined,
       amountMax: params.amountMax ?? undefined,
+      productFamilyId: params.productFamilyId ?? undefined,
+      productVariantId: params.productVariantId ?? undefined,
       page: params.page ?? 0,
       size: params.size ?? 20,
       sortBy: params.sortBy ?? "receiptDate",
@@ -391,6 +438,10 @@ export class ApiClient {
     return this.request(`/reports/top-items?${reportQuery(params)}`);
   }
 
+  topProducts(params: Pick<ReportFilters, "dateFrom" | "dateTo" | "store" | "size" | "topProductSort">): Promise<TopProductReportDTO[]> {
+    return this.request(`/reports/top-products?${reportQuery(params)}`);
+  }
+
   bonusReport(params: Pick<ReportFilters, "dateFrom" | "dateTo" | "store">): Promise<BonusReportDTO[]> {
     return this.request(`/reports/bonus?${toQuery({
       dateFrom: params.dateFrom || undefined,
@@ -399,7 +450,7 @@ export class ApiClient {
     })}`);
   }
 
-  downloadReportCsv(type: "by-category" | "by-period" | "by-store" | "top-items" | "bonus", params: ReportFilters): Promise<Blob> {
+  downloadReportCsv(type: "by-category" | "by-period" | "by-store" | "top-items" | "top-products" | "bonus", params: ReportFilters): Promise<Blob> {
     return this.download(`/reports/${type}/export?${reportQuery(params)}`);
   }
 
@@ -647,11 +698,26 @@ function reportQuery(params: ReportFilters): string {
     categoryIds: params.categoryIds?.length ? params.categoryIds.join(",") : undefined,
     store: params.store || undefined,
     groupBy: params.groupBy || undefined,
+    size: params.size ?? undefined,
+    productFamilyId: params.productFamilyId ?? undefined,
+    productVariantId: params.productVariantId ?? undefined,
+    sortBy: params.topProductSort ?? undefined
+  });
+}
+
+function productPriceQuery(params: ProductPriceParams & { page?: number; size?: number }): string {
+  return toQuery({
+    dateFrom: params.dateFrom || undefined,
+    dateTo: params.dateTo || undefined,
+    store: params.store || undefined,
+    grouping: params.grouping ?? "STORE",
+    includeExcluded: params.includeExcluded ?? true,
+    page: params.page ?? undefined,
     size: params.size ?? undefined
   });
 }
 
-function toQuery(values: Record<string, string | number | undefined>): string {
+function toQuery(values: Record<string, string | number | boolean | undefined>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(values)) {
     if (value !== undefined) {

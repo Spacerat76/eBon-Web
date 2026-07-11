@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit && vite build",
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests",
-    "dev:e2e": "cross-env VITE_EBON_MOCK_API=true vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:e2e": "cross-env VITE_EBON_MOCK_API=true vite --host 127.0.0.1 --port 5174 --strictPort",
     "e2e": "node e2e/run-smoke.mjs",
     "e2e:coverage": "cross-env EBON_E2E_COVERAGE=true node e2e/run-smoke.mjs && nyc report --temp-dir .nyc_output --report-dir coverage-e2e --reporter=text --reporter=html --reporter=lcov",
     "preview": "vite preview --host 0.0.0.0"

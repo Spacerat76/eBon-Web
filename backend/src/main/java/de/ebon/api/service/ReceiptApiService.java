@@ -22,6 +22,7 @@ import de.ebon.parser.ReceiptParseResult;
 import de.ebon.parser.ReceiptParserService;
 import de.ebon.product.ProductAssignmentService;
 import de.ebon.product.ProductAssignmentTransferService;
+import de.ebon.product.ProductPriceCalculator;
 import de.ebon.parser.AiParsingTextMode;
 import de.ebon.parser.ParseExecutionOptions;
 import de.ebon.persistence.model.AiCategorizationLog;
@@ -30,7 +31,6 @@ import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.DeleteReason;
 import de.ebon.persistence.model.ParseRuleSuggestionStatus;
 import de.ebon.persistence.model.ParseStatus;
-import de.ebon.persistence.model.ProductVariant;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
@@ -563,7 +563,7 @@ public class ReceiptApiService {
     public ReceiptItemDto toItemDto(ReceiptItem item) {
         Category category = item.getCategory();
         AiSuggestionDto suggestion = category == null ? latestAiSuggestion(item.getId()) : null;
-        ComparableUnitPrice unitPrice = computedUnitPrice(item);
+        ProductPriceCalculator.PriceQuote priceQuote = ProductPriceCalculator.quote(item);
         return new ReceiptItemDto(
                 item.getId(),
                 item.getReceipt().getId(),
@@ -586,52 +586,10 @@ public class ReceiptApiService {
                 item.getProductAssignmentSource(),
                 item.getProductAssignmentStatus(),
                 item.getProductAssignmentConfidence(),
-                unitPrice.value(),
-                unitPrice.unit(),
+                priceQuote.normalizedUnitPrice(),
+                priceQuote.normalizedUnit(),
                 item.isExcludedFromProductPriceComparison(),
                 item.getProductPriceExclusionReason());
-    }
-
-    private ComparableUnitPrice computedUnitPrice(ReceiptItem item) {
-        ProductVariant variant = item.getProductVariant();
-        if (variant == null || variant.getTotalQuantity() == null
-                || variant.getTotalQuantity().signum() <= 0 || item.getTotalPrice() == null) {
-            return ComparableUnitPrice.empty();
-        }
-        ComparableQuantity comparableQuantity = comparableUnitQuantity(variant.getTotalQuantity(), variant.getTotalUnit());
-        if (comparableQuantity == null || comparableQuantity.quantity().signum() <= 0) {
-            return ComparableUnitPrice.empty();
-        }
-        return new ComparableUnitPrice(
-                item.getTotalPrice().divide(comparableQuantity.quantity(), 4, java.math.RoundingMode.HALF_UP),
-                comparableQuantity.unit());
-    }
-
-    /**
-     * Uses liter, kilogram, and piece as display-safe comparison bases. Unknown units stay incomparable.
-     */
-    private ComparableQuantity comparableUnitQuantity(BigDecimal quantity, String unit) {
-        if (unit == null || unit.isBlank()) {
-            return null;
-        }
-        return switch (unit.trim().toLowerCase(Locale.ROOT)) {
-            case "ml", "milliliter" -> new ComparableQuantity(quantity.movePointLeft(3), "l");
-            case "l", "liter", "ltr" -> new ComparableQuantity(quantity, "l");
-            case "g", "gramm" -> new ComparableQuantity(quantity.movePointLeft(3), "kg");
-            case "kg", "kilogramm" -> new ComparableQuantity(quantity, "kg");
-            case "stk", "st", "stück", "stueck", "piece", "pcs", "pc" -> new ComparableQuantity(quantity, "Stück");
-            default -> null;
-        };
-    }
-
-    private record ComparableQuantity(BigDecimal quantity, String unit) {
-    }
-
-    private record ComparableUnitPrice(BigDecimal value, String unit) {
-
-        private static ComparableUnitPrice empty() {
-            return new ComparableUnitPrice(null, null);
-        }
     }
 
     private AiSuggestionDto latestAiSuggestion(Long receiptItemId) {

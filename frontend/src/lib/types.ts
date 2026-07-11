@@ -332,6 +332,14 @@ export interface SearchResultDTO {
   categoryId: number | null;
   categoryName: string | null;
   highlights: string[];
+  productFamilyId: number | null;
+  productFamilyName: string | null;
+  productVariantId: number | null;
+  productVariantName: string | null;
+  productAssignmentSource: ProductAssignmentSource | null;
+  productAssignmentStatus: ProductAssignmentStatus | null;
+  normalizedUnitPrice: number | null;
+  normalizedUnit: string | null;
 }
 
 export interface SearchParams {
@@ -343,6 +351,8 @@ export interface SearchParams {
   uncategorizedOnly?: boolean;
   amountMin?: number | null;
   amountMax?: number | null;
+  productFamilyId?: number | null;
+  productVariantId?: number | null;
   page?: number;
   size?: number;
   sortBy?: "receiptDate" | "storeName" | "description" | "totalPrice";
@@ -356,6 +366,9 @@ export interface ReportFilters {
   store?: string;
   groupBy?: "day" | "week" | "month" | "year";
   size?: number;
+  productFamilyId?: number | null;
+  productVariantId?: number | null;
+  topProductSort?: "total" | "count";
 }
 
 export interface ReportByPeriodDTO {
@@ -372,6 +385,13 @@ export interface ReportByStoreDTO {
 
 export interface TopItemReportDTO {
   description: string;
+  total: number;
+  count: number;
+}
+
+export interface TopProductReportDTO {
+  productFamilyId: number;
+  productFamilyName: string;
   total: number;
   count: number;
 }
@@ -494,6 +514,85 @@ export interface ProductVariantRequest {
   isActive?: boolean | null;
 }
 
+export type ProductPriceGrouping = "STORE" | "STORE_BRANCH";
+
+export interface ProductPriceParams {
+  dateFrom?: string;
+  dateTo?: string;
+  store?: string;
+  grouping?: ProductPriceGrouping;
+  includeExcluded?: boolean;
+}
+
+export interface ProductPriceStatisticsDTO {
+  priceUnit: string;
+  latestPrice: number | null;
+  latestReceiptDate: string | null;
+  minimumPrice: number | null;
+  averagePrice: number | null;
+  medianPrice: number | null;
+  observationCount: number;
+}
+
+export interface ProductPriceStoreDTO extends ProductPriceStatisticsDTO {
+  storeName: string;
+  storeBranch: string | null;
+  label: string;
+}
+
+export interface ProductPriceTrendPointDTO {
+  receiptItemId: number;
+  receiptDate: string | null;
+  label: string;
+  price: number;
+  priceUnit: string;
+  outlier: boolean;
+}
+
+export interface ProductPriceVariantSummaryDTO {
+  productVariantId: number;
+  productVariantName: string;
+  latestEffectivePrice: number | null;
+  minimumEffectivePrice: number | null;
+  observationCount: number;
+}
+
+export interface ProductPriceReportDTO {
+  scope: "FAMILY" | "VARIANT";
+  productFamilyId: number;
+  productFamilyName: string;
+  productVariantId: number | null;
+  productVariantName: string | null;
+  primaryPriceBasis: "NORMALIZED_UNIT_PRICE" | "EFFECTIVE_PRICE";
+  statistics: ProductPriceStatisticsDTO[];
+  stores: ProductPriceStoreDTO[];
+  trend: ProductPriceTrendPointDTO[];
+  variants: ProductPriceVariantSummaryDTO[];
+}
+
+export interface ProductPriceObservationDTO {
+  receiptItemId: number;
+  receiptId: number;
+  receiptDate: string | null;
+  storeName: string;
+  storeBranch: string | null;
+  description: string;
+  productFamilyId: number | null;
+  productFamilyName: string | null;
+  productVariantId: number | null;
+  productVariantName: string | null;
+  assignmentSource: ProductAssignmentSource | null;
+  assignmentStatus: ProductAssignmentStatus | null;
+  effectivePrice: number | null;
+  regularPrice: number | null;
+  normalizedUnitPrice: number | null;
+  normalizedUnit: string | null;
+  includedInComparison: boolean;
+  outlier: boolean;
+  excluded: boolean;
+  exclusionReason: string | null;
+}
+
 export interface ProductRuleDTO {
   id: number;
   productFamilyId: number;
@@ -578,8 +677,10 @@ export interface ProductReviewParams {
 }
 
 export interface ProductAssignmentCorrectionRequest {
-  productFamilyId: number;
+  productFamilyId?: number | null;
+  newProductFamilyName?: string | null;
   productVariantId?: number | null;
+  applyToSameStoreDescription?: boolean | null;
 }
 
 export interface ProductRuleSuggestionRequest {

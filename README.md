@@ -243,7 +243,7 @@ cd frontend
 npm run e2e
 ```
 
-The E2E command starts Vite with `VITE_EBON_MOCK_API=true`, enters a mock API token, and checks Dashboard/navigation, Settings, Backup controls, Search, and Receipts. It does not need PostgreSQL, Paperless-NGX, OpenRouter, or private receipt data. A local Chrome/Chromium or Microsoft Edge installation is required. Chrome uses the bundled `chromedriver`; Edge uses the `edgedriver` package and may download the matching driver on first run. Set `EBON_E2E_BROWSER_BINARY` or `EDGE_BINARY_PATH` if the browser is installed in a non-standard location.
+The E2E command starts an isolated Vite mock server on `127.0.0.1:5174` with `VITE_EBON_MOCK_API=true`. This deliberately avoids the Devcontainer frontend port `5173`. It enters a mock API token and checks Dashboard/navigation, Settings, Backup controls, Search, Products, and Receipts. It does not need PostgreSQL, Paperless-NGX, OpenRouter, or private receipt data. A local Chrome/Chromium or Microsoft Edge installation is required. Chrome uses the bundled `chromedriver`; Edge uses the `edgedriver` package and may download the matching driver on first run. Set `EBON_E2E_BROWSER_BINARY`, `EDGE_BINARY_PATH`, or `EBON_E2E_BASE_URL` if required.
 
 To measure the source code exercised by that same browser flow, run:
 

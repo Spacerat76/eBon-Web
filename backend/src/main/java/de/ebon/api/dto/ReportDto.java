@@ -20,6 +20,9 @@ public final class ReportDto {
     public record TopItem(String description, BigDecimal total, long count) {
     }
 
+    public record TopProduct(Long productFamilyId, String productFamilyName, BigDecimal total, long count) {
+    }
+
     public record Bonus(String bonusType, BigDecimal totalPoints, BigDecimal totalEarnedBalance) {
     }
 }
