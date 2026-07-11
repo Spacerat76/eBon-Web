@@ -27,6 +27,11 @@ export function SecretInput({
       {...props}
       onChange={(event) => {
         const nextValue = event.currentTarget.value;
+        if (nextValue === "********") {
+          setDraft("");
+          onChangeValue("");
+          return;
+        }
         setDraft(nextValue);
         onChangeValue(nextValue);
       }}
