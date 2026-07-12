@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ProductsPage } from "@/pages/products-page";
 import type { ApiClient } from "@/lib/api";
-import type { ProductPriceObservationDTO, ProductPriceReportDTO, ProductReviewItemDTO } from "@/lib/types";
+import type { PageResponse, ProductPriceObservationDTO, ProductPriceReportDTO, ProductReviewItemDTO, SearchResultDTO } from "@/lib/types";
 
 const reviewItem: ProductReviewItemDTO = {
   receiptItemId: 44,
@@ -95,13 +95,40 @@ const changePreview = {
   reportImpact: "Preisreports werden für die Zielstruktur neu berechnet."
 };
 
+const assignedSearchResult: SearchResultDTO = {
+  receiptId: 9,
+  receiptItemId: 44,
+  receiptDate: "2026-06-20",
+  storeName: "dm",
+  description: "Haferdrink bestätigt",
+  totalPrice: 1.79,
+  categoryId: 2,
+  categoryName: "Milchprodukte und Eier",
+  highlights: [],
+  productFamilyId: 10,
+  productFamilyName: "Haferdrink",
+  productVariantId: null,
+  productVariantName: null,
+  productAssignmentSource: "MANUAL",
+  productAssignmentStatus: "CONFIRMED",
+  normalizedUnitPrice: 1.79,
+  normalizedUnit: "l"
+};
+
+function searchPage(content: SearchResultDTO[], page: number, totalPages: number): PageResponse<SearchResultDTO> {
+  return { content, page, size: 20, totalElements: totalPages, totalPages, sortBy: "receiptDate", sortDir: "desc" };
+}
+
 function apiClient(options: {
   reviewItems?: ProductReviewItemDTO[];
   families?: Awaited<ReturnType<ApiClient["productFamilies"]>>;
   variants?: Awaited<ReturnType<ApiClient["productVariants"]>>;
+  searchResults?: PageResponse<SearchResultDTO>[];
 } = {}) {
   const families = options.families ?? [{ id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }];
   const variants = options.variants ?? [{ id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true }];
+  const search = vi.fn();
+  (options.searchResults ?? [searchPage([assignedSearchResult], 0, 1)]).forEach((result) => search.mockResolvedValueOnce(result));
   return {
     productReview: vi.fn().mockResolvedValue({ content: options.reviewItems ?? [reviewItem], page: 0, size: 30, totalElements: options.reviewItems?.length ?? 1, totalPages: 1, sortBy: "reviewPriority", sortDir: "desc" }),
     productFamilies: vi.fn().mockResolvedValue(families),
@@ -115,7 +142,8 @@ function apiClient(options: {
     excludeProductPriceObservation: vi.fn().mockResolvedValue({ ...priceObservation, excluded: true, includedInComparison: false, exclusionReason: "Doppelt erfasst" }),
     includeProductPriceObservation: vi.fn().mockResolvedValue(priceObservation),
     previewProductFamilyMerge: vi.fn().mockResolvedValue(changePreview),
-    previewProductFamilySplit: vi.fn().mockResolvedValue({ ...changePreview, affectedItemsCount: 1 })
+    previewProductFamilySplit: vi.fn().mockResolvedValue({ ...changePreview, affectedItemsCount: 1 }),
+    search
   } as unknown as ApiClient;
 }
 
@@ -263,17 +291,7 @@ describe("ProductsPage", () => {
 
   it("keeps merge and split previews explicit about impact and protected assignments", async () => {
     const user = userEvent.setup();
-    const assignedReview = {
-      ...reviewItem,
-      currentProductFamilyId: 10,
-      currentProductFamilyName: "Haferdrink",
-      suggestedProductFamilyId: null,
-      suggestedProductFamilyName: null,
-      suggestedProductVariantId: null,
-      suggestedProductVariantName: null
-    };
     const api = apiClient({
-      reviewItems: [assignedReview],
       families: [
         { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
         { id: 11, name: "Pflanzendrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
@@ -288,15 +306,37 @@ describe("ProductsPage", () => {
     await user.selectOptions(within(familyMerge).getByLabelText("Zielfamilie"), "11");
     await user.click(within(familyMerge).getByRole("button", { name: "Vorschau berechnen" }));
     expect(await within(familyMerge).findByText("3 Positionen in 2 Stores werden geändert.")).toBeInTheDocument();
+    expect(within(familyMerge).getByText("dm, REWE")).toBeInTheDocument();
+    expect(within(familyMerge).getByText("01.05.2026 – 20.06.2026")).toBeInTheDocument();
     expect(within(familyMerge).getByText(changePreview.reportImpact)).toBeInTheDocument();
 
+    expect(await screen.findByText("Haferdrink bestätigt")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Trennen" }));
     const splitDialog = screen.getByRole("dialog");
     await user.type(within(splitDialog).getByLabelText("Neuer Produktname"), "Haferdrink Spezial");
     await user.click(within(splitDialog).getByRole("button", { name: "Vorschau berechnen" }));
     expect(await within(splitDialog).findByText("1 Position wird umgehängt.")).toBeInTheDocument();
+    expect(within(splitDialog).getByText("dm, REWE")).toBeInTheDocument();
+    expect(within(splitDialog).getByText("01.05.2026 – 20.06.2026")).toBeInTheDocument();
     expect(within(splitDialog).getByText(changePreview.reportImpact)).toBeInTheDocument();
     expect(within(splitDialog).getByText(/geschützte Zuordnungen/)).toBeInTheDocument();
+  });
+
+  it("finds confirmed split candidates through paginated product search", async () => {
+    const user = userEvent.setup();
+    const secondResult = { ...assignedSearchResult, receiptItemId: 55, description: "Haferdrink nächste Seite" };
+    const api = apiClient({ searchResults: [searchPage([assignedSearchResult], 0, 2), searchPage([secondResult], 1, 2)] });
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    expect(await screen.findByText("Haferdrink bestätigt")).toBeInTheDocument();
+    expect(screen.getByText(/dm · Haferdrink · Bestätigt/)).toBeInTheDocument();
+    expect(api.search).toHaveBeenCalledWith(expect.objectContaining({ productFamilyId: 10, page: 0, size: 20 }));
+
+    await user.click(screen.getByRole("button", { name: "Weitere Positionen" }));
+    expect(await screen.findByText("Haferdrink nächste Seite")).toBeInTheDocument();
+    expect(api.search).toHaveBeenLastCalledWith(expect.objectContaining({ productFamilyId: 10, page: 1, size: 20 }));
   });
 
   it("shows complete price analysis and keeps exclusion reversible", async () => {
@@ -326,7 +366,7 @@ describe("ProductsPage", () => {
     await waitFor(() => expect(api.includeProductPriceObservation).toHaveBeenCalledWith(45));
 
     await user.click(screen.getByRole("button", { name: "Ausschließen" }));
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Preisbeobachtung ausschließen" })).toBeInTheDocument();
     await user.type(screen.getByLabelText("Ausschlussgrund"), "Doppelt erfasst");
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Ausschließen" }));
 
