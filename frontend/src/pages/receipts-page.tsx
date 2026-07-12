@@ -44,6 +44,7 @@ import type {
   PaperlessRawTextStatus,
   ParseStatus,
   ParseRuleSuggestionDTO,
+  ParseRuleSuggestionReceiptContextDTO,
   ParseRuleSuggestionUpdateRequest,
   ProductAssignmentSource,
   ProductAssignmentStatus,
@@ -131,6 +132,7 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
   const [sortBy, setSortBy] = useState<SortKey>(initialListState.sortBy);
   const [sortDir, setSortDir] = useState<"asc" | "desc">(initialListState.sortDir);
   const pendingScrollY = useRef(initialListState.scrollY);
+  const detailLoadGeneration = useRef(0);
   const [receipts, setReceipts] = useState<PageResponse<ReceiptDTO> | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptDTO | null>(null);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
@@ -199,6 +201,7 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
   }, [apiClient, hasApiToken]);
 
   const loadReceipt = useCallback(async () => {
+    const generation = ++detailLoadGeneration.current;
     if (!hasApiToken || selectedReceiptId === null) {
       setSelectedReceipt(null);
       setDraft(null);
@@ -213,21 +216,29 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
       const [response, logs, suggestions] = await Promise.all([
         apiClient.receipt(selectedReceiptId),
         apiClient.aiParsingLog(selectedReceiptId),
-        apiClient.parseRuleSuggestions({ size: 50 })
+        loadReceiptRuleSuggestions(apiClient, selectedReceiptId, () => generation === detailLoadGeneration.current)
       ]);
+      if (generation !== detailLoadGeneration.current || suggestions === null) {
+        return;
+      }
       setSelectedReceipt(response);
       setAiParsingLogs(logs);
-      setParseRuleSuggestions(suggestions.content.filter((suggestion) => suggestion.receiptId === selectedReceiptId));
+      setParseRuleSuggestions(suggestions);
       setDraft(toDraft(response));
       setOverwriteManualEdits(false);
     } catch (loadError) {
+      if (generation !== detailLoadGeneration.current) {
+        return;
+      }
       setSelectedReceipt(null);
       setAiParsingLogs([]);
       setParseRuleSuggestions([]);
       setDraft(null);
       setError(toUserMessage(loadError));
     } finally {
-      setDetailLoading(false);
+      if (generation === detailLoadGeneration.current) {
+        setDetailLoading(false);
+      }
     }
   }, [apiClient, hasApiToken, selectedReceiptId]);
 
@@ -241,6 +252,9 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
 
   useEffect(() => {
     void loadReceipt();
+    return () => {
+      detailLoadGeneration.current += 1;
+    };
   }, [loadReceipt]);
 
   useEffect(() => {
@@ -1146,6 +1160,11 @@ function ParseRuleSuggestionsPanel({
               <div className="mt-3 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Lösungsbegründung</div>
               <div className="mt-1 text-zinc-700 dark:text-zinc-200">{suggestion.solutionRationale || "Keine Lösungsbegründung vorhanden."}</div>
               {suggestion.validationMessage ? <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">{suggestion.validationMessage}</div> : null}
+              {suggestion.receiptContext ? <ParserSuggestionReceiptContext context={suggestion.receiptContext} /> : (
+                <div className="mt-3 rounded-md border border-dashed border-zinc-200 p-3 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                  Vollständiger Bon-Kontext ist für diesen Vorschlag nicht verfügbar.
+                </div>
+              )}
 
               {editing && editDraft ? (
                 <div className="mt-3 grid gap-3 rounded-md border border-zinc-200 p-3 md:grid-cols-2 dark:border-zinc-800">
@@ -1199,6 +1218,52 @@ function ParseRuleSuggestionsPanel({
         </div> : <EmptyState text="Keine Regelvorschläge vorhanden" />}
       </CardContent>
     </Card>
+  );
+}
+
+function ParserSuggestionReceiptContext({ context }: { context: ParseRuleSuggestionReceiptContextDTO }) {
+  return (
+    <div aria-label={`Bon-Kontext ${context.receiptId}`} className="mt-3 space-y-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/30">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Bon / Paperless" value={`#${context.receiptId} · ${context.paperlessDocumentId == null ? "Keine Paperless-ID" : `Paperless #${context.paperlessDocumentId}`}`} />
+        <Metric label="Geschäft / Filiale" value={`${context.storeName ?? "Store nicht angegeben"} · ${context.storeBranch ?? "Filiale nicht angegeben"}`} />
+        <Metric label="Datum / Uhrzeit" value={`${formatDate(context.receiptDate)} · ${formatTime(context.receiptTime)}`} />
+        <Metric label="Gesamt / Währung" value={`${context.totalAmount == null ? "-" : formatCurrency(context.totalAmount)} · ${context.currency || "Währung nicht angegeben"}`} />
+      </div>
+      <div>
+        <div className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Parse-Status / Quelle</div>
+        <div className="mt-1 flex flex-wrap gap-1">
+          <ParseStatusBadge status={context.parseStatus} />
+          {context.parseSource === "AI" ? <Badge tone="blue">per KI geparst</Badge> : null}
+          {context.parseSource === "RULE" ? <Badge>Regelparser</Badge> : null}
+          {context.parseSource === "MANUAL_CORRECTED" ? <Badge>Manuell korrigiert</Badge> : null}
+        </div>
+      </div>
+      <div>
+        <div className="mb-1 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Rohtext-Kontext</div>
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-zinc-950 p-2 text-xs text-zinc-50">{context.rawText || "Kein Rohtext-Kontext vorhanden."}</pre>
+      </div>
+      {context.items.length ? (
+        <div className="overflow-x-auto rounded-md border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+          <table className="w-full min-w-[720px] text-xs">
+            <thead><tr className="border-b border-zinc-200 text-left dark:border-zinc-800">
+              <th className="px-2 py-2">#</th><th className="px-2 py-2">Beschreibung</th><th className="px-2 py-2 text-right">Menge</th><th className="px-2 py-2">Einheit</th><th className="px-2 py-2 text-right">Einzelpreis</th><th className="px-2 py-2 text-right">Gesamt</th><th className="px-2 py-2 text-right">Rabatt</th>
+            </tr></thead>
+            <tbody>{context.items.map((item) => (
+              <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-900" key={`${item.positionIndex}-${item.description}`}>
+                <td className="px-2 py-2">{item.positionIndex + 1}</td>
+                <td className="px-2 py-2 font-medium">{item.description}</td>
+                <td className="px-2 py-2 text-right">{item.quantity == null ? "-" : formatNumber(item.quantity)}</td>
+                <td className="px-2 py-2">{item.unit ?? "-"}</td>
+                <td className="px-2 py-2 text-right">{item.unitPrice == null ? "-" : formatCurrency(item.unitPrice)}</td>
+                <td className="px-2 py-2 text-right">{item.totalPrice == null ? "-" : formatCurrency(item.totalPrice)}</td>
+                <td className="px-2 py-2 text-right">{item.discountAmount == null ? "-" : formatCurrency(item.discountAmount)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      ) : <EmptyState text="Keine Beispielpositionen im Bon-Kontext" />}
+    </div>
   );
 }
 
@@ -1739,6 +1804,39 @@ function toUserMessage(error: unknown): string {
   }
 
   return "Die Anfrage konnte nicht verarbeitet werden.";
+}
+
+async function loadReceiptRuleSuggestions(
+  apiClient: ApiClient,
+  receiptId: number,
+  isCurrent: () => boolean
+): Promise<ParseRuleSuggestionDTO[] | null> {
+  const pageSize = 100;
+  const matchingById = new Map<number, ParseRuleSuggestionDTO>();
+  let page = 0;
+  let totalPages = 1;
+
+  while (page < totalPages) {
+    const response = await apiClient.parseRuleSuggestions({ page, size: pageSize });
+    if (!isCurrent()) {
+      return null;
+    }
+    for (const suggestion of response.content) {
+      if (suggestion.receiptId === receiptId && !matchingById.has(suggestion.id)) {
+        matchingById.set(suggestion.id, suggestion);
+      }
+    }
+    totalPages = response.totalPages;
+    page += 1;
+  }
+
+  const details = await Promise.all(
+    [...matchingById.values()].map((suggestion) => apiClient.parseRuleSuggestion(suggestion.id))
+  );
+  if (!isCurrent()) {
+    return null;
+  }
+  return details.filter((suggestion) => suggestion.receiptId === receiptId);
 }
 
 function readReceiptListState(): ReceiptListState {

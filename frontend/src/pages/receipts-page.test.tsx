@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "@/lib/api";
-import type { ReceiptDTO } from "@/lib/types";
+import type { ParseRuleSuggestionDTO, ReceiptDTO } from "@/lib/types";
 import { ReceiptsPage } from "@/pages/receipts-page";
 
 const receipt: ReceiptDTO = {
@@ -64,6 +64,26 @@ const receipt: ReceiptDTO = {
   ]
 };
 
+const ruleSuggestion: ParseRuleSuggestionDTO = {
+  id: 41,
+  receiptId: 17,
+  aiParsingLogId: 31,
+  storeName: "REWE",
+  ruleType: "ITEM_PATTERN",
+  matchRegex: "(?<item>.*)",
+  extractGroup: "item",
+  confidence: 0.9,
+  trigger: "MANUAL_REPARSE",
+  problemDescription: "Artikelzeile nicht erkannt",
+  solutionRationale: "Erkennt das REWE-Format",
+  validationStatus: "VALID",
+  validationMessage: null,
+  status: "OPEN",
+  rejectionReason: null,
+  acceptedParseRuleId: null,
+  receiptContext: null
+};
+
 function apiClient() {
   return {
     receipts: vi.fn().mockResolvedValue({
@@ -99,31 +119,28 @@ function apiClient() {
       }
     ]),
     parseRuleSuggestions: vi.fn().mockResolvedValue({
-      content: [
-        {
-          id: 41,
-          receiptId: 17,
-          aiParsingLogId: 31,
-          storeName: "REWE",
-          ruleType: "ITEM_PATTERN",
-          matchRegex: "(?<item>.*)",
-          extractGroup: "item",
-          confidence: 0.9,
-          trigger: "MANUAL_REPARSE",
-          problemDescription: "Artikelzeile nicht erkannt",
-          solutionRationale: "Erkennt das REWE-Format",
-          validationStatus: "VALID",
-          validationMessage: null,
-          status: "OPEN",
-          rejectionReason: null,
-          acceptedParseRuleId: null,
-          receiptContext: null
-        }
-      ],
+      content: [ruleSuggestion],
       page: 0,
-      size: 50,
+      size: 100,
       totalElements: 1,
       totalPages: 1
+    }),
+    parseRuleSuggestion: vi.fn().mockResolvedValue({
+      ...ruleSuggestion,
+      receiptContext: {
+        receiptId: 17,
+        paperlessDocumentId: 117,
+        rawText: "KONTEXT ROHTEXT",
+        parseStatus: "PARSED",
+        parseSource: "AI",
+        receiptDate: "2026-07-11",
+        receiptTime: "18:45:00",
+        storeName: "REWE",
+        storeBranch: "Innenstadt",
+        totalAmount: 3.49,
+        currency: "EUR",
+        items: [{ positionIndex: 0, description: "Coca Cola Zero", quantity: 1, unit: "Stück", unitPrice: 3.49, totalPrice: 3.49, discountAmount: null }]
+      }
     }),
     triggerSync: vi.fn().mockResolvedValue({ message: "Sync gestartet" }),
     paperlessRawTextStatus: vi.fn().mockResolvedValue({ status: "UNCHANGED" }),
@@ -280,6 +297,68 @@ describe("ReceiptsPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Ablehnen" }));
     await waitFor(() => expect(api.rejectParseRuleSuggestion).toHaveBeenCalledWith(41, "Nicht passend"));
+  });
+
+  it("loads every suggestion page, hydrates all receipt matches, and renders their real contexts", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    const globalSuggestions = Array.from({ length: 100 }, (_, index) => ({
+      ...ruleSuggestion,
+      id: 1000 + index,
+      receiptId: 999
+    }));
+    const laterMatches = [
+      { ...ruleSuggestion, id: 51 },
+      { ...ruleSuggestion, id: 52, matchRegex: "(?<total>SUMME.*)", extractGroup: "total", ruleType: "TOTAL_PATTERN" as const }
+    ];
+    api.parseRuleSuggestions.mockImplementation(({ page }: { page?: number }) => Promise.resolve({
+      content: page === 0 ? globalSuggestions : laterMatches,
+      page: page ?? 0,
+      size: 100,
+      totalElements: 102,
+      totalPages: 2
+    }));
+    api.parseRuleSuggestion.mockImplementation((id: number) => {
+      const suggestion = laterMatches.find((candidate) => candidate.id === id)!;
+      return Promise.resolve({
+        ...suggestion,
+        receiptContext: {
+          receiptId: 17,
+          paperlessDocumentId: 117,
+          rawText: `KONTEXT ${id}`,
+          parseStatus: "PARSED",
+          parseSource: "AI",
+          receiptDate: "2026-07-11",
+          receiptTime: "18:45:00",
+          storeName: "REWE",
+          storeBranch: id === 51 ? "Innenstadt" : "Bahnhof",
+          totalAmount: 3.49,
+          currency: "EUR",
+          items: [{ positionIndex: 0, description: `Beispielposition ${id}`, quantity: 1, unit: "Stück", unitPrice: 3.49, totalPrice: 3.49, discountAmount: null }]
+        }
+      });
+    });
+
+    render(<ReceiptsPage apiClient={api as unknown as ApiClient} hasApiToken selectedReceiptId={17} />);
+    await screen.findByRole("heading", { name: "REWE" });
+    await user.click(screen.getByRole("tab", { name: "Regelvorschläge" }));
+
+    await waitFor(() => expect(api.parseRuleSuggestions).toHaveBeenCalledWith({ page: 0, size: 100 }));
+    await waitFor(() => expect(api.parseRuleSuggestions).toHaveBeenCalledWith({ page: 1, size: 100 }));
+    await waitFor(() => expect(api.parseRuleSuggestion).toHaveBeenCalledTimes(2));
+    expect(api.parseRuleSuggestion).toHaveBeenCalledWith(51);
+    expect(api.parseRuleSuggestion).toHaveBeenCalledWith(52);
+    expect(await screen.findByText("Beispielposition 51")).toBeInTheDocument();
+    expect(screen.getByText("Beispielposition 52")).toBeInTheDocument();
+    expect(screen.getByText(/REWE · Innenstadt/)).toBeInTheDocument();
+    expect(screen.getByText(/REWE · Bahnhof/)).toBeInTheDocument();
+    expect(screen.getAllByText(/11\.07\.2026.*18:45/).length).toBeGreaterThanOrEqual(2);
+    const contexts = screen.getAllByLabelText("Bon-Kontext 17");
+    expect(contexts).toHaveLength(2);
+    for (const context of contexts) {
+      expect(within(context).getByText("Geparst")).toBeInTheDocument();
+      expect(within(context).getByText("per KI geparst")).toBeInTheDocument();
+    }
   });
 
   it("restores only validated list state and scroll position after list data loads", async () => {
