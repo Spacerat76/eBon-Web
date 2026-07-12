@@ -49,7 +49,12 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
   const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
 
   useEffect(() => {
-    setFilters((current) => ({ ...current, page: 0, uncategorizedOnly: initialUncategorizedOnly }));
+    setFilters((current) => ({
+      ...current,
+      page: 0,
+      uncategorizedOnly: initialUncategorizedOnly,
+      categoryIds: initialUncategorizedOnly ? [] : current.categoryIds
+    }));
   }, [initialUncategorizedOnly]);
 
   const loadSearch = useCallback(async () => {

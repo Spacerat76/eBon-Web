@@ -147,4 +147,34 @@ describe("SearchPage", () => {
       categoryIds: [4]
     }));
   });
+
+  it("clears concrete categories when the route switches to Ohne Kategorie and preserves unrelated filters", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    const { rerender } = render(<SearchPage apiClient={api as unknown as ApiClient} hasApiToken initialUncategorizedOnly={false} />);
+
+    await screen.findByText("Keine Treffer");
+    await user.type(screen.getByLabelText("Suchtext"), "Milch");
+    await user.type(screen.getByLabelText("Geschäft"), "REWE");
+    await user.click(screen.getByRole("button", { name: "Weitere Filter" }));
+    const categorySelect = screen.getByLabelText("Kategorien");
+    await user.selectOptions(categorySelect, "4");
+
+    rerender(<SearchPage apiClient={api as unknown as ApiClient} hasApiToken initialUncategorizedOnly />);
+
+    await waitFor(() => expect(categorySelect).toBeDisabled());
+    expect(categorySelect).toHaveValue([]);
+    expect(screen.queryByRole("button", { name: "Kategorie: Getränke entfernen" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ohne Kategorie entfernen" })).toBeInTheDocument();
+    await waitFor(() => expect(api.search).toHaveBeenLastCalledWith({
+      page: 0,
+      size: 20,
+      sortBy: "receiptDate",
+      sortDir: "desc",
+      uncategorizedOnly: true,
+      categoryIds: [],
+      q: "Milch",
+      store: "REWE"
+    }));
+  });
 });
