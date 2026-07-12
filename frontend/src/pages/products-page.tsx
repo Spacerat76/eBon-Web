@@ -346,7 +346,7 @@ function ReviewTable({ categories, families, filters, loading, onAccept, onClear
               </section>
 
               <section className="rounded-lg bg-amber-50 p-4 dark:bg-amber-950/30">
-                <p className="text-sm font-medium text-amber-950 dark:text-amber-100">{focusedItem.possibleRetroactiveItems} ähnliche offene Positionen</p>
+                <p className="text-sm font-medium text-amber-950 dark:text-amber-100">{focusedItem.possibleRetroactiveItems} passende offene Positionen inkl. dieser</p>
                 <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">Eine Korrektur kann optional auf passende offene Positionen desselben Stores angewendet werden.</p>
               </section>
 

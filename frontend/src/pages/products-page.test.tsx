@@ -102,7 +102,7 @@ describe("ProductsPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Bon-Kontext" })).toBeInTheDocument();
     expect(screen.getByText("dm · Neuss")).toBeInTheDocument();
-    expect(screen.getByText("3 ähnliche offene Positionen")).toBeInTheDocument();
+    expect(screen.getByText("3 passende offene Positionen inkl. dieser")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Übernehmen" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Korrigieren" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Als kein Produkt markieren" })).toHaveTextContent("Kein Produkt");
