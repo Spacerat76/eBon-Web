@@ -356,7 +356,7 @@ describe("ProductsPage", () => {
     expect(within(familyMerge).getByText(changePreview.reportImpact)).toBeInTheDocument();
 
     expect(await screen.findByText("Haferdrink bestätigt")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Trennen" }));
+    await user.click(screen.getByRole("button", { name: "Position Haferdrink bestätigt aus Bon 9 (Position 44) trennen" }));
     const splitDialog = screen.getByRole("dialog");
     await user.type(within(splitDialog).getByLabelText("Neuer Produktname"), "Haferdrink Spezial");
     await user.click(within(splitDialog).getByRole("button", { name: "Vorschau berechnen" }));
@@ -382,6 +382,20 @@ describe("ProductsPage", () => {
     await user.click(screen.getByRole("button", { name: "Weitere Positionen" }));
     expect(await screen.findByText("Haferdrink nächste Seite")).toBeInTheDocument();
     expect(api.search).toHaveBeenLastCalledWith(expect.objectContaining({ productFamilyId: 10, page: 1, size: 20 }));
+  });
+
+  it("gives identical split descriptions collision-free action names", async () => {
+    const user = userEvent.setup();
+    const secondResult = { ...assignedSearchResult, receiptId: 10, receiptItemId: 55 };
+    const api = apiClient({ searchResults: [searchPage([assignedSearchResult, secondResult], 0, 1)] });
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    expect(await screen.findAllByText("Haferdrink bestätigt")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Position Haferdrink bestätigt aus Bon 9 (Position 44) trennen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Position Haferdrink bestätigt aus Bon 10 (Position 55) trennen" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Trennen" })).not.toBeInTheDocument();
   });
 
   it("shows complete price analysis and keeps exclusion reversible", async () => {
