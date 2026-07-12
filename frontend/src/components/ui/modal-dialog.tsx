@@ -22,6 +22,7 @@ export function ModalDialog({ children, open, onClose, title }: {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopImmediatePropagation();
         onCloseRef.current();
         return;
       }
@@ -40,9 +41,9 @@ export function ModalDialog({ children, open, onClose, title }: {
         first.focus();
       }
     };
-    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
     return () => {
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
       previouslyFocused?.focus();
     };
   }, [open]);

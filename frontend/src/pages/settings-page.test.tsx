@@ -128,6 +128,30 @@ describe("SettingsPage", () => {
     expect(cleanEvent.defaultPrevented).toBe(false);
   });
 
+  it("guards category, rule, and maintenance confirmation drafts as real unsaved input", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage apiClient={apiClient() as unknown as ApiClient} hasApiToken />);
+    await user.click(await screen.findByRole("tab", { name: "Kategorien" }));
+    const categoryCard = screen.getByRole("heading", { name: "Neue Kategorie" }).closest("section");
+    await user.type(within(categoryCard as HTMLElement).getByRole("textbox"), "Neue Kategorie");
+    const categoryEvent = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(categoryEvent);
+    expect(categoryEvent.defaultPrevented).toBe(true);
+
+    await user.click(screen.getByRole("tab", { name: "Kategorisierungsregeln" }));
+    const ruleCard = screen.getByRole("heading", { name: "Neue Regel" }).closest("section");
+    await user.type(within(ruleCard as HTMLElement).getByRole("textbox"), "MILCH");
+    const ruleEvent = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(ruleEvent);
+    expect(ruleEvent.defaultPrevented).toBe(true);
+
+    await user.click(screen.getByRole("tab", { name: "Datenwartung" }));
+    await user.type(screen.getByLabelText("Bon-Daten Bestätigung"), "DELETE");
+    const confirmationEvent = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(confirmationEvent);
+    expect(confirmationEvent.defaultPrevented).toBe(true);
+  });
+
   it("follows section changes from application navigation", async () => {
     const api = apiClient();
     const { rerender } = render(<SettingsPage apiClient={api as unknown as ApiClient} hasApiToken initialSection="connections" />);

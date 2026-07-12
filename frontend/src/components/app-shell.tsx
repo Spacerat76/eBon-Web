@@ -15,6 +15,7 @@ export interface NavigationItem {
 interface AppShellProps {
   children: ReactNode;
   navigation: NavigationItem[];
+  onNavigate?: (href: string) => void;
   route: string;
   utility?: ReactNode;
 }
@@ -24,10 +25,11 @@ const navigationGroups = [
   { id: "manage", label: "Verwalten" }
 ] as const;
 
-export function AppShell({ children, navigation, route, utility }: AppShellProps) {
+export function AppShell({ children, navigation, onNavigate, route, utility }: AppShellProps) {
   const routePath = pathFromRoute(route);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mobileMenuRef = useRef<HTMLElement>(null);
+  const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const primaryMobileItems = navigation.slice(0, 4);
   const additionalMobileItems = navigation.slice(4);
 
@@ -44,6 +46,7 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setMobileMenuOpen(false);
+        mobileMenuTriggerRef.current?.focus();
       }
     };
     document.addEventListener("keydown", closeOnEscape);
@@ -53,7 +56,7 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 border-r border-zinc-200 bg-white px-4 py-4 dark:border-zinc-800 dark:bg-zinc-950 lg:block">
-        <a className="mb-6 flex items-center gap-2 rounded-md px-2 py-2" href="#/">
+        <a className="mb-6 flex items-center gap-2 rounded-md px-2 py-2" href="#/" onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate("#/"); } }}>
           <span className="flex h-9 w-9 items-center justify-center rounded-md bg-zinc-950 text-white dark:bg-zinc-50 dark:text-zinc-950">
             <ReceiptText className="h-5 w-5" />
           </span>
@@ -87,6 +90,7 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
                       icon={item.icon}
                       key={item.href}
                       label={item.label}
+                      onNavigate={onNavigate}
                     />
                   ))}
                 </div>
@@ -127,6 +131,7 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
                 icon={item.icon}
                 key={item.href}
                 label={item.label}
+                onNavigate={onNavigate}
               />
             ))}
           </div>
@@ -148,6 +153,7 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
                 active ? "text-zinc-950 dark:text-zinc-50" : "text-zinc-500 dark:text-zinc-400"
               )}
               href={item.href}
+              onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(item.href); } }}
               key={item.href}
             >
               <Icon className="h-5 w-5" />
@@ -169,6 +175,7 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
           aria-label={mobileMenuOpen ? "Weitere Navigation schließen" : "Weitere Navigation öffnen"}
           className="flex h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-xs font-medium text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 dark:text-zinc-400 dark:focus-visible:ring-blue-400"
           onClick={() => setMobileMenuOpen((open) => !open)}
+          ref={mobileMenuTriggerRef}
           type="button"
         >
           {mobileMenuOpen ? <X aria-hidden="true" className="h-5 w-5" /> : <Menu aria-hidden="true" className="h-5 w-5" />}
@@ -184,13 +191,15 @@ function NavigationLink({
   count,
   href,
   icon: Icon,
-  label
+  label,
+  onNavigate
 }: {
   active: boolean;
   count?: number;
   href: string;
   icon: ComponentType<{ className?: string }>;
   label: string;
+  onNavigate?: (href: string) => void;
 }) {
   return (
     <a
@@ -202,6 +211,7 @@ function NavigationLink({
           : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 dark:text-zinc-300 dark:hover:bg-zinc-900 dark:hover:text-zinc-50"
       )}
       href={href}
+      onClick={(event) => { if (onNavigate) { event.preventDefault(); onNavigate(href); } }}
     >
       <Icon className="h-4 w-4 shrink-0" />
       <span className="min-w-0 flex-1">{label}</span>

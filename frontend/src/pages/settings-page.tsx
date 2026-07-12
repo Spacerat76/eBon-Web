@@ -107,8 +107,10 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
   const [parserSuggestions, setParserSuggestions] = useState<PageResponse<ParseRuleSuggestionDTO> | null>(null);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [categoryDraft, setCategoryDraft] = useState<CategoryRequest>(emptyCategory);
+  const [savedCategoryDraft, setSavedCategoryDraft] = useState<CategoryRequest>(emptyCategory);
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [ruleDraft, setRuleDraft] = useState<CategorizationRuleRequest>(emptyRule);
+  const [savedRuleDraft, setSavedRuleDraft] = useState<CategorizationRuleRequest>(emptyRule);
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null);
   const [rulePreview, setRulePreview] = useState<number | null>(null);
   const [overwriteManualEdits, setOverwriteManualEdits] = useState(false);
@@ -124,7 +126,16 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
   const [saving, setSaving] = useState(false);
 
   const activeCategories = useMemo(() => categories.filter((category) => category.isActive), [categories]);
-  useUnsavedChanges(savedSettings !== null && JSON.stringify(settings) !== JSON.stringify(savedSettings));
+  const hasUnsavedSettingsInput = Boolean(
+    (savedSettings !== null && JSON.stringify(settings) !== JSON.stringify(savedSettings))
+    || JSON.stringify(categoryDraft) !== JSON.stringify(savedCategoryDraft)
+    || JSON.stringify(ruleDraft) !== JSON.stringify(savedRuleDraft)
+    || resetConfirmation
+    || productResetConfirmation
+    || restoreConfirmation
+    || backupFile
+  );
+  useUnsavedChanges(hasUnsavedSettingsInput);
 
   useEffect(() => {
     setSection(initialSection);
@@ -155,7 +166,9 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
       setSystemInfo(systemInfoResponse);
       setParserSuggestions(parserSuggestionResponse);
       if (categoryResponse.length && ruleDraft.categoryId === 0) {
-        setRuleDraft((current) => ({ ...current, categoryId: categoryResponse[0].id }));
+        const initializedRule = { ...ruleDraft, categoryId: categoryResponse[0].id };
+        setRuleDraft(initializedRule);
+        setSavedRuleDraft(initializedRule);
       }
     } catch (loadError) {
       setError(toUserMessage(loadError));
@@ -341,6 +354,7 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
         await apiClient.updateCategory(editingCategoryId, normalizeCategory(categoryDraft));
       }
       setCategoryDraft(emptyCategory);
+      setSavedCategoryDraft(emptyCategory);
       setEditingCategoryId(null);
       await loadSettings();
       setFeedback("Kategorie gespeichert.");
@@ -380,13 +394,15 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
 
   function editCategory(category: CategoryDTO) {
     setEditingCategoryId(category.id);
-    setCategoryDraft({
+    const nextDraft = {
       name: category.name,
       colorHex: category.colorHex,
       icon: category.icon ?? "",
       sortOrder: category.sortOrder,
       isActive: category.isActive
-    });
+    };
+    setCategoryDraft(nextDraft);
+    setSavedCategoryDraft(nextDraft);
   }
 
   async function saveRule() {
@@ -400,7 +416,9 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
       } else {
         await apiClient.updateRule(editingRuleId, request);
       }
-      setRuleDraft({ ...emptyRule, categoryId: activeCategories[0]?.id ?? 0 });
+      const nextDraft = { ...emptyRule, categoryId: activeCategories[0]?.id ?? 0 };
+      setRuleDraft(nextDraft);
+      setSavedRuleDraft(nextDraft);
       setEditingRuleId(null);
       await loadSettings();
       setFeedback("Regel gespeichert.");
@@ -515,7 +533,7 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
   function editRule(rule: CategorizationRuleDTO) {
     setEditingRuleId(rule.id);
     setRulePreview(null);
-    setRuleDraft({
+    const nextDraft = {
       categoryId: rule.categoryId,
       matchField: rule.matchField,
       matchType: rule.matchType,
@@ -523,7 +541,9 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
       priority: rule.priority,
       isActive: rule.isActive,
       applyToExisting: false
-    });
+    };
+    setRuleDraft(nextDraft);
+    setSavedRuleDraft(nextDraft);
   }
 
   if (!hasApiToken) {
@@ -565,6 +585,7 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
           onCancelEdit={() => {
             setEditingCategoryId(null);
             setCategoryDraft(emptyCategory);
+            setSavedCategoryDraft(emptyCategory);
           }}
           onCategoryDraftChange={setCategoryDraft}
           onDelete={deleteCategory}
@@ -583,7 +604,9 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
           onCancelEdit={() => {
             setEditingRuleId(null);
             setRulePreview(null);
-            setRuleDraft({ ...emptyRule, categoryId: activeCategories[0]?.id ?? 0 });
+            const nextDraft = { ...emptyRule, categoryId: activeCategories[0]?.id ?? 0 };
+            setRuleDraft(nextDraft);
+            setSavedRuleDraft(nextDraft);
           }}
           onDelete={deleteRule}
           onEdit={editRule}
