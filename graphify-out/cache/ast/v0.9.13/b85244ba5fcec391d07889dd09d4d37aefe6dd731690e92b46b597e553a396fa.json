@@ -1,0 +1,1 @@
+{"nodes": [{"id": "d_ebon_web_backend_src_main_resources_db_migration_v21_add_ca_baby_clothing_categorization_rules_sql", "label": "V21__add_ca_baby_clothing_categorization_rules.sql", "file_type": "code", "source_file": "backend/src/main/resources/db/migration/V21__add_ca_baby_clothing_categorization_rules.sql", "source_location": null}], "edges": []}
