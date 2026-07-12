@@ -1,25 +1,30 @@
 import type { ComponentType, ReactNode } from "react";
-import { KeyRound, ReceiptText } from "lucide-react";
+import { ReceiptText } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/layout/page-header";
 import { cn } from "@/lib/utils";
 
 export interface NavigationItem {
   href: string;
   label: string;
   icon: ComponentType<{ className?: string }>;
+  group: "workspace" | "manage";
+  count?: number;
 }
 
 interface AppShellProps {
-  apiToken: string;
   children: ReactNode;
   navigation: NavigationItem[];
-  onTokenChange: (token: string) => void;
   route: string;
+  utility?: ReactNode;
 }
 
-export function AppShell({ apiToken, children, navigation, onTokenChange, route }: AppShellProps) {
+const navigationGroups = [
+  { id: "workspace", label: "Arbeitsbereich" },
+  { id: "manage", label: "Verwalten" }
+] as const;
+
+export function AppShell({ children, navigation, route, utility }: AppShellProps) {
   const routePath = pathFromRoute(route);
 
   return (
@@ -35,53 +40,56 @@ export function AppShell({ apiToken, children, navigation, onTokenChange, route 
           </span>
         </a>
 
-        <nav className="space-y-1">
-          {navigation.map((item) => (
-            <NavigationLink
-              active={isNavigationActive(item.href, routePath)}
-              href={item.href}
-              icon={item.icon}
-              key={item.href}
-              label={item.label}
-            />
-          ))}
+        <nav aria-label="Hauptnavigation" className="space-y-6">
+          {navigationGroups.map((group) => {
+            const items = navigation.filter((item) => item.group === group.id);
+            if (items.length === 0) {
+              return null;
+            }
+
+            return (
+              <section aria-labelledby={`navigation-${group.id}`} key={group.id}>
+                <h2
+                  className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+                  id={`navigation-${group.id}`}
+                >
+                  {group.label}
+                </h2>
+                <div className="space-y-1">
+                  {items.map((item) => (
+                    <NavigationLink
+                      active={isNavigationActive(item.href, routePath)}
+                      count={item.count}
+                      href={item.href}
+                      icon={item.icon}
+                      key={item.href}
+                      label={item.label}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </nav>
       </aside>
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">eBon Expense Tracker</p>
-              <h1 className="text-xl font-semibold tracking-normal text-zinc-950 dark:text-zinc-50">{activeTitle(routePath, navigation)}</h1>
-            </div>
-            <form className="flex w-full gap-2 md:w-auto" onSubmit={(event) => event.preventDefault()}>
-              <label className="sr-only" htmlFor="api-token">
-                API-Token
-              </label>
-              <div className="relative w-full md:w-80">
-                <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-                <Input
-                  autoComplete="off"
-                  className="pl-9"
-                  id="api-token"
-                  onChange={(event) => onTokenChange(event.target.value)}
-                  placeholder="APP_API_TOKEN"
-                  type="password"
-                  value={apiToken}
-                />
-              </div>
-              <Button onClick={() => onTokenChange("")} variant="secondary">
-                Leeren
-              </Button>
-            </form>
-          </div>
-        </header>
+        <div className="sticky top-0 z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90 md:px-6">
+          <PageHeader
+            actions={utility}
+            className="items-center sm:items-center"
+            context="eBon Expense Tracker"
+            title={activeTitle(routePath, navigation)}
+          />
+        </div>
 
         <main className="px-4 py-4 pb-24 md:px-6 lg:pb-6">{children}</main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 lg:hidden">
+      <nav
+        aria-label="Mobile Navigation"
+        className="fixed inset-x-0 bottom-0 z-20 flex overflow-x-auto border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 lg:hidden"
+      >
         {navigation.map((item) => {
           const Icon = item.icon;
           const active = isNavigationActive(item.href, routePath);
@@ -89,7 +97,7 @@ export function AppShell({ apiToken, children, navigation, onTokenChange, route 
             <a
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex h-16 flex-col items-center justify-center gap-1 text-xs font-medium",
+                "flex h-16 min-w-20 flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-medium",
                 active ? "text-zinc-950 dark:text-zinc-50" : "text-zinc-500 dark:text-zinc-400"
               )}
               href={item.href}
@@ -107,11 +115,13 @@ export function AppShell({ apiToken, children, navigation, onTokenChange, route 
 
 function NavigationLink({
   active,
+  count,
   href,
   icon: Icon,
   label
 }: {
   active: boolean;
+  count?: number;
   href: string;
   icon: ComponentType<{ className?: string }>;
   label: string;
@@ -127,8 +137,16 @@ function NavigationLink({
       )}
       href={href}
     >
-      <Icon className="h-4 w-4" />
-      {label}
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 flex-1">{label}</span>
+      {count === undefined ? null : (
+        <span
+          aria-label={`${count} offene Aufgaben`}
+          className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs tabular-nums text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
+        >
+          {count}
+        </span>
+      )}
     </a>
   );
 }
@@ -138,7 +156,7 @@ function activeTitle(route: string, navigation: NavigationItem[]): string {
     return "Bons";
   }
 
-  return navigation.find((item) => item.href === `#${route}`)?.label ?? "Dashboard";
+  return navigation.find((item) => item.href === `#${route}`)?.label ?? "Übersicht";
 }
 
 function pathFromRoute(route: string): string {

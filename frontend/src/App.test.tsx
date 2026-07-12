@@ -50,12 +50,16 @@ describe("App routing and local token handling", () => {
     render(<App />);
 
     expect(await screen.findByText("Dashboard page: false")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Übersicht" })).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("API-Token"), " local-token ");
+    await user.click(screen.getByRole("button", { name: "API-Zugriff einrichten" }));
+    await user.type(screen.getByLabelText("APP_API_TOKEN"), " local-token ");
+    await user.click(screen.getByRole("button", { name: "Für diese Sitzung verwenden" }));
     expect(sessionStorage.getItem("ebon.sessionApiToken")).toBe("local-token");
     expect(await screen.findByText("Dashboard page: true")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Leeren" }));
+    await user.click(screen.getByRole("button", { name: "API-Zugriff aktiv" }));
+    await user.click(screen.getByRole("button", { name: "Token entfernen" }));
     expect(sessionStorage.getItem("ebon.sessionApiToken")).toBeNull();
   });
 
@@ -78,6 +82,6 @@ describe("App routing and local token handling", () => {
     expect(await screen.findByText("Products page")).toBeInTheDocument();
 
     navigate("#unknown");
-    expect(await screen.findByText("Placeholder: Dashboard")).toBeInTheDocument();
+    expect(await screen.findByText("Placeholder: Übersicht")).toBeInTheDocument();
   });
 });

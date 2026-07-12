@@ -1,61 +1,60 @@
-import { useState } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Home, ReceiptText } from "lucide-react";
+import { Boxes, Home, ReceiptText, Settings } from "lucide-react";
 import { describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "@/components/app-shell";
+import { SessionAccess } from "@/components/session-access";
 
 const navigation = [
-  { href: "#/", label: "Dashboard", icon: Home },
-  { href: "#/receipts", label: "Bons", icon: ReceiptText }
+  { href: "#/", label: "Übersicht", icon: Home, group: "workspace" as const },
+  { href: "#/receipts", label: "Bons", icon: ReceiptText, group: "workspace" as const },
+  { href: "#/products", label: "Produkte", icon: Boxes, group: "workspace" as const, count: 12 },
+  { href: "#/settings", label: "Einstellungen", icon: Settings, group: "manage" as const }
 ];
 
-function ControlledAppShell({ onTokenChange }: { onTokenChange: (token: string) => void }) {
-  const [apiToken, setApiToken] = useState("existing");
-
-  function handleTokenChange(token: string) {
-    setApiToken(token);
-    onTokenChange(token);
-  }
-
-  return (
-    <AppShell apiToken={apiToken} navigation={navigation} onTokenChange={handleTokenChange} route="/receipts/42?tab=items">
-      <p>Receipt content</p>
-    </AppShell>
-  );
-}
-
 describe("AppShell", () => {
-  it("marks receipt detail routes as active and forwards token edits", async () => {
-    const user = userEvent.setup();
-    const onTokenChange = vi.fn();
-
-    render(<ControlledAppShell onTokenChange={onTokenChange} />);
-
-    expect(screen.getByRole("heading", { name: "Bons" })).toBeInTheDocument();
-    expect(screen.getByText("Receipt content")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Bons" })).toHaveLength(2);
-    for (const activeLink of screen.getAllByRole("link", { name: "Bons" })) {
-      expect(activeLink).toHaveAttribute("aria-current", "page");
-    }
-
-    await user.clear(screen.getByLabelText("API-Token"));
-    await user.type(screen.getByLabelText("API-Token"), "new-token");
-    expect(onTokenChange).toHaveBeenLastCalledWith("new-token");
-
-    await user.click(screen.getByRole("button", { name: "Leeren" }));
-    expect(onTokenChange).toHaveBeenLastCalledWith("");
-  });
-
-  it("uses the matching navigation title for a top-level route", () => {
+  it("groups navigation and marks nested receipt routes active", () => {
     render(
-      <AppShell apiToken="" navigation={navigation} onTokenChange={vi.fn()} route="/">
-        <p>Dashboard content</p>
+      <AppShell navigation={navigation} route="/receipts/42" utility={<button>Zugriff</button>}>
+        <p>Bon</p>
       </AppShell>
     );
 
-    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Dashboard" })[0]).toHaveAttribute("aria-current", "page");
+    expect(screen.getByText("Arbeitsbereich")).toBeInTheDocument();
+    expect(screen.getByText("Verwalten")).toBeInTheDocument();
+    for (const link of screen.getAllByRole("link", { name: "Bons" })) {
+      expect(link).toHaveAttribute("aria-current", "page");
+    }
+    expect(screen.getByText("12")).toHaveAccessibleName("12 offene Aufgaben");
+    expect(screen.queryByLabelText("API-Token")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Zugriff" })).toBeInTheDocument();
+  });
+
+  it("keeps the session token entry reachable when no token exists", async () => {
+    const onTokenChange = vi.fn();
+    render(<SessionAccess apiToken="" onTokenChange={onTokenChange} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "API-Zugriff einrichten" }));
+    await userEvent.type(screen.getByLabelText("APP_API_TOKEN"), "session-token");
+    await userEvent.click(screen.getByRole("button", { name: "Für diese Sitzung verwenden" }));
+
+    expect(onTokenChange).toHaveBeenCalledWith("session-token");
+  });
+
+  it("allows an active session token to be replaced or removed", async () => {
+    const onTokenChange = vi.fn();
+    render(<SessionAccess apiToken="existing-token" onTokenChange={onTokenChange} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "API-Zugriff aktiv" }));
+    expect(screen.getByLabelText("APP_API_TOKEN")).toHaveValue("");
+
+    await userEvent.type(screen.getByLabelText("APP_API_TOKEN"), "replacement-token");
+    await userEvent.click(screen.getByRole("button", { name: "Für diese Sitzung verwenden" }));
+    expect(onTokenChange).toHaveBeenCalledWith("replacement-token");
+
+    await userEvent.click(screen.getByRole("button", { name: "API-Zugriff aktiv" }));
+    await userEvent.click(screen.getByRole("button", { name: "Token entfernen" }));
+    expect(onTokenChange).toHaveBeenLastCalledWith("");
   });
 });

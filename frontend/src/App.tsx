@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { BarChart3, Boxes, Home, ReceiptText, Search, Settings, SlidersHorizontal } from "lucide-react";
 
 import { AppShell, type NavigationItem } from "@/components/app-shell";
+import { SessionAccess } from "@/components/session-access";
 import { ApiClient } from "@/lib/api";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { PlaceholderPage } from "@/pages/placeholder-page";
@@ -15,12 +16,12 @@ const ProductsPage = lazy(() => import("@/pages/products-page").then((module) =>
 const TOKEN_STORAGE_KEY = "ebon.sessionApiToken";
 
 const navigation: NavigationItem[] = [
-  { href: "#/", label: "Dashboard", icon: Home },
-  { href: "#/receipts", label: "Bons", icon: ReceiptText },
-  { href: "#/search", label: "Suche", icon: Search },
-  { href: "#/reports", label: "Reports", icon: BarChart3 },
-  { href: "#/products", label: "Produkte", icon: Boxes },
-  { href: "#/settings", label: "Einstellungen", icon: Settings }
+  { href: "#/", label: "Übersicht", icon: Home, group: "workspace" },
+  { href: "#/receipts", label: "Bons", icon: ReceiptText, group: "workspace" },
+  { href: "#/search", label: "Suche", icon: Search, group: "workspace" },
+  { href: "#/reports", label: "Reports", icon: BarChart3, group: "workspace" },
+  { href: "#/products", label: "Produkte", icon: Boxes, group: "workspace" },
+  { href: "#/settings", label: "Einstellungen", icon: Settings, group: "manage" }
 ];
 
 export default function App() {
@@ -50,10 +51,9 @@ export default function App() {
 
   return (
     <AppShell
-      apiToken={apiToken}
       navigation={navigation}
-      onTokenChange={handleTokenChange}
       route={route}
+      utility={<SessionAccess apiToken={apiToken} onTokenChange={handleTokenChange} />}
     >
       <Suspense fallback={<div className="rounded-md border border-zinc-200 bg-white p-4 text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">Ansicht wird geladen...</div>}>
         {routePath === "/" ? (
@@ -106,7 +106,7 @@ function routeTitle(route: string): string {
     return "Bons";
   }
 
-  return navigation.find((item) => item.href === `#${route}`)?.label ?? "Dashboard";
+  return navigation.find((item) => item.href === `#${route}`)?.label ?? "Übersicht";
 }
 
 function routeIcon(route: string) {
