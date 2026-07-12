@@ -130,7 +130,10 @@ function apiClient() {
     reparseReceipt: vi.fn().mockResolvedValue(receipt),
     updateReceipt: vi.fn().mockResolvedValue(receipt),
     updateReceiptItem: vi.fn().mockResolvedValue(receipt.items[0]),
-    deleteReceipt: vi.fn().mockResolvedValue(undefined)
+    deleteReceipt: vi.fn().mockResolvedValue(undefined),
+    updateParseRuleSuggestion: vi.fn().mockResolvedValue(undefined),
+    acceptParseRuleSuggestion: vi.fn().mockResolvedValue(undefined),
+    rejectParseRuleSuggestion: vi.fn().mockResolvedValue(undefined)
   };
 }
 
@@ -182,22 +185,101 @@ describe("ReceiptsPage", () => {
     }
     expect(screen.getByRole("link", { name: /Paperless #117/ })).toHaveAttribute("href", receipt.paperlessDocumentUrl);
     expect(screen.getAllByText("per KI geparst").length).toBeGreaterThan(0);
+    const summary = screen.getByLabelText("Bon-Zusammenfassung");
+    expect(within(summary).getByText(/11\.07\.2026.*18:45/)).toBeInTheDocument();
+    expect(within(summary).getByText(/3,49/)).toBeInTheDocument();
+    expect(within(summary).getByText(/PAYBACK.*10 Punkte/)).toBeInTheDocument();
 
     const detailTabs = ["Positionen", "Bon-Daten", "Rohtext", "KI-Protokoll", "Regelvorschläge"];
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent?.replace(/\d+$/, "").trim())).toEqual(detailTabs);
     expect(screen.getAllByText("Coca Cola Zero").length).toBeGreaterThan(0);
     expect(screen.getByText("0,5 l Flasche")).toBeInTheDocument();
     expect(screen.getByText("Getränke")).toBeInTheDocument();
-    expect(screen.getAllByText("Regel").length).toBeGreaterThan(0);
+    expect(screen.getByText("Zuordnungsquelle: Regel")).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Bon-Daten" }));
-    expect(screen.getByText("Gesamtbetrag")).toBeInTheDocument();
+    expect(screen.getAllByText("Gesamtbetrag").length).toBeGreaterThan(1);
     await user.click(screen.getByRole("tab", { name: "Rohtext" }));
     expect(screen.getByText(receipt.rawText ?? "")).toBeInTheDocument();
+    expect(within(summary).getByText(/11\.07\.2026.*18:45/)).toBeInTheDocument();
+    expect(within(summary).getByText(/PAYBACK.*10 Punkte/)).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "KI-Protokoll" }));
     expect(screen.getByText("test-model")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Regelvorschläge" }));
     expect(screen.getByText("Artikelzeile nicht erkannt")).toBeInTheDocument();
+  });
+
+  it("sorts, paginates, and synchronizes the receipt list", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    api.receipts.mockResolvedValue({
+      content: [receipt], page: 0, size: 20, totalElements: 41, totalPages: 3, sortBy: "receiptDate", sortDir: "desc"
+    });
+    render(<ReceiptsPage apiClient={api as unknown as ApiClient} hasApiToken selectedReceiptId={null} />);
+
+    await screen.findByRole("table");
+    await user.click(screen.getByRole("button", { name: "Geschäft" }));
+    await waitFor(() => expect(api.receipts).toHaveBeenCalledWith(expect.objectContaining({ sortBy: "storeName", sortDir: "asc", page: 0 })));
+
+    await user.click(screen.getByRole("button", { name: "Weiter" }));
+    await waitFor(() => expect(api.receipts).toHaveBeenCalledWith(expect.objectContaining({ page: 1 })));
+
+    await user.click(screen.getByRole("button", { name: "Sync starten" }));
+    await waitFor(() => expect(api.triggerSync).toHaveBeenCalledTimes(1));
+    expect(api.receipts.mock.calls.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("keeps edit, reparse, and delete actions wired to their existing API paths", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<ReceiptsPage apiClient={api as unknown as ApiClient} hasApiToken selectedReceiptId={17} />);
+
+    await screen.findByRole("heading", { name: "REWE" });
+    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
+    const storeInput = screen.getByLabelText("Geschäft");
+    await user.clear(storeInput);
+    await user.type(storeInput, "Geändert");
+    await user.click(screen.getByRole("button", { name: "Abbrechen" }));
+    expect(screen.queryByDisplayValue("Geändert")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Erneut parsen" }));
+    await waitFor(() => expect(api.paperlessRawTextStatus).toHaveBeenCalledWith(17));
+    await waitFor(() => expect(api.reparseReceipt).toHaveBeenCalledWith(17, false, true, null, false, "STORED"));
+
+    await user.click(screen.getByRole("button", { name: "Löschen" }));
+    await waitFor(() => expect(api.deleteReceipt).toHaveBeenCalledWith(17));
+    expect(window.location.hash).toBe("#/receipts");
+  });
+
+  it("shows and wires complete parser rule suggestion review controls", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    vi.spyOn(window, "prompt").mockReturnValue("Nicht passend");
+    render(<ReceiptsPage apiClient={api as unknown as ApiClient} hasApiToken selectedReceiptId={17} />);
+
+    await screen.findByRole("heading", { name: "REWE" });
+    await user.click(screen.getByRole("tab", { name: "Regelvorschläge" }));
+    expect(screen.getByText("Auslöser: Manueller Reparse")).toBeInTheDocument();
+    expect(screen.getByText("Regex: (?<item>.*)")).toBeInTheDocument();
+    expect(screen.getByText("Extract-Gruppe: item")).toBeInTheDocument();
+    expect(screen.getByText("Bon #17 · REWE")).toBeInTheDocument();
+    expect(screen.getByText("Artikelzeile nicht erkannt")).toBeInTheDocument();
+    expect(screen.getByText("Erkennt das REWE-Format")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Vorschlag bearbeiten" }));
+    const regexInput = screen.getByLabelText("Regex");
+    await user.clear(regexInput);
+    await user.type(regexInput, "(?<position>.+)");
+    await user.click(screen.getByRole("button", { name: "Änderungen speichern" }));
+    await waitFor(() => expect(api.updateParseRuleSuggestion).toHaveBeenCalledWith(41, expect.objectContaining({ matchRegex: "(?<position>.+)" })));
+
+    await user.selectOptions(screen.getByLabelText("Reparse-Umfang"), "CURRENT_RECEIPT");
+    await user.click(screen.getByRole("button", { name: "Akzeptieren" }));
+    await waitFor(() => expect(api.acceptParseRuleSuggestion).toHaveBeenCalledWith(41, expect.objectContaining({ reparseScope: "CURRENT_RECEIPT" })));
+
+    await user.click(screen.getByRole("button", { name: "Ablehnen" }));
+    await waitFor(() => expect(api.rejectParseRuleSuggestion).toHaveBeenCalledWith(41, "Nicht passend"));
   });
 
   it("restores only validated list state and scroll position after list data loads", async () => {

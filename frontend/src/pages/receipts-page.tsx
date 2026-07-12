@@ -44,7 +44,10 @@ import type {
   PaperlessRawTextStatus,
   ParseStatus,
   ParseRuleSuggestionDTO,
+  ParseRuleSuggestionUpdateRequest,
+  ProductAssignmentSource,
   ProductAssignmentStatus,
+  ReparseScope,
   ReceiptDTO,
   ReceiptItemDTO,
   ReceiptItemUpdateRequest,
@@ -141,6 +144,7 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
   const [reparsing, setReparsing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [applyingSuggestionId, setApplyingSuggestionId] = useState<number | null>(null);
+  const [processingRuleSuggestionId, setProcessingRuleSuggestionId] = useState<number | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [overwriteManualEdits, setOverwriteManualEdits] = useState(false);
   const [paperlessRawTextStatus, setPaperlessRawTextStatus] = useState<PaperlessRawTextStatus | null>(null);
@@ -345,6 +349,58 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     }
   }
 
+  async function updateParserSuggestion(id: number, request: ParseRuleSuggestionUpdateRequest) {
+    setProcessingRuleSuggestionId(id);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiClient.updateParseRuleSuggestion(id, request);
+      setNotice("Parser-Regelvorschlag gespeichert.");
+      await loadReceipt();
+    } catch (updateError) {
+      setError(toUserMessage(updateError));
+    } finally {
+      setProcessingRuleSuggestionId(null);
+    }
+  }
+
+  async function acceptParserSuggestion(suggestion: ParseRuleSuggestionDTO, reparseScope: ReparseScope) {
+    setProcessingRuleSuggestionId(suggestion.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiClient.acceptParseRuleSuggestion(suggestion.id, {
+        suggestion: toParseRuleSuggestionUpdateRequest(suggestion),
+        reparseScope
+      });
+      setNotice("Parser-Regelvorschlag übernommen.");
+      await loadReceipt();
+    } catch (acceptError) {
+      setError(toUserMessage(acceptError));
+    } finally {
+      setProcessingRuleSuggestionId(null);
+    }
+  }
+
+  async function rejectParserSuggestion(suggestion: ParseRuleSuggestionDTO) {
+    const reason = window.prompt("Ablehnungsgrund", "Nicht passend");
+    if (!reason) {
+      return;
+    }
+    setProcessingRuleSuggestionId(suggestion.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiClient.rejectParseRuleSuggestion(suggestion.id, reason);
+      setNotice("Parser-Regelvorschlag abgelehnt.");
+      await loadReceipt();
+    } catch (rejectError) {
+      setError(toUserMessage(rejectError));
+    } finally {
+      setProcessingRuleSuggestionId(null);
+    }
+  }
+
   async function startReparseSelectedReceipt() {
     if (!selectedReceipt) {
       return;
@@ -468,18 +524,22 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
           draft={draft}
           editMode={editMode}
           onApplyAiSuggestion={applyAiSuggestion}
+          onAcceptParserSuggestion={acceptParserSuggestion}
           onBack={returnToReceiptList}
           onCancelEdit={cancelReceiptEdit}
           onDeleteReceipt={deleteSelectedReceipt}
           onDraftChange={setDraft}
           onEdit={() => setEditMode(true)}
           onReparse={startReparseSelectedReceipt}
+          onRejectParserSuggestion={rejectParserSuggestion}
           onSave={saveDraft}
           onSetOverwriteManualEdits={setOverwriteManualEdits}
+          onUpdateParserSuggestion={updateParserSuggestion}
           overwriteManualEdits={overwriteManualEdits}
           receipt={selectedReceipt}
           aiParsingLogs={aiParsingLogs}
           parseRuleSuggestions={parseRuleSuggestions}
+          processingRuleSuggestionId={processingRuleSuggestionId}
           reparsing={reparsing}
           saving={saving}
         />
@@ -660,7 +720,18 @@ function ReceiptListPanel({
                   >
                     <td className="px-3 py-3">{formatDate(receipt.receiptDate)}</td>
                     <td className="px-3 py-3">
-                      <div className="font-medium text-zinc-950 dark:text-zinc-50">{receipt.storeName ?? "Unbekannt"}</div>
+                      <a
+                        aria-label={`Bon ${receipt.storeName ?? "Unbekannt"} vom ${formatDate(receipt.receiptDate)} öffnen`}
+                        className="font-medium text-zinc-950 hover:underline dark:text-zinc-50"
+                        href={`#/receipts/${receipt.id}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onReceiptSelect(receipt.id);
+                        }}
+                      >
+                        {receipt.storeName ?? "Unbekannt"}
+                      </a>
                       <div className="text-xs text-zinc-500 dark:text-zinc-400">{receipt.storeBranch ?? "-"}</div>
                       <PaperlessLink className="mt-1" receipt={receipt} />
                     </td>
@@ -715,6 +786,7 @@ function ReceiptDetailPanel({
   detailLoading,
   draft,
   editMode,
+  onAcceptParserSuggestion,
   onApplyAiSuggestion,
   onBack,
   onCancelEdit,
@@ -722,12 +794,15 @@ function ReceiptDetailPanel({
   onDraftChange,
   onEdit,
   onReparse,
+  onRejectParserSuggestion,
   onSave,
   onSetOverwriteManualEdits,
+  onUpdateParserSuggestion,
   overwriteManualEdits,
   receipt,
   aiParsingLogs,
   parseRuleSuggestions,
+  processingRuleSuggestionId,
   reparsing,
   saving
 }: {
@@ -738,6 +813,7 @@ function ReceiptDetailPanel({
   detailLoading: boolean;
   draft: ReceiptDraft | null;
   editMode: boolean;
+  onAcceptParserSuggestion: (suggestion: ParseRuleSuggestionDTO, scope: ReparseScope) => void;
   onApplyAiSuggestion: (item: ReceiptItemDTO) => void;
   onBack: () => void;
   onCancelEdit: () => void;
@@ -745,12 +821,15 @@ function ReceiptDetailPanel({
   onDraftChange: (draft: ReceiptDraft) => void;
   onEdit: () => void;
   onReparse: () => void;
+  onRejectParserSuggestion: (suggestion: ParseRuleSuggestionDTO) => void;
   onSave: () => void;
   onSetOverwriteManualEdits: (overwrite: boolean) => void;
+  onUpdateParserSuggestion: (id: number, request: ParseRuleSuggestionUpdateRequest) => void;
   overwriteManualEdits: boolean;
   receipt: ReceiptDTO | null;
   aiParsingLogs: AiParsingLogDTO[];
   parseRuleSuggestions: ParseRuleSuggestionDTO[];
+  processingRuleSuggestionId: number | null;
   reparsing: boolean;
   saving: boolean;
 }) {
@@ -852,6 +931,11 @@ function ReceiptDetailPanel({
           {receipt.deleteReason ? <DeleteReasonBadge reason={receipt.deleteReason} /> : null}
           <PaperlessLink receipt={receipt} />
         </div>
+        <div aria-label="Bon-Zusammenfassung" className="grid gap-3 rounded-md border border-zinc-200 bg-white p-3 text-sm sm:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <Metric label="Datum / Uhrzeit" value={`${formatDate(receipt.receiptDate)} · ${formatTime(receipt.receiptTime)}`} />
+          <Metric label="Gesamtbetrag" value={formatCurrency(receipt.totalAmount)} />
+          <Metric label="Bonus" value={formatBonus(receipt)} />
+        </div>
         <PageTabs active={activeTab} onChange={setActiveTab} tabs={detailTabs} />
       </div>
 
@@ -933,7 +1017,15 @@ function ReceiptDetailPanel({
       </Card> : null}
 
       {activeTab === "ai" ? <AiParsingLogPanel logs={aiParsingLogs} receipt={receipt} /> : null}
-      {activeTab === "suggestions" ? <ParseRuleSuggestionsPanel suggestions={parseRuleSuggestions} /> : null}
+      {activeTab === "suggestions" ? (
+        <ParseRuleSuggestionsPanel
+          onAccept={onAcceptParserSuggestion}
+          onReject={onRejectParserSuggestion}
+          onUpdate={onUpdateParserSuggestion}
+          processingId={processingRuleSuggestionId}
+          suggestions={parseRuleSuggestions}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1005,23 +1097,105 @@ function AiParsingLogPanel({ logs, receipt }: { logs: AiParsingLogDTO[]; receipt
   );
 }
 
-function ParseRuleSuggestionsPanel({ suggestions }: { suggestions: ParseRuleSuggestionDTO[] }) {
+function ParseRuleSuggestionsPanel({
+  onAccept,
+  onReject,
+  onUpdate,
+  processingId,
+  suggestions
+}: {
+  onAccept: (suggestion: ParseRuleSuggestionDTO, scope: ReparseScope) => void;
+  onReject: (suggestion: ParseRuleSuggestionDTO) => void;
+  onUpdate: (id: number, request: ParseRuleSuggestionUpdateRequest) => void;
+  processingId: number | null;
+  suggestions: ParseRuleSuggestionDTO[];
+}) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<ParseRuleSuggestionUpdateRequest | null>(null);
+  const [scopeById, setScopeById] = useState<Record<number, ReparseScope>>({});
+
+  function startEditing(suggestion: ParseRuleSuggestionDTO) {
+    setEditingId(suggestion.id);
+    setEditDraft(toParseRuleSuggestionUpdateRequest(suggestion));
+  }
+
   return (
     <Card>
       <CardHeader><CardTitle>Regelvorschläge</CardTitle></CardHeader>
       <CardContent>
         {suggestions.length ? <div className="space-y-2">
-          {suggestions.map((suggestion) => (
-            <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800" key={suggestion.id}>
+          {suggestions.map((suggestion) => {
+            const scope = scopeById[suggestion.id] ?? "NONE";
+            const contextReceiptId = suggestion.receiptContext?.receiptId ?? suggestion.receiptId;
+            const contextStore = suggestion.receiptContext?.storeName ?? suggestion.storeName;
+            const editing = editingId === suggestion.id && editDraft !== null;
+            return <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800" key={suggestion.id}>
               <div className="flex flex-wrap gap-2">
                 <Badge tone={suggestion.status === "OPEN" ? "blue" : suggestion.status === "ACCEPTED" ? "green" : "red"}>{suggestion.status}</Badge>
                 <Badge tone={suggestion.validationStatus === "VALID" ? "green" : "yellow"}>{suggestion.validationStatus}</Badge>
                 <span className="font-medium">{suggestion.ruleType}</span>
               </div>
-              <div className="mt-2 text-zinc-700 dark:text-zinc-200">{suggestion.problemDescription}</div>
-              <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{suggestion.solutionRationale}</div>
+              <div className="mt-3 grid gap-2 text-xs text-zinc-600 md:grid-cols-2 dark:text-zinc-300">
+                <div>Auslöser: {parseSuggestionTriggerLabel(suggestion.trigger)}</div>
+                <div>{contextReceiptId == null ? "Bon-Kontext nicht verfügbar" : `Bon #${contextReceiptId}`} · {contextStore ?? "Store nicht angegeben"}</div>
+                <div className="break-all">Regex: {suggestion.matchRegex || "Nicht angegeben"}</div>
+                <div>Extract-Gruppe: {suggestion.extractGroup ?? "Nicht angegeben"}</div>
+              </div>
+              <div className="mt-3 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Parser-Problem</div>
+              <div className="mt-1 text-zinc-700 dark:text-zinc-200">{suggestion.problemDescription || "Keine Problembeschreibung vorhanden."}</div>
+              <div className="mt-3 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Lösungsbegründung</div>
+              <div className="mt-1 text-zinc-700 dark:text-zinc-200">{suggestion.solutionRationale || "Keine Lösungsbegründung vorhanden."}</div>
+              {suggestion.validationMessage ? <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">{suggestion.validationMessage}</div> : null}
+
+              {editing && editDraft ? (
+                <div className="mt-3 grid gap-3 rounded-md border border-zinc-200 p-3 md:grid-cols-2 dark:border-zinc-800">
+                  <Field label="Store">
+                    <Input onChange={(event) => setEditDraft({ ...editDraft, storeName: emptyToNull(event.target.value) })} value={editDraft.storeName ?? ""} />
+                  </Field>
+                  <Field label="Regeltyp">
+                    <select className={inputClassName} onChange={(event) => setEditDraft({ ...editDraft, ruleType: event.target.value as ParseRuleSuggestionDTO["ruleType"] })} value={editDraft.ruleType}>
+                      {(["DATE_PATTERN", "STORE_PATTERN", "ITEM_PATTERN", "TOTAL_PATTERN", "BONUS_PATTERN"] as const).map((type) => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Regex">
+                    <Input onChange={(event) => setEditDraft({ ...editDraft, matchRegex: event.target.value })} value={editDraft.matchRegex} />
+                  </Field>
+                  <Field label="Extract-Gruppe">
+                    <Input onChange={(event) => setEditDraft({ ...editDraft, extractGroup: emptyToNull(event.target.value) })} value={editDraft.extractGroup ?? ""} />
+                  </Field>
+                  <Field label="Konfidenz">
+                    <Input max="1" min="0" onChange={(event) => setEditDraft({ ...editDraft, confidence: optionalDecimal(event.target.value) })} step="0.01" type="number" value={editDraft.confidence ?? ""} />
+                  </Field>
+                  <div />
+                  <Field label="Parser-Problem">
+                    <Textarea onChange={(event) => setEditDraft({ ...editDraft, problemDescription: event.target.value })} value={editDraft.problemDescription} />
+                  </Field>
+                  <Field label="Lösungsbegründung">
+                    <Textarea onChange={(event) => setEditDraft({ ...editDraft, solutionRationale: event.target.value })} value={editDraft.solutionRationale} />
+                  </Field>
+                  <div className="flex gap-2 md:col-span-2">
+                    <Button disabled={processingId === suggestion.id} onClick={() => { onUpdate(suggestion.id, editDraft); setEditingId(null); setEditDraft(null); }} size="sm">Änderungen speichern</Button>
+                    <Button onClick={() => { setEditingId(null); setEditDraft(null); }} size="sm" variant="secondary">Bearbeitung abbrechen</Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {suggestion.status === "OPEN" ? <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button disabled={processingId === suggestion.id} onClick={() => startEditing(suggestion)} size="sm" variant="secondary">Vorschlag bearbeiten</Button>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                  <span className="sr-only">Reparse-Umfang</span>
+                  <select aria-label="Reparse-Umfang" className={inputClassName} onChange={(event) => setScopeById((current) => ({ ...current, [suggestion.id]: event.target.value as ReparseScope }))} value={scope}>
+                    <option value="NONE">Kein sofortiger Reparse</option>
+                    <option value="CURRENT_RECEIPT">Aktueller Bon</option>
+                    <option value="PARSE_ERROR_BY_STORE">Parse-Fehler gleicher Store</option>
+                    <option value="ALL_PARSE_ERROR">Alle Parse-Fehler</option>
+                  </select>
+                </label>
+                <Button disabled={processingId === suggestion.id || suggestion.validationStatus !== "VALID"} onClick={() => onAccept(suggestion, scope)} size="sm">Akzeptieren</Button>
+                <Button disabled={processingId === suggestion.id} onClick={() => onReject(suggestion)} size="sm" variant="danger">Ablehnen</Button>
+              </div> : null}
             </div>
-          ))}
+          })}
         </div> : <EmptyState text="Keine Regelvorschläge vorhanden" />}
       </CardContent>
     </Card>
@@ -1115,21 +1289,24 @@ function ReceiptItemsTable({
                 </div>
               </td>
               <td className="px-3 py-3">
-                {item.productAssignmentStatus === "NO_PRODUCT" ? (
-                  <Badge>Kein Produkt</Badge>
-                ) : item.productFamilyName ? (
-                  <div className="space-y-1">
-                    <div className="font-medium text-zinc-950 dark:text-zinc-50">{item.productFamilyName}</div>
-                    {item.productVariantName ? <div className="text-xs text-zinc-500 dark:text-zinc-400">{item.productVariantName}</div> : null}
-                    {item.productAssignmentStatus ? <ProductAssignmentBadge status={item.productAssignmentStatus} /> : null}
-                  </div>
-                ) : item.productAssignmentStatus === "NEEDS_REVIEW" ? (
-                  <a className="inline-flex" href="#/products" title="In der Produkt-Prüfliste korrigieren">
-                    <Badge tone="yellow">Prüfung nötig</Badge>
-                  </a>
-                ) : (
-                  <span className="text-zinc-500 dark:text-zinc-400">-</span>
-                )}
+                <div className="space-y-1">
+                  {item.productAssignmentStatus === "NO_PRODUCT" ? (
+                    <Badge>Kein Produkt</Badge>
+                  ) : item.productFamilyName ? (
+                    <div>
+                      <div className="font-medium text-zinc-950 dark:text-zinc-50">{item.productFamilyName}</div>
+                      {item.productVariantName ? <div className="text-xs text-zinc-500 dark:text-zinc-400">{item.productVariantName}</div> : null}
+                      {item.productAssignmentStatus ? <ProductAssignmentBadge status={item.productAssignmentStatus} /> : null}
+                    </div>
+                  ) : item.productAssignmentStatus === "NEEDS_REVIEW" ? (
+                    <a className="inline-flex" href="#/products" title="In der Produkt-Prüfliste korrigieren">
+                      <Badge tone="yellow">Prüfung nötig</Badge>
+                    </a>
+                  ) : (
+                    <span className="text-zinc-500 dark:text-zinc-400">-</span>
+                  )}
+                  {item.productAssignmentSource ? <ProductAssignmentSourceBadge source={item.productAssignmentSource} /> : null}
+                </div>
               </td>
               <td className="px-3 py-3 text-right">
                 {item.computedUnitPrice == null || item.computedUnitPriceUnit == null
@@ -1254,6 +1431,16 @@ function ProductAssignmentBadge({ status }: { status: ProductAssignmentStatus })
   }[status];
   const tone = status === "NEEDS_REVIEW" || status === "REJECTED" ? "yellow" : "blue";
   return <Badge tone={tone}>{label}</Badge>;
+}
+
+function ProductAssignmentSourceBadge({ source }: { source: ProductAssignmentSource }) {
+  const label = {
+    RULE: "Regel",
+    AI: "KI",
+    MANUAL: "Manuell",
+    HISTORY: "Historie"
+  }[source];
+  return <Badge>Zuordnungsquelle: {label}</Badge>;
 }
 
 function AiSuggestionHint({ applying, item, onApply }: { applying: boolean; item: ReceiptItemDTO; onApply: () => void }) {
@@ -1518,6 +1705,28 @@ function aiParsingStatusLabel(status: AiParsingLogDTO["status"]): string {
     DISABLED: "KI-Parsing deaktiviert",
     NO_API_KEY: "API-Key fehlt"
   }[status];
+}
+
+function parseSuggestionTriggerLabel(trigger: ParseRuleSuggestionDTO["trigger"]): string {
+  return {
+    SYNC_AUTO: "Automatischer Sync",
+    MANUAL_REPARSE: "Manueller Reparse",
+    MANUAL_REPARSE_FORCE_FULL_TEXT: "Manueller Volltext-Reparse",
+    BULK_REPARSE: "Sammel-Reparse",
+    SETTINGS_TEST: "Einstellungstest"
+  }[trigger];
+}
+
+function toParseRuleSuggestionUpdateRequest(suggestion: ParseRuleSuggestionDTO): ParseRuleSuggestionUpdateRequest {
+  return {
+    storeName: suggestion.storeName,
+    ruleType: suggestion.ruleType,
+    matchRegex: suggestion.matchRegex,
+    extractGroup: suggestion.extractGroup,
+    confidence: suggestion.confidence,
+    problemDescription: suggestion.problemDescription,
+    solutionRationale: suggestion.solutionRationale
+  };
 }
 
 function toUserMessage(error: unknown): string {
