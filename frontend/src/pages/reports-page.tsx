@@ -4,6 +4,7 @@ import { Download, Loader2 } from "lucide-react";
 
 import { DataTableFrame } from "@/components/data/data-table";
 import { FilterBar } from "@/components/data/filter-bar";
+import { StatusBanner } from "@/components/feedback/status-banner";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageTabs } from "@/components/layout/page-tabs";
 import { Button } from "@/components/ui/button";
@@ -97,6 +98,15 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
     }
   }
 
+  function resetFilters() {
+    setPreset("currentMonth");
+    setFilters({
+      ...rangeFor("currentMonth"),
+      categoryIds: [],
+      groupBy: "month"
+    });
+  }
+
   async function exportCsv() {
     setExporting(true);
     setError(null);
@@ -137,7 +147,11 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
         title="Reports"
       />
 
-      {error ? <ErrorBox message={error} /> : null}
+      {error ? (
+        <StatusBanner title="Report konnte nicht geladen werden" tone="error">
+          {error}
+        </StatusBanner>
+      ) : null}
 
       <PageTabs active={tab} onChange={setTab} tabs={tabs} />
 
@@ -233,13 +247,27 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
           </p>
       </FilterBar>
 
+      {loading ? (
+        <StatusBanner ariaLabel="Report wird geladen" busy title="Report wird geladen">
+          Reportdaten werden aktualisiert.
+        </StatusBanner>
+      ) : !error && rows.length === 0 ? (
+        <StatusBanner
+          action={<Button onClick={resetFilters} size="sm" variant="secondary">Filter zurücksetzen</Button>}
+          ariaLabel="Keine Reportdaten"
+          title="Keine Reportdaten"
+        >
+          Filter anpassen oder zurücksetzen, um andere Ergebnisse anzuzeigen.
+        </StatusBanner>
+      ) : null}
+
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
         <Card aria-label="Diagramm" role="region">
           <CardHeader>
             <CardTitle>{title}</CardTitle>
           </CardHeader>
           <CardContent className="h-80">
-            {loading ? <Skeleton className="h-full w-full" /> : rows.length ? <ReportChart rows={rows} tab={tab} /> : <EmptyState text="Keine Reportdaten" />}
+            {loading ? <Skeleton aria-hidden="true" className="h-full w-full" /> : !error && rows.length ? <ReportChart rows={rows} tab={tab} /> : null}
           </CardContent>
         </Card>
 
@@ -247,9 +275,9 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
           <CardHeader>
             <CardTitle id="report-table-title">Tabelle</CardTitle>
           </CardHeader>
-          {loading ? <Card><CardContent><Skeleton className="h-48 w-full" /></CardContent></Card> : rows.length ? (
+          {loading ? <Card><CardContent><Skeleton aria-hidden="true" className="h-48 w-full" /></CardContent></Card> : !error && rows.length ? (
             <DataTableFrame><ReportTable rows={rows} tab={tab} /></DataTableFrame>
-          ) : <Card><CardContent><EmptyState text="Keine Daten" /></CardContent></Card>}
+          ) : <Card><CardContent className="min-h-48">{null}</CardContent></Card>}
         </section>
       </section>
     </div>
@@ -452,14 +480,6 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
       {children}
     </label>
   );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return <div className="flex h-full min-h-48 items-center justify-center rounded-md border border-dashed border-zinc-200 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">{text}</div>;
-}
-
-function ErrorBox({ message }: { message: string }) {
-  return <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{message}</div>;
 }
 
 function toUserMessage(error: unknown): string {

@@ -6,7 +6,9 @@ import type { ApiClient } from "@/lib/api";
 import type { ReportFilters } from "@/lib/types";
 import { ReportsPage } from "@/pages/reports-page";
 
-function apiClient() {
+function apiClient(reportByCategory: Promise<unknown> = Promise.resolve([
+  { categoryId: 1, categoryName: "Lebensmittel", total: 42.5 }
+])) {
   return {
     categories: vi.fn().mockResolvedValue([
       { id: 1, name: "Lebensmittel", colorHex: "#2563eb", icon: "basket", isActive: true, sortOrder: 1, assignedItemsCount: 4 },
@@ -18,9 +20,7 @@ function apiClient() {
     productVariants: vi.fn().mockResolvedValue([
       { id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true }
     ]),
-    reportByCategory: vi.fn().mockResolvedValue([
-      { categoryId: 1, categoryName: "Lebensmittel", total: 42.5 }
-    ]),
+    reportByCategory: vi.fn().mockReturnValue(reportByCategory),
     reportByPeriod: vi.fn().mockResolvedValue([{ periodStart: "2026-06-01", period: "Juni 2026", total: 42.5 }]),
     reportByStore: vi.fn().mockResolvedValue([{ storeName: "REWE", total: 42.5, receiptCount: 2 }]),
     topItems: vi.fn().mockResolvedValue([{ description: "Haferdrink", total: 12.5, count: 5 }]),
@@ -108,4 +108,40 @@ describe("ReportsPage", () => {
     })));
     expect(screen.getByRole("option", { name: "Kaufhäufigkeit" })).toBeInTheDocument();
   });
+
+  it("announces report loading with a named busy status", async () => {
+    const pending = deferred<unknown[]>();
+    render(<ReportsPage apiClient={apiClient(pending.promise) as unknown as ApiClient} hasApiToken />);
+
+    const status = screen.getByRole("status", { name: "Report wird geladen" });
+    expect(status).toHaveAttribute("aria-busy", "true");
+    expect(within(status).getByText("Reportdaten werden aktualisiert.")).toBeInTheDocument();
+
+    pending.resolve([]);
+    await screen.findByRole("status", { name: "Keine Reportdaten" });
+  });
+
+  it("uses the shared alert semantics for report errors", async () => {
+    render(<ReportsPage apiClient={apiClient(Promise.reject(new Error("Report kaputt"))) as unknown as ApiClient} hasApiToken />);
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText("Report konnte nicht geladen werden")).toBeInTheDocument();
+    expect(within(alert).getByText("Report kaputt")).toBeInTheDocument();
+  });
+
+  it("offers a useful filter reset when an analysis has no rows", async () => {
+    render(<ReportsPage apiClient={apiClient(Promise.resolve([])) as unknown as ApiClient} hasApiToken />);
+
+    const status = await screen.findByRole("status", { name: "Keine Reportdaten" });
+    expect(within(status).getByText(/Filter anpassen/)).toBeInTheDocument();
+    expect(within(status).getByRole("button", { name: "Filter zurücksetzen" })).toBeInTheDocument();
+  });
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}

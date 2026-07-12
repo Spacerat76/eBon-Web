@@ -21,12 +21,16 @@ const icons = {
 
 export function StatusBanner({
   action,
+  ariaLabel,
+  busy,
   children,
   className,
   title,
   tone = "info"
 }: {
   action?: ReactNode;
+  ariaLabel?: string;
+  busy?: boolean;
   children?: ReactNode;
   className?: string;
   title: string;
@@ -34,7 +38,12 @@ export function StatusBanner({
 }): JSX.Element {
   const Icon = icons[tone];
   return (
-    <div className={cn("flex items-start gap-3 rounded-xl border p-4", tones[tone], className)} role={tone === "error" ? "alert" : "status"}>
+    <div
+      aria-busy={busy || undefined}
+      aria-label={ariaLabel}
+      className={cn("flex items-start gap-3 rounded-xl border p-4", tones[tone], className)}
+      role={tone === "error" ? "alert" : "status"}
+    >
       <Icon aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold">{title}</p>
