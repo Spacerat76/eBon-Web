@@ -4,8 +4,11 @@ import { CheckCircle2, Download, FileCheck2, Loader2, Plus, RotateCcw, Save, Tra
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { SecretInput } from "@/components/ui/secret-input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageTabs } from "@/components/layout/page-tabs";
 import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
 import { CategoryIcon } from "@/lib/category-icons";
@@ -21,6 +24,7 @@ import type {
   PageResponse,
   ParseRuleSuggestionDTO,
   ParseRuleSuggestionReceiptContextDTO,
+  ProductDataResetResultDTO,
   RuleMatchField,
   RuleMatchType,
   ReparseScope,
@@ -31,9 +35,21 @@ import type {
 interface SettingsPageProps {
   apiClient: ApiClient;
   hasApiToken: boolean;
+  initialSection?: SettingsSection;
 }
 
-type SettingsTab = "general" | "categories" | "rules" | "parser" | "backup";
+export type SettingsSection = "connections" | "ai-parser" | "categories" | "rules" | "parser-suggestions" | "backup" | "maintenance" | "system";
+
+const settingsSections: { id: SettingsSection; label: string }[] = [
+  { id: "connections", label: "Verbindungen" },
+  { id: "ai-parser", label: "KI & Parser" },
+  { id: "categories", label: "Kategorien" },
+  { id: "rules", label: "Kategorisierungsregeln" },
+  { id: "parser-suggestions", label: "Parser-Regelvorschläge" },
+  { id: "backup", label: "Backup & Restore" },
+  { id: "maintenance", label: "Datenwartung" },
+  { id: "system", label: "Systeminformationen" }
+];
 
 const RESTORE_CONFIRMATION = "RESTORE_BACKUP";
 
@@ -79,8 +95,8 @@ const emptyRule: CategorizationRuleRequest = {
   applyToExisting: false
 };
 
-export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
-  const [tab, setTab] = useState<SettingsTab>("general");
+export function SettingsPage({ apiClient, hasApiToken, initialSection = "connections" }: SettingsPageProps) {
+  const [section, setSection] = useState<SettingsSection>(initialSection);
   const [settings, setSettings] = useState<SettingsDTO>(emptySettings);
   const [systemInfo, setSystemInfo] = useState<SystemInfoDTO | null>(null);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
@@ -95,6 +111,8 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
   const [rulePreview, setRulePreview] = useState<number | null>(null);
   const [overwriteManualEdits, setOverwriteManualEdits] = useState(false);
   const [resetConfirmation, setResetConfirmation] = useState("");
+  const [productResetConfirmation, setProductResetConfirmation] = useState("");
+  const [resetDialog, setResetDialog] = useState<"receipts" | "products" | null>(null);
   const [backupFile, setBackupFile] = useState<File | null>(null);
   const [backupValidation, setBackupValidation] = useState<BackupValidationReportDTO | null>(null);
   const [restoreConfirmation, setRestoreConfirmation] = useState("");
@@ -104,6 +122,10 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
   const [saving, setSaving] = useState(false);
 
   const activeCategories = useMemo(() => categories.filter((category) => category.isActive), [categories]);
+
+  useEffect(() => {
+    setSection(initialSection);
+  }, [initialSection]);
 
   const loadSettings = useCallback(async () => {
     if (!hasApiToken) {
@@ -148,7 +170,15 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
     setFeedback(null);
 
     try {
-      const updated = await apiClient.updateSettings(settings);
+      const { paperlessApiToken, openRouterApiKey, ...nonSecretSettings } = settings;
+      const changedPaperlessToken = changedSecret(paperlessApiToken ?? "");
+      const changedOpenRouterKey = changedSecret(openRouterApiKey ?? "");
+      const request = {
+        ...nonSecretSettings,
+        ...(changedPaperlessToken ? { paperlessApiToken: changedPaperlessToken } : {}),
+        ...(changedOpenRouterKey ? { openRouterApiKey: changedOpenRouterKey } : {})
+      } as SettingsDTO;
+      const updated = await apiClient.updateSettings(request);
       setSettings(updated);
       setFeedback("Einstellungen gespeichert.");
     } catch (saveError) {
@@ -184,6 +214,23 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
   async function resetImportedReceipts() {
     await runMaintenance(() => apiClient.resetImportedReceipts(resetConfirmation));
     setResetConfirmation("");
+    setResetDialog(null);
+  }
+
+  async function resetProductData() {
+    setSaving(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const result = await apiClient.resetProductData(productResetConfirmation);
+      setFeedback(productResetSummary(result));
+      setProductResetConfirmation("");
+      setResetDialog(null);
+    } catch (maintenanceError) {
+      setError(toUserMessage(maintenanceError));
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function downloadBackup() {
@@ -490,32 +537,20 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
       {error ? <ErrorBox message={error} /> : null}
       {feedback ? <SuccessBox message={feedback} /> : null}
 
-      <div className="flex flex-wrap gap-2">
-        <Button onClick={() => setTab("general")} size="sm" variant={tab === "general" ? "primary" : "secondary"}>Allgemein</Button>
-        <Button onClick={() => setTab("categories")} size="sm" variant={tab === "categories" ? "primary" : "secondary"}>Kategorien</Button>
-        <Button onClick={() => setTab("rules")} size="sm" variant={tab === "rules" ? "primary" : "secondary"}>Regeln</Button>
-        <Button onClick={() => setTab("parser")} size="sm" variant={tab === "parser" ? "primary" : "secondary"}>Parser-Vorschläge</Button>
-        <Button onClick={() => setTab("backup")} size="sm" variant={tab === "backup" ? "primary" : "secondary"}>Backup</Button>
-      </div>
+      <PageTabs active={section} onChange={setSection} tabs={settingsSections} />
 
       {loading ? <Skeleton className="h-96 w-full" /> : null}
-      {!loading && tab === "general" ? (
-        <GeneralSettings
-          onReparseAll={reparseAll}
-          onResetImportedReceipts={resetImportedReceipts}
+      {!loading && section === "connections" ? (
+        <ConnectionSettings
           onSave={saveSettings}
           onSettingsChange={setSettings}
           onTestConnection={testConnection}
-          onOverwriteManualEditsChange={setOverwriteManualEdits}
-          onResetConfirmationChange={setResetConfirmation}
-          overwriteManualEdits={overwriteManualEdits}
-          resetConfirmation={resetConfirmation}
           saving={saving}
           settings={settings}
-          systemInfo={systemInfo}
         />
       ) : null}
-      {!loading && tab === "categories" ? (
+      {!loading && section === "ai-parser" ? <AiParserSettings onSave={saveSettings} onSettingsChange={setSettings} saving={saving} settings={settings} /> : null}
+      {!loading && section === "categories" ? (
         <CategorySettings
           categoryDraft={categoryDraft}
           categoryIcons={categoryIcons}
@@ -535,7 +570,7 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
           saving={saving}
         />
       ) : null}
-      {!loading && tab === "rules" ? (
+      {!loading && section === "rules" ? (
         <RuleSettings
           categories={activeCategories}
           editingRuleId={editingRuleId}
@@ -556,7 +591,7 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
           saving={saving}
         />
       ) : null}
-      {!loading && tab === "parser" ? (
+      {!loading && section === "parser-suggestions" ? (
         <ParserSuggestionSettings
           onAccept={acceptParserSuggestion}
           onExport={exportParserRules}
@@ -566,7 +601,7 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
           suggestions={parserSuggestions?.content ?? []}
         />
       ) : null}
-      {!loading && tab === "backup" ? (
+      {!loading && section === "backup" ? (
         <BackupSettings
           backupFile={backupFile}
           confirmation={restoreConfirmation}
@@ -579,280 +614,147 @@ export function SettingsPage({ apiClient, hasApiToken }: SettingsPageProps) {
           validation={backupValidation}
         />
       ) : null}
+      {!loading && section === "maintenance" ? (
+        <MaintenanceSettings
+          onOverwriteManualEditsChange={setOverwriteManualEdits}
+          onProductResetConfirmationChange={setProductResetConfirmation}
+          onReparseAll={reparseAll}
+          onRequestProductReset={() => setResetDialog("products")}
+          onRequestReceiptReset={() => setResetDialog("receipts")}
+          onResetConfirmationChange={setResetConfirmation}
+          overwriteManualEdits={overwriteManualEdits}
+          productResetConfirmation={productResetConfirmation}
+          resetConfirmation={resetConfirmation}
+          saving={saving}
+        />
+      ) : null}
+      {!loading && section === "system" ? <SystemSettings systemInfo={systemInfo} /> : null}
+
+      <ConfirmDialog
+        confirmLabel={resetDialog === "products" ? "Produktdaten endgültig löschen" : "Bon-Daten endgültig löschen"}
+        destructive
+        onCancel={() => setResetDialog(null)}
+        onConfirm={() => void (resetDialog === "products" ? resetProductData() : resetImportedReceipts())}
+        open={resetDialog !== null}
+        title={resetDialog === "products" ? "Produktdaten zurücksetzen?" : "Importierte Bon-Daten zurücksetzen?"}
+      >
+        Diese Aktion wird transaktional ausgeführt und kann nicht rückgängig gemacht werden.
+      </ConfirmDialog>
     </div>
   );
 }
 
-function GeneralSettings({
-  onOverwriteManualEditsChange,
-  onReparseAll,
-  onResetConfirmationChange,
-  onResetImportedReceipts,
-  onSave,
-  onSettingsChange,
-  onTestConnection,
-  overwriteManualEdits,
-  resetConfirmation,
-  saving,
-  settings,
-  systemInfo
-}: {
-  onOverwriteManualEditsChange: (value: boolean) => void;
-  onReparseAll: () => void;
-  onResetConfirmationChange: (value: string) => void;
-  onResetImportedReceipts: () => void;
+function ConnectionSettings({ onSave, onSettingsChange, onTestConnection, saving, settings }: {
   onSave: () => void;
   onSettingsChange: (settings: SettingsDTO) => void;
   onTestConnection: (target: "PAPERLESS" | "OPENROUTER") => void;
-  overwriteManualEdits: boolean;
-  resetConfirmation: string;
   saving: boolean;
   settings: SettingsDTO;
-  systemInfo: SystemInfoDTO | null;
 }) {
-  const confidence = settings.aiCategorizationMinConfidence ?? 0.9;
-  const historyMinimum = settings.productHistoryMinConfirmedMatches ?? 3;
-  const historyShare = settings.productHistoryMinVariantShare ?? 0.9;
-
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+    <div className="grid gap-4 xl:grid-cols-2">
       <Card>
-        <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <CardTitle>Allgemein</CardTitle>
-          <Button disabled={saving} onClick={onSave} size="sm">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Speichern
-          </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-900/40">
-            <span className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Software-Version</span>
-            <span className="font-medium">{systemInfo?.version ?? "unbekannt"}</span>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field
-              help="Backend-Adresse für Paperless-API-Aufrufe. Im Docker-Netz kann das z. B. http://paperless:8001 sein; im lokalen Netzwerk auch eine IP-Adresse."
-              label="Paperless-NGX URL"
-            >
-              <Input onChange={(event) => onSettingsChange({ ...settings, paperlessBaseUrl: event.target.value })} value={settings.paperlessBaseUrl ?? ""} />
-            </Field>
-            <Field
-              help="Token für die Paperless-API. Wird nur an das Backend gesendet und in der UI maskiert angezeigt."
-              label="Paperless API-Token"
-            >
-              <Input onChange={(event) => onSettingsChange({ ...settings, paperlessApiToken: event.target.value })} type="password" value={settings.paperlessApiToken ?? ""} />
-            </Field>
-            <Field
-              help="Browser-Adresse für Links aus eBon zu Paperless-Dokumenten. Diese URL muss von deinem Browser erreichbar sein."
-              label="Paperless Web-URL"
-            >
-              <Input onChange={(event) => onSettingsChange({ ...settings, paperlessPublicBaseUrl: event.target.value })} value={settings.paperlessPublicBaseUrl ?? ""} />
-            </Field>
-            <Field
-              help="Optional. Überschreibt den automatisch erzeugten Paperless-Link. Nutze {paperlessDocumentId} als Platzhalter, z. B. http://paperless.local/documents/{paperlessDocumentId}/details."
-              label="Dokument-URL-Vorlage"
-            >
-              <Input
-                onChange={(event) => onSettingsChange({ ...settings, paperlessDocumentUrlTemplate: event.target.value })}
-                placeholder="http://paperless.local/documents/{paperlessDocumentId}/details"
-                value={settings.paperlessDocumentUrlTemplate ?? ""}
-              />
-            </Field>
-            <Field
-              help="Nur Paperless-Dokumente mit diesem Tag werden synchronisiert. Der Tag-Name muss exakt zu Paperless passen."
-              label="eBon Tag"
-            >
-              <Input onChange={(event) => onSettingsChange({ ...settings, paperlessEbonTag: event.target.value })} value={settings.paperlessEbonTag ?? ""} />
-            </Field>
-            <Field
-              help="Optionaler Schlüssel für KI-Funktionen. Ohne Schlüssel bleiben KI-Parsing und KI-Kategorisierung deaktiviert."
-              label="OpenRouter API-Key"
-            >
-              <Input onChange={(event) => onSettingsChange({ ...settings, openRouterApiKey: event.target.value })} type="password" value={settings.openRouterApiKey ?? ""} />
-            </Field>
-            <Field
-              help="Basis-URL des KI-Anbieters. Normalerweise kann der Standardwert verwendet werden."
-              label="OpenRouter URL"
-            >
-              <Input onChange={(event) => onSettingsChange({ ...settings, openRouterBaseUrl: event.target.value })} value={settings.openRouterBaseUrl ?? ""} />
-            </Field>
-            <Field
-              help="Modellname für KI-Parsing und KI-Kategorisierung. Änderungen wirken auf zukünftige KI-Aufrufe."
-              label="OpenRouter Modell"
-            >
-              <Input onChange={(event) => onSettingsChange({ ...settings, openRouterModel: event.target.value })} value={settings.openRouterModel ?? ""} />
-            </Field>
-            <Field
-              help="Abstand für automatische Paperless-Syncs. Manuelle Syncs sind davon unabhängig."
-              label="Sync-Intervall Minuten"
-            >
-              <Input onChange={(event) => onSettingsChange({ ...settings, syncIntervalMinutes: Number(event.target.value) })} min={1} type="number" value={settings.syncIntervalMinutes ?? 60} />
-            </Field>
-            <Field
-              help="Standardwährung für Anzeige und neue manuelle Werte, z. B. EUR."
-              label="Währung"
-            >
-              <Input maxLength={3} onChange={(event) => onSettingsChange({ ...settings, currency: event.target.value.toUpperCase() })} value={settings.currency ?? "EUR"} />
-            </Field>
-          </div>
-
-          <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="text-sm font-medium">KI-Kategorisierung: {Math.round(confidence * 1000) / 10} %</div>
-              <div className="text-xs text-zinc-500 dark:text-zinc-400">Niedriger automatisiert mehr, höher lässt mehr Positionen ohne Kategorie offen. Abgelehnte KI-Vorschläge bleiben in der UI sichtbar.</div>
-              </div>
-              <Input className="md:w-32" max={1} min={0} onChange={(event) => onSettingsChange({ ...settings, aiCategorizationMinConfidence: Number(event.target.value) })} step={0.001} type="number" value={confidence} />
-            </div>
-            <input
-              className="mt-3 w-full"
-              max={1}
-              min={0}
-              onChange={(event) => onSettingsChange({ ...settings, aiCategorizationMinConfidence: Number(event.target.value) })}
-              step={0.001}
-              type="range"
-              value={confidence}
-            />
-          </div>
-
-          <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-            <div className="mb-3 text-sm font-medium">Automatische Produkt-Historie</div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field
-                help="So viele frühere manuelle oder regelbasierte Treffer derselben Position und desselben Geschäfts sind mindestens nötig. KI-only-Treffer zählen nicht."
-                label="Mindestens bestätigte Treffer"
-              >
-                <Input
-                  min={1}
-                  onChange={(event) => onSettingsChange({ ...settings, productHistoryMinConfirmedMatches: Number(event.target.value) })}
-                  type="number"
-                  value={historyMinimum}
-                />
-              </Field>
-              <Field
-                help="Anteil derselben Variante innerhalb dieser vertrauenswürdigen Historie. Höhere Werte vermeiden falsche Größen- oder Packungszuordnungen."
-                label="Erforderlicher Variantenanteil"
-              >
-                <Input
-                  max={1}
-                  min={0}
-                  onChange={(event) => onSettingsChange({ ...settings, productHistoryMinVariantShare: Number(event.target.value) })}
-                  step={0.001}
-                  type="number"
-                  value={historyShare}
-                />
-              </Field>
-            </div>
-          </div>
-
-          <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-            <div className="mb-3">
-              <div className="text-sm font-medium">KI-Parsing-Fallback</div>
-              <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                Wird nur genutzt, wenn der Regelparser scheitert oder ein Reparse dies explizit auslöst.
-                FULL_TEXT sendet den vollständigen Bontext und benötigt beim manuellen Reparse eine Zusatzbestätigung.
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  checked={settings.aiParsingFallbackEnabled ?? true}
-                  onChange={(event) => onSettingsChange({ ...settings, aiParsingFallbackEnabled: event.target.checked })}
-                  type="checkbox"
-                />
-                KI-Parsing aktiv
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  checked={settings.aiParsingStoreDebugSnippets ?? false}
-                  onChange={(event) => onSettingsChange({ ...settings, aiParsingStoreDebugSnippets: event.target.checked })}
-                  type="checkbox"
-                />
-                Lokale Debug-Snippets speichern
-              </label>
-              <Field help="Optionaler Override für Bon-Parsing. Standardmäßig wird das OpenRouter Modell oben verwendet." label="Parsing-Modell">
-                <Input onChange={(event) => onSettingsChange({ ...settings, aiParsingModel: event.target.value })} value={settings.aiParsingModel ?? ""} />
-              </Field>
-              <Field help="Maximale Antwortlänge für das KI-JSON." label="Parsing Max Tokens">
-                <Input min={1} onChange={(event) => onSettingsChange({ ...settings, aiParsingMaxTokens: Number(event.target.value) })} type="number" value={settings.aiParsingMaxTokens ?? 2500} />
-              </Field>
-              <Field help="0 ist deterministisch. Höhere Werte sind kreativer und für Parsing meist nicht sinnvoll." label="Parsing Temperature">
-                <Input max={2} min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingTemperature: Number(event.target.value) })} step={0.1} type="number" value={settings.aiParsingTemperature ?? 0} />
-              </Field>
-              <Field help="Unterhalb dieses Werts wird ein KI-Parse nicht automatisch übernommen." label="Parsing Mindest-Konfidenz">
-                <Input max={1} min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingMinConfidence: Number(event.target.value) })} step={0.001} type="number" value={settings.aiParsingMinConfidence ?? 0.9} />
-              </Field>
-              <Field help="Maximale KI-Parsing-Calls pro automatischem Sync-Lauf. 0 deaktiviert automatische Calls im Sync." label="Sync-Call-Limit">
-                <Input min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingSyncCallLimit: Number(event.target.value) })} type="number" value={settings.aiParsingSyncCallLimit ?? 25} />
-              </Field>
-              <Field help="MINIMIZED entfernt technische Zahlungs-/TSE-Blöcke. FULL_TEXT sendet den vollständigen Bontext." label="Textmodus">
-                <select
-                  className={selectClassName}
-                  onChange={(event) => onSettingsChange({ ...settings, aiParsingTextMode: event.target.value as "MINIMIZED" | "FULL_TEXT" })}
-                  value={settings.aiParsingTextMode ?? "MINIMIZED"}
-                >
-                  <option value="MINIMIZED">MINIMIZED</option>
-                  <option value="FULL_TEXT">FULL_TEXT</option>
-                </select>
-              </Field>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={saving} onClick={() => onTestConnection("PAPERLESS")} size="sm" variant="secondary">Paperless testen</Button>
-            <Button disabled={saving} onClick={() => onTestConnection("OPENROUTER")} size="sm" variant="secondary">OpenRouter testen</Button>
-          </div>
+        <CardHeader><CardTitle>Paperless-NGX</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <Field label="Paperless-NGX URL"><Input onChange={(event) => onSettingsChange({ ...settings, paperlessBaseUrl: event.target.value })} value={settings.paperlessBaseUrl ?? ""} /></Field>
+          <Field label="Paperless API-Token" help="Maskierte Tokens bleiben unverändert, solange kein neuer Wert eingegeben wird.">
+            <SecretInput aria-label="Paperless API-Token" masked={settings.paperlessApiToken === "********"} onChangeValue={(value) => onSettingsChange({ ...settings, paperlessApiToken: value })} value={settings.paperlessApiToken ?? ""} />
+          </Field>
+          <Field label="Paperless Web-URL"><Input onChange={(event) => onSettingsChange({ ...settings, paperlessPublicBaseUrl: event.target.value })} value={settings.paperlessPublicBaseUrl ?? ""} /></Field>
+          <Field label="Dokument-URL-Vorlage"><Input onChange={(event) => onSettingsChange({ ...settings, paperlessDocumentUrlTemplate: event.target.value })} placeholder="http://paperless.local/documents/{paperlessDocumentId}/details" value={settings.paperlessDocumentUrlTemplate ?? ""} /></Field>
+          <Field label="eBon Tag"><Input onChange={(event) => onSettingsChange({ ...settings, paperlessEbonTag: event.target.value })} value={settings.paperlessEbonTag ?? ""} /></Field>
+          <Field label="Sync-Intervall Minuten"><Input min={1} onChange={(event) => onSettingsChange({ ...settings, syncIntervalMinutes: Number(event.target.value) })} type="number" value={settings.syncIntervalMinutes ?? 60} /></Field>
+          <Button disabled={saving} onClick={() => onTestConnection("PAPERLESS")} variant="secondary">Paperless testen</Button>
         </CardContent>
       </Card>
-
       <Card>
-        <CardHeader>
-          <CardTitle>Datenwartung</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
-            <label className="mb-3 flex items-start gap-2 text-sm">
-              <input checked={overwriteManualEdits} className="mt-1" onChange={(event) => onOverwriteManualEditsChange(event.target.checked)} type="checkbox" />
-              Manuell editierte Positionen überschreiben
-            </label>
-            <Button disabled={saving} onClick={onReparseAll} variant="secondary">
-              <RotateCcw className="h-4 w-4" />
-              Alle Bons erneut parsen
-            </Button>
-          </div>
-
-          <div className="rounded-md border border-red-200 bg-red-50/50 p-4 dark:border-red-900 dark:bg-red-950/20">
-            <div className="space-y-2 text-sm text-zinc-700 dark:text-zinc-200">
-              <div className="font-medium text-red-700 dark:text-red-300">Importierte Bon-Daten zurücksetzen</div>
-              <p>
-                Löscht alle importierten Bons inklusive Positionen, Parse-Ergebnissen, Kategoriezuordnungen,
-                KI-Vorschlägen und Sync-Protokollen. Kategorien, Regeln, Einstellungen und Datenbankmigrationen
-                bleiben erhalten.
-              </p>
-              <p>
-                Gib zur Bestätigung exakt <code className="rounded bg-white px-1.5 py-0.5 font-mono text-xs dark:bg-zinc-900">DELETE_IMPORTED_RECEIPTS</code> ein.
-              </p>
-            </div>
-            <div className="mt-3">
-              <Field label="Bestätigungstext">
-                <Input
-                  onChange={(event) => onResetConfirmationChange(event.target.value)}
-                  placeholder="DELETE_IMPORTED_RECEIPTS"
-                  value={resetConfirmation}
-                />
-              </Field>
-            </div>
-            <Button className="mt-3" disabled={saving || resetConfirmation !== "DELETE_IMPORTED_RECEIPTS"} onClick={onResetImportedReceipts} variant="danger">
-              <Trash2 className="h-4 w-4" />
-              Importierte Bon-Daten löschen
-            </Button>
-          </div>
+        <CardHeader><CardTitle>OpenRouter</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <Field label="OpenRouter API-Key" help="Der gespeicherte Schlüssel wird niemals im Klartext angezeigt.">
+            <SecretInput aria-label="OpenRouter API-Key" masked={settings.openRouterApiKey === "********"} onChangeValue={(value) => onSettingsChange({ ...settings, openRouterApiKey: value })} value={settings.openRouterApiKey ?? ""} />
+          </Field>
+          <Field label="OpenRouter URL"><Input onChange={(event) => onSettingsChange({ ...settings, openRouterBaseUrl: event.target.value })} value={settings.openRouterBaseUrl ?? ""} /></Field>
+          <Field label="OpenRouter Modell"><Input onChange={(event) => onSettingsChange({ ...settings, openRouterModel: event.target.value })} value={settings.openRouterModel ?? ""} /></Field>
+          <Field label="Währung"><Input maxLength={3} onChange={(event) => onSettingsChange({ ...settings, currency: event.target.value.toUpperCase() })} value={settings.currency ?? "EUR"} /></Field>
+          <Button disabled={saving} onClick={() => onTestConnection("OPENROUTER")} variant="secondary">OpenRouter testen</Button>
         </CardContent>
       </Card>
+      <div className="flex justify-end xl:col-span-2">
+        <Button disabled={saving} onClick={onSave}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Speichern</Button>
+      </div>
     </div>
   );
 }
 
+function AiParserSettings({ onSave, onSettingsChange, saving, settings }: {
+  onSave: () => void;
+  onSettingsChange: (settings: SettingsDTO) => void;
+  saving: boolean;
+  settings: SettingsDTO;
+}) {
+  const confidence = settings.aiCategorizationMinConfidence ?? 0.9;
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader><CardTitle>KI-Kategorisierung & Produkthistorie</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-3">
+          <Field label="KI-Kategorisierung Mindest-Konfidenz"><Input max={1} min={0} onChange={(event) => onSettingsChange({ ...settings, aiCategorizationMinConfidence: Number(event.target.value) })} step={0.001} type="number" value={confidence} /></Field>
+          <Field label="Mindestens bestätigte Treffer"><Input min={1} onChange={(event) => onSettingsChange({ ...settings, productHistoryMinConfirmedMatches: Number(event.target.value) })} type="number" value={settings.productHistoryMinConfirmedMatches ?? 3} /></Field>
+          <Field label="Erforderlicher Variantenanteil"><Input max={1} min={0} onChange={(event) => onSettingsChange({ ...settings, productHistoryMinVariantShare: Number(event.target.value) })} step={0.001} type="number" value={settings.productHistoryMinVariantShare ?? 0.9} /></Field>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader><CardTitle>KI-Parsing-Fallback</CardTitle></CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2">
+          <label className="flex items-center gap-2 text-sm"><input aria-label="KI-Parsing aktiv" checked={settings.aiParsingFallbackEnabled ?? true} onChange={(event) => onSettingsChange({ ...settings, aiParsingFallbackEnabled: event.target.checked })} type="checkbox" />KI-Parsing aktiv</label>
+          <label className="flex items-center gap-2 text-sm"><input aria-label="Lokale Debug-Snippets speichern" checked={settings.aiParsingStoreDebugSnippets ?? false} onChange={(event) => onSettingsChange({ ...settings, aiParsingStoreDebugSnippets: event.target.checked })} type="checkbox" />Lokale Debug-Snippets speichern</label>
+          <Field label="Parsing-Modell"><Input onChange={(event) => onSettingsChange({ ...settings, aiParsingModel: event.target.value })} value={settings.aiParsingModel ?? ""} /></Field>
+          <Field label="Parsing Max Tokens"><Input min={1} onChange={(event) => onSettingsChange({ ...settings, aiParsingMaxTokens: Number(event.target.value) })} type="number" value={settings.aiParsingMaxTokens ?? 2500} /></Field>
+          <Field label="Parsing Temperature"><Input max={2} min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingTemperature: Number(event.target.value) })} step={0.1} type="number" value={settings.aiParsingTemperature ?? 0} /></Field>
+          <Field label="Parsing Mindest-Konfidenz"><Input max={1} min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingMinConfidence: Number(event.target.value) })} step={0.001} type="number" value={settings.aiParsingMinConfidence ?? 0.9} /></Field>
+          <Field label="Sync-Call-Limit"><Input min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingSyncCallLimit: Number(event.target.value) })} type="number" value={settings.aiParsingSyncCallLimit ?? 25} /></Field>
+          <Field label="Textmodus"><select className={selectClassName} onChange={(event) => onSettingsChange({ ...settings, aiParsingTextMode: event.target.value as "MINIMIZED" | "FULL_TEXT" })} value={settings.aiParsingTextMode ?? "MINIMIZED"}><option value="MINIMIZED">MINIMIZED</option><option value="FULL_TEXT">FULL_TEXT</option></select></Field>
+        </CardContent>
+      </Card>
+      <div className="flex justify-end"><Button disabled={saving} onClick={onSave}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Speichern</Button></div>
+    </div>
+  );
+}
+
+function MaintenanceSettings({ onOverwriteManualEditsChange, onProductResetConfirmationChange, onReparseAll, onRequestProductReset, onRequestReceiptReset, onResetConfirmationChange, overwriteManualEdits, productResetConfirmation, resetConfirmation, saving }: {
+  onOverwriteManualEditsChange: (value: boolean) => void;
+  onProductResetConfirmationChange: (value: string) => void;
+  onReparseAll: () => void;
+  onRequestProductReset: () => void;
+  onRequestReceiptReset: () => void;
+  onResetConfirmationChange: (value: string) => void;
+  overwriteManualEdits: boolean;
+  productResetConfirmation: string;
+  resetConfirmation: string;
+  saving: boolean;
+}) {
+  return <div className="space-y-4">
+    <Card><CardHeader><CardTitle>Bons neu verarbeiten</CardTitle></CardHeader><CardContent className="space-y-3"><label className="flex items-center gap-2 text-sm"><input checked={overwriteManualEdits} onChange={(event) => onOverwriteManualEditsChange(event.target.checked)} type="checkbox" />Manuell editierte Positionen überschreiben</label><Button disabled={saving} onClick={onReparseAll} variant="secondary"><RotateCcw className="h-4 w-4" />Alle Bons erneut parsen</Button></CardContent></Card>
+    <div className="grid gap-4 xl:grid-cols-2">
+      <DangerCard description="Löscht importierte Bons, Positionen sowie zugehörige Parser-, KI- und Sync-Daten. Kategorien, Regeln, Produktstammdaten, Einstellungen und Backups bleiben erhalten." title="Importierte Bon-Daten zurücksetzen">
+        <Field label="Bon-Daten Bestätigung"><Input onChange={(event) => onResetConfirmationChange(event.target.value)} placeholder="DELETE_IMPORTED_RECEIPTS" value={resetConfirmation} /></Field>
+        <Button disabled={saving || resetConfirmation !== "DELETE_IMPORTED_RECEIPTS"} onClick={onRequestReceiptReset} variant="danger"><Trash2 className="h-4 w-4" />Importierte Bon-Daten löschen</Button>
+      </DangerCard>
+      <DangerCard description="Löscht Produktfamilien, Varianten, Produktregeln, Reviewstatus, Zuordnungen und Preis-Ausschlüsse. Importierte Bons, Kategorien und Kategorisierungsregeln bleiben erhalten." title="Produktdaten zurücksetzen">
+        <Field label="Produktdaten Bestätigung"><Input onChange={(event) => onProductResetConfirmationChange(event.target.value)} placeholder="DELETE_PRODUCT_DATA" value={productResetConfirmation} /></Field>
+        <Button disabled={saving || productResetConfirmation !== "DELETE_PRODUCT_DATA"} onClick={onRequestProductReset} variant="danger"><Trash2 className="h-4 w-4" />Produktdaten löschen</Button>
+      </DangerCard>
+    </div>
+  </div>;
+}
+
+function DangerCard({ children, description, title }: { children: ReactNode; description: string; title: string }) {
+  return <Card className="border-red-200 dark:border-red-900"><CardHeader><CardTitle>{title}</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm text-zinc-600 dark:text-zinc-300">{description}</p>{children}</CardContent></Card>;
+}
+
+function SystemSettings({ systemInfo }: { systemInfo: SystemInfoDTO | null }) {
+  return <Card><CardHeader><CardTitle>Systeminformationen</CardTitle></CardHeader><CardContent><dl className="grid gap-2 text-sm sm:grid-cols-[180px_1fr]"><dt className="text-zinc-500">Software-Version</dt><dd className="font-medium">{systemInfo?.version ?? "unbekannt"}</dd></dl></CardContent></Card>;
+}
 function BackupSettings({
   backupFile,
   confirmation,
@@ -914,6 +816,7 @@ function BackupSettings({
             label="Backup-ZIP"
           >
             <Input
+              aria-label="Backup-ZIP"
               accept=".zip,application/zip"
               onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
               type="file"
@@ -935,6 +838,7 @@ function BackupSettings({
             label="Restore-Bestätigung"
           >
             <Input
+              aria-label="Restore-Bestätigung"
               onChange={(event) => onConfirmationChange(event.target.value)}
               placeholder={RESTORE_CONFIRMATION}
               value={confirmation}
@@ -1465,6 +1369,15 @@ function normalizeRule(rule: CategorizationRuleRequest): CategorizationRuleReque
     matchValue: rule.matchValue.trim(),
     applyToExisting: Boolean(rule.applyToExisting)
   };
+}
+
+function changedSecret(value: string): string | undefined {
+  const trimmed = value.trim();
+  return trimmed && trimmed !== "********" ? trimmed : undefined;
+}
+
+function productResetSummary(result: ProductDataResetResultDTO): string {
+  return `${result.message} ${result.clearedAssignments} Zuordnungen, ${result.deletedAssignmentLogs} Protokolle, ${result.deletedProductRules} Regeln, ${result.deletedProductVariants} Varianten und ${result.deletedProductFamilies} Familien gelöscht.`;
 }
 
 function backupTableLabel(name: string): string {

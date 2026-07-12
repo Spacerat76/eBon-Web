@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { BarChart3, Boxes, Home, ReceiptText, Search, Settings, SlidersHorizontal } from "lucide-react";
+import { BarChart3, Boxes, Home, ReceiptText, Search, Settings, SlidersHorizontal, Tags } from "lucide-react";
 
 import { AppShell, type NavigationItem } from "@/components/app-shell";
 import { SessionAccess } from "@/components/session-access";
@@ -19,8 +19,9 @@ const navigation: NavigationItem[] = [
   { href: "#/", label: "Übersicht", icon: Home, group: "workspace" },
   { href: "#/receipts", label: "Bons", icon: ReceiptText, group: "workspace" },
   { href: "#/search", label: "Suche", icon: Search, group: "workspace" },
-  { href: "#/reports", label: "Reports", icon: BarChart3, group: "workspace" },
   { href: "#/products", label: "Produkte", icon: Boxes, group: "workspace" },
+  { href: "#/reports", label: "Berichte", icon: BarChart3, group: "workspace" },
+  { href: "#/settings/categories", label: "Kategorien & Regeln", icon: Tags, group: "manage" },
   { href: "#/settings", label: "Einstellungen", icon: Settings, group: "manage" }
 ];
 
@@ -75,8 +76,12 @@ export default function App() {
           <ReportsPage apiClient={apiClient} hasApiToken={Boolean(apiToken.trim())} />
         ) : routePath === "/products" ? (
           <ProductsPage apiClient={apiClient} hasApiToken={Boolean(apiToken.trim())} />
-        ) : routePath === "/settings" ? (
-          <SettingsPage apiClient={apiClient} hasApiToken={Boolean(apiToken.trim())} />
+        ) : routePath === "/settings" || routePath === "/settings/categories" ? (
+          <SettingsPage
+            apiClient={apiClient}
+            hasApiToken={Boolean(apiToken.trim())}
+            initialSection={settingsSectionFromRoute(routePath, routeParams.get("section"))}
+          />
         ) : (
           <PlaceholderPage
             icon={routeIcon(routePath)}
@@ -86,6 +91,13 @@ export default function App() {
       </Suspense>
     </AppShell>
   );
+}
+
+function settingsSectionFromRoute(routePath: string, section: string | null): "categories" | "rules" | "connections" {
+  if (routePath === "/settings/categories") {
+    return "categories";
+  }
+  return section === "categories" || section === "rules" ? section : "connections";
 }
 
 function normalizeHash(hash: string): string {
