@@ -107,6 +107,8 @@ describe("SettingsPage", () => {
     expect(screen.getByLabelText("Parsing Mindest-Konfidenz")).toHaveValue(0.9);
     expect(screen.getByLabelText("Sync-Call-Limit")).toHaveValue(25);
     expect(screen.getByLabelText("Textmodus")).toHaveValue("MINIMIZED");
+    expect(screen.getByLabelText("Textmodus")).toHaveAttribute("aria-describedby", "ai-parsing-text-mode-help");
+    expect(screen.getByText("FULL_TEXT überträgt den vollständigen Bontext an OpenRouter. Ein manueller Reparse mit FULL_TEXT erfordert eine zusätzliche Bestätigung.")).toBeInTheDocument();
   });
 
   it("follows section changes from application navigation", async () => {

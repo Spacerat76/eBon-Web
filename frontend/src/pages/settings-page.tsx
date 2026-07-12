@@ -713,7 +713,7 @@ function AiParserSettings({ onSave, onSettingsChange, saving, settings }: {
           <Field label="Parsing Temperature"><Input max={2} min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingTemperature: Number(event.target.value) })} step={0.1} type="number" value={settings.aiParsingTemperature ?? 0} /></Field>
           <Field label="Parsing Mindest-Konfidenz"><Input max={1} min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingMinConfidence: Number(event.target.value) })} step={0.001} type="number" value={settings.aiParsingMinConfidence ?? 0.9} /></Field>
           <Field label="Sync-Call-Limit"><Input min={0} onChange={(event) => onSettingsChange({ ...settings, aiParsingSyncCallLimit: Number(event.target.value) })} type="number" value={settings.aiParsingSyncCallLimit ?? 25} /></Field>
-          <Field label="Textmodus"><select className={selectClassName} onChange={(event) => onSettingsChange({ ...settings, aiParsingTextMode: event.target.value as "MINIMIZED" | "FULL_TEXT" })} value={settings.aiParsingTextMode ?? "MINIMIZED"}><option value="MINIMIZED">MINIMIZED</option><option value="FULL_TEXT">FULL_TEXT</option></select></Field>
+          <Field help="FULL_TEXT überträgt den vollständigen Bontext an OpenRouter. Ein manueller Reparse mit FULL_TEXT erfordert eine zusätzliche Bestätigung." helpId="ai-parsing-text-mode-help" label="Textmodus"><select aria-describedby="ai-parsing-text-mode-help" aria-label="Textmodus" className={selectClassName} onChange={(event) => onSettingsChange({ ...settings, aiParsingTextMode: event.target.value as "MINIMIZED" | "FULL_TEXT" })} value={settings.aiParsingTextMode ?? "MINIMIZED"}><option value="MINIMIZED">MINIMIZED</option><option value="FULL_TEXT">FULL_TEXT</option></select></Field>
         </CardContent>
       </Card>
       <div className="flex justify-end"><Button disabled={saving} onClick={onSave}>{saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Speichern</Button></div>
@@ -1424,12 +1424,12 @@ function matchTypeLabel(value: RuleMatchType): string {
   }[value];
 }
 
-function Field({ children, help, label }: { children: ReactNode; help?: string; label: string }) {
+function Field({ children, help, helpId, label }: { children: ReactNode; help?: string; helpId?: string; label: string }) {
   return (
     <label className="block text-sm">
       <span className="mb-1 block text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">{label}</span>
       {children}
-      {help ? <span className="mt-1 block text-xs leading-5 text-zinc-500 dark:text-zinc-400">{help}</span> : null}
+      {help ? <span className="mt-1 block text-xs leading-5 text-zinc-500 dark:text-zinc-400" id={helpId}>{help}</span> : null}
     </label>
   );
 }
