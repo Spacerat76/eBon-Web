@@ -93,6 +93,22 @@ function apiClient(options: {
 }
 
 describe("ProductsPage", () => {
+  it("opens the focused review queue with count, receipt context, impact, and labeled decisions", async () => {
+    render(<ProductsPage apiClient={apiClient()} hasApiToken />);
+
+    const openTab = await screen.findByRole("tab", { name: "Offen" });
+    expect(openTab).toHaveAttribute("aria-selected", "true");
+    expect(within(openTab).getByText("1")).toBeInTheDocument();
+
+    expect(await screen.findByRole("heading", { name: "Bon-Kontext" })).toBeInTheDocument();
+    expect(screen.getByText("dm · Neuss")).toBeInTheDocument();
+    expect(screen.getByText("3 ähnliche offene Positionen")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Übernehmen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Korrigieren" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Als kein Produkt markieren" })).toHaveTextContent("Kein Produkt");
+    expect(screen.getByRole("button", { name: "Vorschlag ablehnen" })).toHaveTextContent("Ablehnen");
+  });
+
   it("loads the review queue, applies filters, and confirms an AI proposal", async () => {
     const user = userEvent.setup();
     const api = apiClient();
@@ -192,7 +208,7 @@ describe("ProductsPage", () => {
     render(<ProductsPage apiClient={api} hasApiToken />);
 
     await screen.findByText("Haferdrink Barista");
-    await user.click(screen.getByRole("button", { name: "Preisvergleich" }));
+    await user.click(screen.getByRole("tab", { name: "Preisvergleich" }));
 
     expect(await screen.findByText("Produktpreisvergleich")).toBeInTheDocument();
     expect(await screen.findByText("Historisches Minimum (EUR/l)")).toBeInTheDocument();

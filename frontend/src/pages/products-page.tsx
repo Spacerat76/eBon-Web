@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FilterBar } from "@/components/data/filter-bar";
+import { PageTabs } from "@/components/layout/page-tabs";
 import { Input } from "@/components/ui/input";
 import type { ApiClient } from "@/lib/api";
 import { ProductPriceComparison } from "@/pages/product-price-comparison";
@@ -23,7 +25,7 @@ import type {
   ProductVariantRequest
 } from "@/lib/types";
 
-type ProductTab = "review" | "master-data" | "prices";
+export type ProductPageTab = "review" | "families" | "variants" | "rules" | "structure" | "prices";
 type ReviewFilters = Omit<ProductReviewParams, "page" | "size" | "store" | "status" | "confidenceMax"> & {
   store: string;
   status: "" | ProductAssignmentStatus;
@@ -33,7 +35,7 @@ type ReviewFilters = Omit<ProductReviewParams, "page" | "size" | "store" | "stat
 const defaultFilters: ReviewFilters = { store: "", status: "NEEDS_REVIEW", confidenceMax: "" };
 
 export function ProductsPage({ apiClient, hasApiToken }: { apiClient: ApiClient; hasApiToken: boolean }) {
-  const [activeTab, setActiveTab] = useState<ProductTab>("review");
+  const [activeTab, setActiveTab] = useState<ProductPageTab>("review");
   const [review, setReview] = useState<PageResponse<ProductReviewItemDTO> | null>(null);
   const [families, setFamilies] = useState<ProductFamilyDTO[]>([]);
   const [variants, setVariants] = useState<ProductVariantDTO[]>([]);
@@ -152,11 +154,18 @@ export function ProductsPage({ apiClient, hasApiToken }: { apiClient: ApiClient;
 
       {message ? <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">{message}</div> : null}
 
-      <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-800">
-        <button className={tabClass(activeTab === "review")} onClick={() => setActiveTab("review")}>Prüfliste</button>
-        <button className={tabClass(activeTab === "master-data")} onClick={() => setActiveTab("master-data")}>Pflege</button>
-        <button className={tabClass(activeTab === "prices")} onClick={() => setActiveTab("prices")}>Preisvergleich</button>
-      </div>
+      <PageTabs
+        active={activeTab}
+        onChange={setActiveTab}
+        tabs={[
+          { id: "review", label: "Offen", count: review?.totalElements ?? 0 },
+          { id: "families", label: "Familien" },
+          { id: "variants", label: "Varianten" },
+          { id: "rules", label: "Regeln" },
+          { id: "structure", label: "Struktur" },
+          { id: "prices", label: "Preisvergleich" }
+        ]}
+      />
 
       {activeTab === "review" ? (
         <ReviewTable
@@ -177,10 +186,10 @@ export function ProductsPage({ apiClient, hasApiToken }: { apiClient: ApiClient;
           onSuggestRule={(item) => void proposeRule(item)}
           review={review}
         />
-      ) : activeTab === "master-data" ? (
-        <MasterData apiClient={apiClient} families={families} onChanged={load} rules={rules} variants={variants} variantsByFamily={variantsByFamily} />
-      ) : (
+      ) : activeTab === "prices" ? (
         <ProductPriceComparison apiClient={apiClient} families={families} variants={variants} />
+      ) : (
+        <MasterData apiClient={apiClient} families={families} onChanged={load} rules={rules} variants={variants} variantsByFamily={variantsByFamily} />
       )}
 
       {selected ? <CorrectionDialog families={families} item={selected} loading={loading} onCancel={() => setSelected(null)} onConfirm={(request) => void action("Produktzuordnung korrigiert.", () => apiClient.correctProductReview(selected.receiptItemId, request))} onNoProduct={() => void action("Position als keine Produktposition markiert.", () => apiClient.markProductReviewNoProduct(selected.receiptItemId))} variantsByFamily={variantsByFamily} /> : null}
@@ -208,8 +217,168 @@ function ReviewTable({ categories, families, filters, loading, onAccept, onClear
   onSuggestRule: (item: ProductReviewItemDTO) => void;
   review: PageResponse<ProductReviewItemDTO> | null;
 }) {
+  const [focusedItemId, setFocusedItemId] = useState<number | null>(null);
+  const items = review?.content ?? [];
+  const focusedItem = items.find((item) => item.receiptItemId === focusedItemId) ?? items[0] ?? null;
   const change = (value: Partial<ReviewFilters>) => onFiltersChange({ ...filters, ...value });
-  return <Card><CardHeader className="gap-3"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><CardTitle>Offene Produktzuordnungen</CardTitle><p className="text-sm text-zinc-500">Häufige und teure Fälle stehen oben.</p></div><div className="grid gap-2 md:grid-cols-3 xl:grid-cols-5"><Input aria-label="Store filtern" className="h-9" onChange={(event) => change({ store: event.target.value })} placeholder="Store" value={filters.store} /><select aria-label="Produktfamilie filtern" className={selectClass} onChange={(event) => change({ productFamilyId: event.target.value ? Number(event.target.value) : undefined })} value={filters.productFamilyId ?? ""}><option value="">Alle Familien</option>{families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select><select aria-label="Kategorie filtern" className={selectClass} onChange={(event) => change({ categoryId: event.target.value ? Number(event.target.value) : undefined })} value={filters.categoryId ?? ""}><option value="">Alle Kategorien</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><select aria-label="Quelle filtern" className={selectClass} onChange={(event) => change({ source: (event.target.value || undefined) as ProductAssignmentSource | undefined })} value={filters.source ?? ""}><option value="">Alle Quellen</option><option value="RULE">Regel</option><option value="HISTORY">Historie</option><option value="AI">KI</option><option value="MANUAL">Manuell</option></select><select aria-label="Status filtern" className={selectClass} onChange={(event) => change({ status: event.target.value as "" | ProductAssignmentStatus })} value={filters.status}><option value="">Alle Status</option><option value="NEEDS_REVIEW">Prüfen</option><option value="AUTO_ASSIGNED">Automatisch</option><option value="CONFIRMED">Bestätigt</option><option value="REJECTED">Abgelehnt</option><option value="NO_PRODUCT">Kein Produkt</option></select><Input aria-label="Zeitraum von" className="h-9" onChange={(event) => change({ dateFrom: event.target.value || undefined })} type="date" value={filters.dateFrom ?? ""} /><Input aria-label="Zeitraum bis" className="h-9" onChange={(event) => change({ dateTo: event.target.value || undefined })} type="date" value={filters.dateTo ?? ""} /><Input aria-label="Maximale Konfidenz" className="h-9" max="1" min="0" onChange={(event) => change({ confidenceMax: event.target.value })} placeholder="Konfidenz bis" step="0.01" type="number" value={filters.confidenceMax} /><div className="flex gap-2"><Button onClick={onSubmitFilters} size="sm" variant="secondary">Filtern</Button><Button onClick={onResetFilters} size="sm" variant="ghost">Reset</Button></div></div></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1240px] w-full text-left text-sm"><thead className="border-y border-zinc-200 text-xs uppercase text-zinc-500 dark:border-zinc-800"><tr><th className="px-4 py-3">Bon</th><th className="px-4 py-3">Position</th><th className="px-4 py-3">Vorschlag</th><th className="px-4 py-3">Grund</th><th className="px-4 py-3">Auswirkung</th><th className="px-4 py-3 text-right">Aktion</th></tr></thead><tbody>{review?.content.map((item) => <tr className="border-b border-zinc-100 align-top dark:border-zinc-900" key={item.receiptItemId}><td className="px-4 py-3"><button className="text-left text-blue-700 hover:underline dark:text-blue-300" onClick={() => { window.location.hash = `#/receipts/${item.receiptId}`; }}>{formatDate(item.receiptDate)}<span className="block text-xs text-zinc-500">{item.storeName ?? "Unbekannt"}{item.storeBranch ? ` · ${item.storeBranch}` : ""}</span></button></td><td className="px-4 py-3"><div className="max-w-80 font-medium text-zinc-900 dark:text-zinc-100">{item.description}</div><div className="mt-1 text-xs text-zinc-500">{formatQuantity(item)} · {formatEuro(item.totalPrice)}</div></td><td className="px-4 py-3"><div>{item.suggestedProductFamilyName ?? item.currentProductFamilyName ?? "Ohne Vorschlag"}</div><div className="text-xs text-zinc-500">{productDetailLabel(item)}</div><div className="mt-1 flex gap-1"><Badge tone={item.assignmentStatus === "NEEDS_REVIEW" ? "yellow" : "blue"}>{labelStatus(item.assignmentStatus)}</Badge>{item.confidence == null ? null : <Badge>{Math.round(item.confidence * 100)} %</Badge>}</div></td><td className="px-4 py-3 text-xs text-zinc-600 dark:text-zinc-300">{item.reason ?? "Unklare Zuordnung"}</td><td className="px-4 py-3 text-xs text-zinc-600 dark:text-zinc-300">{item.possibleRetroactiveItems} ähnliche Positionen</td><td className="px-4 py-3"><div className="flex justify-end gap-1"><IconButton disabled={loading || item.suggestedProductFamilyId == null} label="Übernehmen" onClick={() => onAccept(item)}><Check className="h-4 w-4" /></IconButton><IconButton disabled={loading} label="Korrigieren" onClick={() => onCorrect(item)}><Pencil className="h-4 w-4" /></IconButton><IconButton disabled={loading || item.currentProductFamilyId == null} label="Aus Zuordnung abspalten" onClick={() => onSplit(item)}><GitFork className="h-4 w-4" /></IconButton><IconButton disabled={loading} label="Regel vorschlagen" onClick={() => onSuggestRule(item)}><Sparkles className="h-4 w-4" /></IconButton><IconButton disabled={loading} label="Als kein Produkt markieren" onClick={() => onNoProduct(item)}><CircleOff className="h-4 w-4" /></IconButton><IconButton disabled={loading} label="Vorschlag ablehnen" onClick={() => onReject(item)}><X className="h-4 w-4" /></IconButton><IconButton disabled={loading} label="Zuordnung entfernen" onClick={() => onClear(item)}><Eraser className="h-4 w-4" /></IconButton></div></td></tr>)}</tbody></table></div>{review?.content.length === 0 ? <p className="p-6 text-sm text-zinc-500">Keine offenen Produktzuordnungen.</p> : null}{review && review.totalPages > 1 ? <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 text-sm dark:border-zinc-800"><span>Seite {review.page + 1} von {review.totalPages}</span><div className="flex gap-2"><Button disabled={loading || review.page === 0} onClick={() => onPageChange(review.page - 1)} size="sm" variant="secondary">Zurück</Button><Button disabled={loading || review.page + 1 >= review.totalPages} onClick={() => onPageChange(review.page + 1)} size="sm" variant="secondary">Weiter</Button></div></div> : null}</CardContent></Card>;
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setFocusedItemId(null);
+    } else if (!items.some((item) => item.receiptItemId === focusedItemId)) {
+      setFocusedItemId(items[0].receiptItemId);
+    }
+  }, [focusedItemId, items]);
+
+  return (
+    <div className="space-y-4">
+      <FilterBar>
+        <div className="grid min-w-0 flex-1 gap-2 md:grid-cols-3 xl:grid-cols-5">
+          <Input aria-label="Store filtern" className="h-9" onChange={(event) => change({ store: event.target.value })} placeholder="Store" value={filters.store} />
+          <select aria-label="Produktfamilie filtern" className={selectClass} onChange={(event) => change({ productFamilyId: event.target.value ? Number(event.target.value) : undefined })} value={filters.productFamilyId ?? ""}>
+            <option value="">Alle Familien</option>
+            {families.map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}
+          </select>
+          <select aria-label="Kategorie filtern" className={selectClass} onChange={(event) => change({ categoryId: event.target.value ? Number(event.target.value) : undefined })} value={filters.categoryId ?? ""}>
+            <option value="">Alle Kategorien</option>
+            {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+          <select aria-label="Quelle filtern" className={selectClass} onChange={(event) => change({ source: (event.target.value || undefined) as ProductAssignmentSource | undefined })} value={filters.source ?? ""}>
+            <option value="">Alle Quellen</option>
+            <option value="RULE">Regel</option>
+            <option value="HISTORY">Historie</option>
+            <option value="AI">KI</option>
+            <option value="MANUAL">Manuell</option>
+          </select>
+          <select aria-label="Status filtern" className={selectClass} onChange={(event) => change({ status: event.target.value as "" | ProductAssignmentStatus })} value={filters.status}>
+            <option value="">Alle Status</option>
+            <option value="NEEDS_REVIEW">Prüfen</option>
+            <option value="AUTO_ASSIGNED">Automatisch</option>
+            <option value="CONFIRMED">Bestätigt</option>
+            <option value="REJECTED">Abgelehnt</option>
+            <option value="NO_PRODUCT">Kein Produkt</option>
+          </select>
+          <Input aria-label="Zeitraum von" className="h-9" onChange={(event) => change({ dateFrom: event.target.value || undefined })} type="date" value={filters.dateFrom ?? ""} />
+          <Input aria-label="Zeitraum bis" className="h-9" onChange={(event) => change({ dateTo: event.target.value || undefined })} type="date" value={filters.dateTo ?? ""} />
+          <Input aria-label="Maximale Konfidenz" className="h-9" max="1" min="0" onChange={(event) => change({ confidenceMax: event.target.value })} placeholder="Konfidenz bis" step="0.01" type="number" value={filters.confidenceMax} />
+          <div className="flex gap-2">
+            <Button onClick={onSubmitFilters} size="sm" variant="secondary">Filtern</Button>
+            <Button onClick={onResetFilters} size="sm" variant="ghost">Reset</Button>
+          </div>
+        </div>
+      </FilterBar>
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(28rem,1.1fr)]">
+        <Card>
+          <CardHeader className="gap-1">
+            <CardTitle>Offene Produktzuordnungen</CardTitle>
+            <p className="text-sm text-zinc-500">Häufige und teure Fälle stehen oben.</p>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-900">
+              {items.map((item) => {
+                const active = item.receiptItemId === focusedItem?.receiptItemId;
+                return (
+                  <button
+                    aria-pressed={active}
+                    className={`w-full px-4 py-3 text-left transition ${active ? "bg-blue-50 dark:bg-blue-950/40" : "hover:bg-zinc-50 dark:hover:bg-zinc-900"}`}
+                    key={item.receiptItemId}
+                    onClick={() => setFocusedItemId(item.receiptItemId)}
+                    type="button"
+                  >
+                    <span className="flex items-start justify-between gap-3">
+                      <span>
+                        <span className="block font-medium text-zinc-950 dark:text-zinc-50">{item.description}</span>
+                        <span className="mt-1 block text-xs text-zinc-500">{formatDate(item.receiptDate)} · {item.storeName ?? "Unbekannt"}</span>
+                      </span>
+                      {item.confidence == null ? null : <Badge>{Math.round(item.confidence * 100)} %</Badge>}
+                    </span>
+                    <span className="mt-2 block text-sm text-zinc-700 dark:text-zinc-200">{item.suggestedProductFamilyName ?? item.currentProductFamilyName ?? "Ohne Vorschlag"}</span>
+                    <span className="block text-xs text-zinc-500">{productDetailLabel(item)}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {items.length === 0 ? <p className="p-6 text-sm text-zinc-500">Keine offenen Produktzuordnungen.</p> : null}
+            {review && review.totalPages > 1 ? (
+              <div className="flex items-center justify-between border-t border-zinc-200 px-4 py-3 text-sm dark:border-zinc-800">
+                <span>Seite {review.page + 1} von {review.totalPages}</span>
+                <div className="flex gap-2">
+                  <Button disabled={loading || review.page === 0} onClick={() => onPageChange(review.page - 1)} size="sm" variant="secondary">Zurück</Button>
+                  <Button disabled={loading || review.page + 1 >= review.totalPages} onClick={() => onPageChange(review.page + 1)} size="sm" variant="secondary">Weiter</Button>
+                </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {focusedItem ? (
+          <Card>
+            <CardHeader className="gap-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Ausgewählte Position</p>
+                  <CardTitle className="mt-1 text-base">Prüfung für {focusedItem.description}</CardTitle>
+                </div>
+                <div className="flex gap-1">
+                  <Badge tone={focusedItem.assignmentStatus === "NEEDS_REVIEW" ? "yellow" : "blue"}>{labelStatus(focusedItem.assignmentStatus)}</Badge>
+                  {focusedItem.confidence == null ? null : <Badge>{Math.round(focusedItem.confidence * 100)} %</Badge>}
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <section className="grid gap-3 rounded-lg border border-zinc-200 p-4 dark:border-zinc-800 sm:grid-cols-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Bon-Kontext</h2>
+                  <button className="mt-2 text-left text-sm text-blue-700 hover:underline dark:text-blue-300" onClick={() => { window.location.hash = `#/receipts/${focusedItem.receiptId}`; }} type="button">
+                    {formatDate(focusedItem.receiptDate)}
+                  </button>
+                  <p className="text-sm text-zinc-600 dark:text-zinc-300">{focusedItem.storeName ?? "Unbekannt"}{focusedItem.storeBranch ? ` · ${focusedItem.storeBranch}` : ""}</p>
+                  <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">{formatQuantity(focusedItem)} · {formatEuro(focusedItem.totalPrice)}</p>
+                  {focusedItem.categoryName ? <p className="mt-1 text-xs text-zinc-500">Kategorie: {focusedItem.categoryName}</p> : null}
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-zinc-950 dark:text-zinc-50">Vorschlag</h2>
+                  <p className="mt-2 text-sm font-medium">{focusedItem.suggestedProductFamilyName ?? focusedItem.currentProductFamilyName ?? "Ohne Vorschlag"}</p>
+                  <p className="text-sm text-zinc-500">Details: {productDetailLabel(focusedItem)}</p>
+                  <p className="mt-2 text-xs text-zinc-600 dark:text-zinc-300">{focusedItem.reason ?? "Unklare Zuordnung"}</p>
+                </div>
+              </section>
+
+              <section className="rounded-lg bg-amber-50 p-4 dark:bg-amber-950/30">
+                <p className="text-sm font-medium text-amber-950 dark:text-amber-100">{focusedItem.possibleRetroactiveItems} ähnliche offene Positionen</p>
+                <p className="mt-1 text-xs text-amber-800 dark:text-amber-200">Eine Korrektur kann optional auf passende offene Positionen desselben Stores angewendet werden.</p>
+              </section>
+
+              <div className="flex flex-wrap gap-2">
+                <Button disabled={loading || focusedItem.suggestedProductFamilyId == null} onClick={() => onAccept(focusedItem)} size="sm">
+                  <Check className="h-4 w-4" />Übernehmen
+                </Button>
+                <Button disabled={loading} onClick={() => onCorrect(focusedItem)} size="sm" variant="secondary">
+                  <Pencil className="h-4 w-4" />Korrigieren
+                </Button>
+                <Button aria-label="Als kein Produkt markieren" disabled={loading} onClick={() => onNoProduct(focusedItem)} size="sm" title="Als kein Produkt markieren" variant="secondary">
+                  <CircleOff className="h-4 w-4" />Kein Produkt
+                </Button>
+                <Button aria-label="Vorschlag ablehnen" disabled={loading} onClick={() => onReject(focusedItem)} size="sm" title="Vorschlag ablehnen" variant="ghost">
+                  <X className="h-4 w-4" />Ablehnen
+                </Button>
+              </div>
+
+              <details className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
+                <summary className="cursor-pointer text-sm font-medium text-zinc-700 dark:text-zinc-200">Weitere Aktionen</summary>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <IconButton disabled={loading || focusedItem.currentProductFamilyId == null} label="Aus Zuordnung abspalten" onClick={() => onSplit(focusedItem)}><GitFork className="h-4 w-4" /></IconButton>
+                  <IconButton disabled={loading} label="Regel vorschlagen" onClick={() => onSuggestRule(focusedItem)}><Sparkles className="h-4 w-4" /></IconButton>
+                  <IconButton disabled={loading} label="Zuordnung entfernen" onClick={() => onClear(focusedItem)}><Eraser className="h-4 w-4" /></IconButton>
+                </div>
+              </details>
+            </CardContent>
+          </Card>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function MasterData({ apiClient, families, onChanged, rules, variants, variantsByFamily }: { apiClient: ApiClient; families: ProductFamilyDTO[]; onChanged: () => Promise<void>; rules: ProductRuleDTO[]; variants: ProductVariantDTO[]; variantsByFamily: Map<number, ProductVariantDTO[]> }) {
@@ -364,7 +533,6 @@ function Dialog({ children, title }: { children: React.ReactNode; title: string 
 function DialogActions({ disabled, label, onCancel, onConfirm }: { disabled: boolean; label: string; onCancel: () => void; onConfirm: () => void }) { return <div className="flex justify-end gap-2"><Button onClick={onCancel} size="sm" variant="secondary">Abbrechen</Button><Button disabled={disabled} onClick={onConfirm} size="sm">{label}</Button></div>; }
 function IconButton({ children, disabled, label, onClick }: { children: React.ReactNode; disabled: boolean; label: string; onClick: () => void }) { return <button aria-label={label} className="flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900" disabled={disabled} onClick={onClick} title={label} type="button">{children}</button>; }
 function TokenHint() { return <Card><CardContent className="py-10 text-center text-sm text-zinc-500">Für Produktzuordnungen muss oben ein API-Token gesetzt sein.</CardContent></Card>; }
-function tabClass(active: boolean) { return `border-b-2 px-3 py-2 text-sm font-medium ${active ? "border-zinc-950 text-zinc-950 dark:border-zinc-50 dark:text-zinc-50" : "border-transparent text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"}`; }
 function choiceClass(active: boolean) { return `rounded-md border px-3 py-2 text-left text-sm ${active ? "border-zinc-950 bg-zinc-950 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-950" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200 dark:hover:bg-zinc-900"}`; }
 const selectClass = "h-9 w-full rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-950";
 function readableProductName(description: string) {
