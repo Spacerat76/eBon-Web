@@ -29,7 +29,7 @@ function apiClient() {
 }
 
 describe("SearchPage", () => {
-  it("submits every visible and advanced search filter and renders removable active-filter chips", async () => {
+  it("submits every compatible search filter and removes one active-filter chip without changing the others", async () => {
     const user = userEvent.setup();
     const api = apiClient();
     render(<SearchPage apiClient={api as unknown as ApiClient} hasApiToken />);
@@ -45,9 +45,8 @@ describe("SearchPage", () => {
     await user.selectOptions(screen.getByLabelText("Produktvariante"), "9");
     await user.type(screen.getByLabelText("Betrag von"), "1");
     await user.type(screen.getByLabelText("Betrag bis"), "5");
-    await user.click(screen.getByRole("checkbox", { name: "Ohne Kategorie" }));
 
-    await waitFor(() => expect(api.search).toHaveBeenLastCalledWith(expect.objectContaining({
+    await waitFor(() => expect(api.search).toHaveBeenLastCalledWith({
       q: "Milch",
       store: "REWE",
       dateFrom: "2026-07-01",
@@ -57,12 +56,12 @@ describe("SearchPage", () => {
       productVariantId: 9,
       amountMin: 1,
       amountMax: 5,
-      uncategorizedOnly: true,
+      uncategorizedOnly: false,
       page: 0,
       size: 20,
       sortBy: "receiptDate",
       sortDir: "desc"
-    })));
+    }));
 
     for (const label of [
       "Suchtext: Milch",
@@ -73,20 +72,79 @@ describe("SearchPage", () => {
       "Produktfamilie: Coca Cola Zero",
       "Produktvariante: 0,5 l Flasche",
       "Betrag von: 1",
-      "Betrag bis: 5",
-      "Ohne Kategorie"
+      "Betrag bis: 5"
     ]) {
       expect(screen.getByRole("button", { name: `${label} entfernen` })).toBeInTheDocument();
     }
 
     await user.click(screen.getByRole("button", { name: "Geschäft: REWE entfernen" }));
-    await waitFor(() => expect(api.search).toHaveBeenLastCalledWith(expect.objectContaining({
+    await waitFor(() => expect(api.search).toHaveBeenLastCalledWith({
       q: "Milch",
       store: undefined,
+      dateFrom: "2026-07-01",
+      dateTo: "2026-07-31",
       categoryIds: [4],
       productFamilyId: 8,
       productVariantId: 9,
-      uncategorizedOnly: true
-    })));
+      amountMin: 1,
+      amountMax: 5,
+      uncategorizedOnly: false,
+      page: 0,
+      size: 20,
+      sortBy: "receiptDate",
+      sortDir: "desc"
+    }));
+  });
+
+  it("clears concrete categories and disables their selection when Ohne Kategorie is activated", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    render(<SearchPage apiClient={api as unknown as ApiClient} hasApiToken />);
+
+    await screen.findByText("Keine Treffer");
+    await user.click(screen.getByRole("button", { name: "Weitere Filter" }));
+    const categorySelect = screen.getByLabelText("Kategorien");
+    await user.selectOptions(categorySelect, "4");
+    expect(screen.getByRole("button", { name: "Kategorie: Getränke entfernen" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", { name: "Ohne Kategorie" }));
+
+    expect(categorySelect).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Kategorie: Getränke entfernen" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ohne Kategorie entfernen" })).toBeInTheDocument();
+    await waitFor(() => expect(api.search).toHaveBeenLastCalledWith({
+      page: 0,
+      size: 20,
+      sortBy: "receiptDate",
+      sortDir: "desc",
+      uncategorizedOnly: true,
+      categoryIds: []
+    }));
+  });
+
+  it("keeps Ohne Kategorie false when concrete categories are selected", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    render(<SearchPage apiClient={api as unknown as ApiClient} hasApiToken initialUncategorizedOnly />);
+
+    await screen.findByText("Keine Treffer");
+    await user.click(screen.getByRole("button", { name: "Weitere Filter" }));
+    const categorySelect = screen.getByLabelText("Kategorien");
+    expect(categorySelect).toBeDisabled();
+
+    await user.click(screen.getByRole("checkbox", { name: "Ohne Kategorie" }));
+    await user.selectOptions(categorySelect, "4");
+
+    expect(screen.getByRole("checkbox", { name: "Ohne Kategorie" })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Kategorie: Getränke entfernen" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ohne Kategorie entfernen" })).not.toBeInTheDocument();
+    await waitFor(() => expect(api.search).toHaveBeenLastCalledWith({
+      page: 0,
+      size: 20,
+      sortBy: "receiptDate",
+      sortDir: "desc",
+      uncategorizedOnly: false,
+      categoryIds: [4]
+    }));
   });
 });

@@ -163,7 +163,10 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
               <label className="mt-6 flex h-10 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm dark:border-zinc-800">
                 <input
                   checked={Boolean(filters.uncategorizedOnly)}
-                  onChange={(event) => updateFilter({ uncategorizedOnly: event.target.checked })}
+                  onChange={(event) => updateFilter({
+                    uncategorizedOnly: event.target.checked,
+                    categoryIds: event.target.checked ? [] : filters.categoryIds
+                  })}
                   type="checkbox"
                 />
                 Ohne Kategorie
@@ -178,9 +181,11 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
             <Field label="Kategorien">
               <select
                 className={selectClassName}
+                disabled={filters.uncategorizedOnly}
                 multiple
                 onChange={(event) => updateFilter({
-                  categoryIds: Array.from(event.target.selectedOptions).map((option) => Number(option.value))
+                  categoryIds: Array.from(event.target.selectedOptions).map((option) => Number(option.value)),
+                  uncategorizedOnly: false
                 })}
                 value={(filters.categoryIds ?? []).map(String)}
               >
