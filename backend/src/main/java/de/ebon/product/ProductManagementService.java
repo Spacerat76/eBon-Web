@@ -14,12 +14,15 @@ import de.ebon.persistence.model.ProductRule;
 import de.ebon.persistence.model.ProductVariant;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.CategoryRepository;
+import de.ebon.persistence.repository.IdCount;
 import de.ebon.persistence.repository.ProductFamilyRepository;
 import de.ebon.persistence.repository.ProductRuleRepository;
 import de.ebon.persistence.repository.ProductVariantRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
 import jakarta.persistence.EntityNotFoundException;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,7 +56,14 @@ public class ProductManagementService {
 
     @Transactional(readOnly = true)
     public List<ProductFamilyDto> families() {
-        return productFamilyRepository.findAll().stream().map(this::toFamilyDto).toList();
+        Map<Long, Long> variantCounts = countMap(productVariantRepository.countGroupedByProductFamily());
+        Map<Long, Long> assignmentCounts = countMap(receiptItemRepository.countGroupedByProductFamily());
+        return productFamilyRepository.findAll().stream()
+                .map(family -> toFamilyDto(
+                        family,
+                        variantCounts.getOrDefault(family.getId(), 0L),
+                        assignmentCounts.getOrDefault(family.getId(), 0L)))
+                .toList();
     }
 
     @Transactional
@@ -80,7 +90,10 @@ public class ProductManagementService {
         List<ProductVariant> variants = productFamilyId == null
                 ? productVariantRepository.findAll()
                 : productVariantRepository.findByProductFamily_IdOrderByNameAsc(productFamilyId);
-        return variants.stream().map(this::toVariantDto).toList();
+        Map<Long, Long> assignmentCounts = countMap(receiptItemRepository.countGroupedByProductVariant());
+        return variants.stream()
+                .map(variant -> toVariantDto(variant, assignmentCounts.getOrDefault(variant.getId(), 0L)))
+                .toList();
     }
 
     @Transactional
@@ -222,21 +235,36 @@ public class ProductManagementService {
     }
 
     private ProductFamilyDto toFamilyDto(ProductFamily family) {
+        return toFamilyDto(
+                family,
+                productVariantRepository.countByProductFamily_Id(family.getId()),
+                receiptItemRepository.countByProductFamily_Id(family.getId()));
+    }
+
+    private ProductFamilyDto toFamilyDto(ProductFamily family, long variantCount, long assignedItemsCount) {
         Category category = family.getDefaultCategory();
         return new ProductFamilyDto(
                 family.getId(), family.getName(), category == null ? null : category.getId(),
                 category == null ? null : category.getName(), family.isActive(),
-                productVariantRepository.countByProductFamily_Id(family.getId()),
-                receiptItemRepository.countByProductFamily_Id(family.getId()),
+                variantCount,
+                assignedItemsCount,
                 family.getCreatedAt(), family.getUpdatedAt());
     }
 
     private ProductVariantDto toVariantDto(ProductVariant variant) {
+        return toVariantDto(variant, receiptItemRepository.countByProductVariant_Id(variant.getId()));
+    }
+
+    private ProductVariantDto toVariantDto(ProductVariant variant, long assignedItemsCount) {
         return new ProductVariantDto(
                 variant.getId(), variant.getProductFamily().getId(), variant.getProductFamily().getName(), variant.getName(),
                 variant.getUnitQuantity(), variant.getUnit(), variant.getPackageQuantity(), variant.getPackageDescription(),
                 variant.getTotalQuantity(), variant.getTotalUnit(), variant.getGtin(), variant.isActive(),
-                receiptItemRepository.countByProductVariant_Id(variant.getId()));
+                assignedItemsCount);
+    }
+
+    private Map<Long, Long> countMap(List<IdCount> counts) {
+        return counts.stream().collect(Collectors.toMap(IdCount::id, IdCount::count));
     }
 
     private ProductRuleDto toRuleDto(ProductRule rule) {

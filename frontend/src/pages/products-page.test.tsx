@@ -119,6 +119,16 @@ function searchPage(content: SearchResultDTO[], page: number, totalPages: number
   return { content, page, size: 20, totalElements: totalPages, totalPages, sortBy: "receiptDate", sortDir: "desc" };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return { promise, reject, resolve };
+}
+
 function apiClient(options: {
   reviewItems?: ProductReviewItemDTO[];
   families?: Awaited<ReturnType<ApiClient["productFamilies"]>>;
@@ -449,6 +459,31 @@ describe("ProductsPage", () => {
     expect(api.applyProductFamilyMerge).not.toHaveBeenCalled();
   });
 
+  it("ignores a stale merge preview response after the request inputs change", async () => {
+    const user = userEvent.setup();
+    const pending = deferred<typeof changePreview>();
+    const api = apiClient({
+      families: [
+        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 1, assignedItemsCount: 42, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 11, name: "Pflanzendrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 0, assignedItemsCount: 5, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 12, name: "Sojadrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 0, assignedItemsCount: 2, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+      ]
+    });
+    vi.mocked(api.previewProductFamilyMerge).mockReturnValueOnce(pending.promise);
+    render(<ProductsPage apiClient={api} hasApiToken />);
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    const card = screen.getByRole("heading", { name: "Familien zusammenführen" }).closest("section")!;
+    await user.selectOptions(within(card).getByLabelText("Quellfamilie"), "10");
+    await user.selectOptions(within(card).getByLabelText("Zielfamilie"), "11");
+    await user.click(within(card).getByRole("button", { name: "Vorschau berechnen" }));
+    await user.selectOptions(within(card).getByLabelText("Zielfamilie"), "12");
+    pending.resolve(changePreview);
+
+    await waitFor(() => expect(api.previewProductFamilyMerge).toHaveBeenCalledTimes(1));
+    expect(within(card).queryByRole("button", { name: "Zusammenführen bestätigen" })).not.toBeInTheDocument();
+  });
+
   it("invalidates a split preview when the new product changes", async () => {
     const user = userEvent.setup();
     const api = apiClient();
@@ -468,6 +503,46 @@ describe("ProductsPage", () => {
     expect(within(dialog).getByRole("button", { name: "Trennung bestätigen" })).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "Vorschau berechnen" })).toBeInTheDocument();
     expect(api.applyProductFamilySplit).not.toHaveBeenCalled();
+  });
+
+  it("ignores a stale split preview response and reports preview errors", async () => {
+    const user = userEvent.setup();
+    const pending = deferred<typeof changePreview>();
+    const api = apiClient();
+    vi.mocked(api.previewProductFamilySplit).mockReturnValueOnce(pending.promise);
+    render(<ProductsPage apiClient={api} hasApiToken />);
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    await user.click(await screen.findByRole("button", { name: "Position Haferdrink bestätigt aus Bon 9 (Position 44) trennen" }));
+    const dialog = screen.getByRole("dialog");
+    const input = within(dialog).getByLabelText("Neuer Produktname");
+    await user.type(input, "Haferdrink Spezial");
+    await user.click(within(dialog).getByRole("button", { name: "Vorschau berechnen" }));
+    expect(within(dialog).getByRole("button", { name: "Vorschau berechnen" })).toBeDisabled();
+    await user.type(input, " Neu");
+    pending.resolve(changePreview);
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Trennung bestätigen" })).toBeDisabled());
+
+    vi.mocked(api.previewProductFamilySplit).mockRejectedValueOnce(new Error("Split-Vorschau fehlgeschlagen"));
+    await user.click(within(dialog).getByRole("button", { name: "Vorschau berechnen" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Split-Vorschau fehlgeschlagen");
+  });
+
+  it("disables master-data controls while a mutation is pending", async () => {
+    const user = userEvent.setup();
+    const pending = deferred<Awaited<ReturnType<ApiClient["createProductFamily"]>>>();
+    const api = apiClient();
+    vi.mocked(api.createProductFamily).mockReturnValueOnce(pending.promise);
+    render(<ProductsPage apiClient={api} hasApiToken />);
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Familien" }));
+    await user.type(screen.getByLabelText("Neue Produktfamilie"), "Neue Familie");
+    const create = screen.getByRole("button", { name: "Anlegen" });
+    await user.click(create);
+    expect(create).toBeDisabled();
+    await user.click(create);
+    expect(api.createProductFamily).toHaveBeenCalledTimes(1);
+    pending.resolve((await api.productFamilies())[0]);
   });
 
   it("finds confirmed split candidates through paginated product search", async () => {
