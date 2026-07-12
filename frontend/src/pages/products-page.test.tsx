@@ -61,13 +61,38 @@ const priceObservation: ProductPriceObservationDTO = {
   assignmentSource: "RULE",
   assignmentStatus: "AUTO_ASSIGNED",
   effectivePrice: 1.99,
-  regularPrice: null,
+  regularPrice: 2.29,
   normalizedUnitPrice: 1.99,
   normalizedUnit: "l",
   includedInComparison: true,
-  outlier: false,
+  outlier: true,
   excluded: false,
   exclusionReason: null
+};
+
+const excludedPriceObservation: ProductPriceObservationDTO = {
+  ...priceObservation,
+  receiptItemId: 45,
+  description: "Haferdrink Barista doppelt",
+  includedInComparison: false,
+  excluded: true,
+  exclusionReason: "Doppelt erfasst"
+};
+
+const changePreview = {
+  affectedItemsCount: 3,
+  affectedStores: ["dm", "REWE"],
+  dateFrom: "2026-05-01",
+  dateTo: "2026-06-20",
+  previousProductFamilyId: 10,
+  previousProductFamilyName: "Haferdrink",
+  newProductFamilyId: 11,
+  newProductFamilyName: "Pflanzendrink",
+  previousProductVariantId: null,
+  previousProductVariantName: null,
+  newProductVariantId: null,
+  newProductVariantName: null,
+  reportImpact: "Preisreports werden für die Zielstruktur neu berechnet."
 };
 
 function apiClient(options: {
@@ -86,9 +111,11 @@ function apiClient(options: {
     acceptProductReview: vi.fn().mockResolvedValue({ ...reviewItem, assignmentSource: "MANUAL", assignmentStatus: "CONFIRMED" }),
     correctProductReview: vi.fn().mockResolvedValue({ ...reviewItem, assignmentSource: "MANUAL", assignmentStatus: "CONFIRMED" }),
     productFamilyPrices: vi.fn().mockResolvedValue(priceReport),
-    productFamilyPriceObservations: vi.fn().mockResolvedValue({ content: [priceObservation], page: 0, size: 50, totalElements: 1, totalPages: 1, sortBy: "receiptDate", sortDir: "desc" }),
+    productFamilyPriceObservations: vi.fn().mockResolvedValue({ content: [priceObservation, excludedPriceObservation], page: 0, size: 50, totalElements: 2, totalPages: 1, sortBy: "receiptDate", sortDir: "desc" }),
     excludeProductPriceObservation: vi.fn().mockResolvedValue({ ...priceObservation, excluded: true, includedInComparison: false, exclusionReason: "Doppelt erfasst" }),
-    includeProductPriceObservation: vi.fn().mockResolvedValue(priceObservation)
+    includeProductPriceObservation: vi.fn().mockResolvedValue(priceObservation),
+    previewProductFamilyMerge: vi.fn().mockResolvedValue(changePreview),
+    previewProductFamilySplit: vi.fn().mockResolvedValue({ ...changePreview, affectedItemsCount: 1 })
   } as unknown as ApiClient;
 }
 
@@ -202,7 +229,77 @@ describe("ProductsPage", () => {
     }));
   });
 
-  it("shows normalized product prices and requires a reason before excluding an observation", async () => {
+  it("separates family, variant, rule, and structure master data into focused tabs", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPage apiClient={apiClient()} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Familien" }));
+
+    expect(screen.getByRole("heading", { name: "Produktfamilien" })).toBeInTheDocument();
+    expect(screen.getAllByText("Haferdrink").length).toBeGreaterThan(0);
+    expect(screen.getByText(/1 Variante · 1 offene Zuordnung/)).toBeInTheDocument();
+    expect(screen.getByText("aktiv")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Produktvarianten" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Produktregeln" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Varianten" }));
+    expect(screen.getByRole("heading", { name: "Produktvarianten" })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Variantenfamilie"), "10");
+    expect(screen.getByText("Haferdrink 1 l")).toBeInTheDocument();
+    expect(screen.getByText(/Gesamtmenge 1 l · 1 offene Zuordnung/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Produktfamilien" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Regeln" }));
+    expect(screen.getByRole("heading", { name: "Produktregeln" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Familien zusammenführen" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    expect(screen.getByRole("heading", { name: "Familien zusammenführen" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Varianten zusammenführen" })).toBeInTheDocument();
+    expect(screen.getByText(/Manuell bestätigte Zuordnungen bleiben geschützt/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Produktregeln" })).not.toBeInTheDocument();
+  });
+
+  it("keeps merge and split previews explicit about impact and protected assignments", async () => {
+    const user = userEvent.setup();
+    const assignedReview = {
+      ...reviewItem,
+      currentProductFamilyId: 10,
+      currentProductFamilyName: "Haferdrink",
+      suggestedProductFamilyId: null,
+      suggestedProductFamilyName: null,
+      suggestedProductVariantId: null,
+      suggestedProductVariantName: null
+    };
+    const api = apiClient({
+      reviewItems: [assignedReview],
+      families: [
+        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 11, name: "Pflanzendrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+      ]
+    });
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    const familyMerge = screen.getByRole("heading", { name: "Familien zusammenführen" }).closest("section")!;
+    await user.selectOptions(within(familyMerge).getByLabelText("Quellfamilie"), "10");
+    await user.selectOptions(within(familyMerge).getByLabelText("Zielfamilie"), "11");
+    await user.click(within(familyMerge).getByRole("button", { name: "Vorschau berechnen" }));
+    expect(await within(familyMerge).findByText("3 Positionen in 2 Stores werden geändert.")).toBeInTheDocument();
+    expect(within(familyMerge).getByText(changePreview.reportImpact)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Trennen" }));
+    const splitDialog = screen.getByRole("dialog");
+    await user.type(within(splitDialog).getByLabelText("Neuer Produktname"), "Haferdrink Spezial");
+    await user.click(within(splitDialog).getByRole("button", { name: "Vorschau berechnen" }));
+    expect(await within(splitDialog).findByText("1 Position wird umgehängt.")).toBeInTheDocument();
+    expect(within(splitDialog).getByText(changePreview.reportImpact)).toBeInTheDocument();
+    expect(within(splitDialog).getByText(/geschützte Zuordnungen/)).toBeInTheDocument();
+  });
+
+  it("shows complete price analysis and keeps exclusion reversible", async () => {
     const user = userEvent.setup();
     const api = apiClient();
     render(<ProductsPage apiClient={api} hasApiToken />);
@@ -211,7 +308,23 @@ describe("ProductsPage", () => {
     await user.click(screen.getByRole("tab", { name: "Preisvergleich" }));
 
     expect(await screen.findByText("Produktpreisvergleich")).toBeInTheDocument();
+    expect(await screen.findByText("Letzter Preis (EUR/l)")).toBeInTheDocument();
     expect(await screen.findByText("Historisches Minimum (EUR/l)")).toBeInTheDocument();
+    expect(screen.getAllByText("Durchschnitt").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Median").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("3 Beobachtungen").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Preisverlauf" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Vergleich nach Geschäft" })).toBeInTheDocument();
+    expect(screen.getAllByText("1,99 €").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("2,29 €").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("1,99 € / l").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Ausreißer").length).toBeGreaterThan(0);
+    expect(screen.getByText("Doppelt erfasst")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Wieder aufnehmen" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Wieder aufnehmen" }));
+    await waitFor(() => expect(api.includeProductPriceObservation).toHaveBeenCalledWith(45));
+
     await user.click(screen.getByRole("button", { name: "Ausschließen" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     await user.type(screen.getByLabelText("Ausschlussgrund"), "Doppelt erfasst");
