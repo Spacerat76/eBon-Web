@@ -14,16 +14,15 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
-  Save,
   Search,
-  Trash2,
-  X
+  Trash2
 } from "lucide-react";
 
 import { CategorySourceBadge, DeleteReasonBadge, ParseStatusBadge } from "@/components/receipt-badges";
 import { DataTableFrame } from "@/components/data/data-table";
 import { PageHeader } from "@/components/layout/page-header";
 import { PageTabs } from "@/components/layout/page-tabs";
+import { StickyActionBar } from "@/components/layout/sticky-action-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -889,22 +888,13 @@ function ReceiptDetailPanel({
   return (
     <div className="space-y-4">
       {editMode ? (
-        <div className="sticky top-[4.75rem] z-20 flex flex-col gap-3 rounded-md border border-zinc-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="text-sm font-medium text-zinc-950 dark:text-zinc-50">Bearbeitungsmodus</div>
-            <div className="text-xs text-zinc-500 dark:text-zinc-400">Änderungen werden erst beim Speichern übernommen.</div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={saving} onClick={onSave} size="sm">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Speichern
-            </Button>
-            <Button disabled={saving} onClick={onCancelEdit} size="sm" variant="secondary">
-              <X className="h-4 w-4" />
-              Abbrechen
-            </Button>
-          </div>
-        </div>
+        <StickyActionBar
+          message={saving ? "Änderungen werden gespeichert" : "Ungespeicherte Änderungen"}
+          onCancel={onCancelEdit}
+          onSave={onSave}
+          saveDisabled={saving}
+          saving={saving}
+        />
       ) : null}
 
       <div className="space-y-3">

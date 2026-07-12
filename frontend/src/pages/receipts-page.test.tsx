@@ -269,6 +269,45 @@ describe("ReceiptsPage", () => {
     expect(window.location.hash).toBe("#/receipts");
   });
 
+  it("shows the sticky action bar only while editing, restores the draft on cancel, and saves changes", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    render(<ReceiptsPage apiClient={api as unknown as ApiClient} hasApiToken selectedReceiptId={17} />);
+
+    await screen.findByRole("heading", { name: "REWE" });
+    expect(screen.queryByText("Ungespeicherte Änderungen")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
+    expect(screen.getByText("Ungespeicherte Änderungen")).toBeInTheDocument();
+    const storeInput = screen.getByLabelText("Geschäft");
+    await user.clear(storeInput);
+    await user.type(storeInput, "Geändert");
+    await user.click(screen.getByRole("button", { name: "Abbrechen" }));
+
+    expect(screen.queryByText("Ungespeicherte Änderungen")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
+    expect(screen.getByLabelText("Geschäft")).toHaveValue("REWE");
+    await user.clear(screen.getByLabelText("Geschäft"));
+    await user.type(screen.getByLabelText("Geschäft"), "REWE Markt");
+    await user.click(screen.getByRole("button", { name: "Änderungen speichern" }));
+
+    await waitFor(() => expect(api.updateReceipt).toHaveBeenCalledWith(17, expect.objectContaining({ storeName: "REWE Markt" })));
+  });
+
+  it("keeps the manual-overwrite confirmation available outside edit mode", async () => {
+    const manualReceipt = {
+      ...receipt,
+      parseStatus: "MANUALLY_EDITED" as const,
+      items: [{ ...receipt.items[0], isManuallyEdited: true }]
+    };
+    const api = apiClient();
+    api.receipt.mockResolvedValue(manualReceipt);
+    render(<ReceiptsPage apiClient={api as unknown as ApiClient} hasApiToken selectedReceiptId={17} />);
+
+    expect(await screen.findByRole("checkbox", { name: "Manuell editierte Positionen beim Re-Parse überschreiben." })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Erneut parsen" })).toBeDisabled();
+  });
+
   it("shows and wires complete parser rule suggestion review controls", async () => {
     const user = userEvent.setup();
     const api = apiClient();
