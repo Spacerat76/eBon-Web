@@ -84,4 +84,21 @@ describe("App routing and local token handling", () => {
     navigate("#unknown");
     expect(await screen.findByText("Placeholder: Übersicht")).toBeInTheDocument();
   });
+
+  it.each([
+    ["#/", "Übersicht"],
+    ["#/receipts", "Bons"],
+    ["#/search", "Suche"],
+    ["#/products", "Produkte"],
+    ["#/reports", "Berichte"],
+    ["#/settings/categories", "Kategorien & Regeln"],
+    ["#/settings", "Einstellungen"]
+  ])("renders one canonical main heading for %s", async (hash, title) => {
+    navigate(hash);
+    render(<App />);
+
+    const headings = await screen.findAllByRole("heading", { level: 1 });
+    expect(headings).toHaveLength(1);
+    expect(headings[0]).toHaveAccessibleName(title);
+  });
 });

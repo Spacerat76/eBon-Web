@@ -1,8 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { BarChart3, Boxes, Home, ReceiptText, Search, Settings, Tags } from "lucide-react";
 
+import { AppShell, type NavigationItem } from "@/components/app-shell";
 import { DataTableFrame, PaginationBar } from "@/components/data/data-table";
 import { ActiveFilterChip, FilterBar } from "@/components/data/filter-bar";
 import { StatusBanner } from "@/components/feedback/status-banner";
@@ -13,6 +15,50 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { SecretInput } from "@/components/ui/secret-input";
 
 describe("shared redesign components", () => {
+  it("keeps the mobile bar focused and exposes every other destination through a focusable menu", async () => {
+    const navigation: NavigationItem[] = [
+      { href: "#/", label: "Übersicht", icon: Home, group: "workspace" },
+      { href: "#/receipts", label: "Bons", icon: ReceiptText, group: "workspace" },
+      { href: "#/search", label: "Suche", icon: Search, group: "workspace" },
+      { href: "#/products", label: "Produkte", icon: Boxes, group: "workspace" },
+      { href: "#/reports", label: "Berichte", icon: BarChart3, group: "workspace" },
+      { href: "#/settings/categories", label: "Kategorien & Regeln", icon: Tags, group: "manage" },
+      { href: "#/settings", label: "Einstellungen", icon: Settings, group: "manage" }
+    ];
+    render(
+      <AppShell navigation={navigation} route="/">
+        <p>Inhalt</p>
+      </AppShell>
+    );
+
+    const mobileNavigation = screen.getByRole("navigation", { name: "Mobile Navigation" });
+    expect(mobileNavigation.querySelectorAll("a")).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Weitere Navigation öffnen" })).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: "Weitere Navigation öffnen" }));
+    const menu = screen.getByRole("navigation", { name: "Weitere Navigation" });
+    expect(menu).toBeVisible();
+    expect(menu).toHaveFocus();
+    expect(within(menu).getByRole("link", { name: "Berichte" })).toBeVisible();
+    expect(within(menu).getByRole("link", { name: "Kategorien & Regeln" })).toBeVisible();
+    expect(within(menu).getByRole("link", { name: "Einstellungen" })).toBeVisible();
+  });
+
+  it("keeps the shell title as the only main heading when a page has its own section header", () => {
+    const navigation: NavigationItem[] = [
+      { href: "#/", label: "Übersicht", icon: Home, group: "workspace" }
+    ];
+    render(
+      <AppShell navigation={navigation} route="/">
+        <PageHeader context="Übersicht / Finanzen" title="Finanzübersicht" />
+      </AppShell>
+    );
+
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveAccessibleName("Übersicht");
+    expect(screen.getByRole("heading", { level: 2, name: "Finanzübersicht" })).toBeInTheDocument();
+  });
+
   it("changes the active page tab through the typed callback", async () => {
     const onChange = vi.fn();
     render(

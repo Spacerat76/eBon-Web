@@ -267,6 +267,7 @@ describe("ProductsPage", () => {
     expect(screen.getByRole("heading", { name: "Produktfamilien" })).toBeInTheDocument();
     expect(screen.getAllByText("Haferdrink").length).toBeGreaterThan(0);
     expect(screen.getByText(/1 Variante · 1 offene Zuordnung/)).toBeInTheDocument();
+    expect(screen.getByText("Kategorie: Milchprodukte und Eier")).toBeInTheDocument();
     expect(screen.getByText("aktiv")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Produktvarianten" })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Produktregeln" })).not.toBeInTheDocument();

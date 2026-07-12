@@ -1,5 +1,5 @@
-import type { ComponentType, ReactNode } from "react";
-import { ReceiptText } from "lucide-react";
+import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
+import { Menu, ReceiptText, X } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,29 @@ const navigationGroups = [
 
 export function AppShell({ children, navigation, route, utility }: AppShellProps) {
   const routePath = pathFromRoute(route);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLElement>(null);
+  const primaryMobileItems = navigation.slice(0, 4);
+  const additionalMobileItems = navigation.slice(4);
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [routePath]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) {
+      return;
+    }
+
+    mobileMenuRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileMenuOpen(false);
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [mobileMenuOpen]);
 
   return (
     <div className="min-h-screen bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50">
@@ -79,6 +102,7 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
             actions={utility}
             className="items-center sm:items-center"
             context="eBon Expense Tracker"
+            headingLevel={1}
             title={activeTitle(routePath, navigation)}
           />
         </div>
@@ -86,18 +110,41 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
         <main className="px-4 py-4 pb-24 md:px-6 lg:pb-6">{children}</main>
       </div>
 
+      {mobileMenuOpen && additionalMobileItems.length > 0 ? (
+        <nav
+          aria-label="Weitere Navigation"
+          className="fixed inset-x-3 bottom-20 z-30 rounded-xl border border-zinc-200 bg-white p-2 shadow-xl dark:border-zinc-800 dark:bg-zinc-950 lg:hidden"
+          id="mobile-more-navigation"
+          ref={mobileMenuRef}
+          tabIndex={-1}
+        >
+          <div className="grid gap-1">
+            {additionalMobileItems.map((item) => (
+              <NavigationLink
+                active={isNavigationActive(item.href, routePath)}
+                count={item.count}
+                href={item.href}
+                icon={item.icon}
+                key={item.href}
+                label={item.label}
+              />
+            ))}
+          </div>
+        </nav>
+      ) : null}
+
       <nav
         aria-label="Mobile Navigation"
-        className="fixed inset-x-0 bottom-0 z-20 flex overflow-x-auto border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 lg:hidden"
+        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950 lg:hidden"
       >
-        {navigation.map((item) => {
+        {primaryMobileItems.map((item) => {
           const Icon = item.icon;
           const active = isNavigationActive(item.href, routePath);
           return (
             <a
               aria-current={active ? "page" : undefined}
               className={cn(
-                "relative flex h-16 min-w-20 flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-medium",
+                "relative flex h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-xs font-medium",
                 active ? "text-zinc-950 dark:text-zinc-50" : "text-zinc-500 dark:text-zinc-400"
               )}
               href={item.href}
@@ -116,6 +163,17 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
             </a>
           );
         })}
+        <button
+          aria-controls="mobile-more-navigation"
+          aria-expanded={mobileMenuOpen}
+          aria-label={mobileMenuOpen ? "Weitere Navigation schließen" : "Weitere Navigation öffnen"}
+          className="flex h-16 min-w-0 flex-col items-center justify-center gap-1 px-1 text-xs font-medium text-zinc-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 dark:text-zinc-400 dark:focus-visible:ring-blue-400"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+          type="button"
+        >
+          {mobileMenuOpen ? <X aria-hidden="true" className="h-5 w-5" /> : <Menu aria-hidden="true" className="h-5 w-5" />}
+          <span>Mehr</span>
+        </button>
       </nav>
     </div>
   );

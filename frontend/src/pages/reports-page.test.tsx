@@ -51,7 +51,7 @@ describe("ReportsPage", () => {
   it("presents every report type as an accessible analysis tab", async () => {
     render(<ReportsPage apiClient={apiClient() as unknown as ApiClient} hasApiToken />);
 
-    expect(await screen.findByRole("heading", { level: 1, name: "Reports" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 2, name: "Reports" })).toBeInTheDocument();
     const tabList = screen.getByRole("tablist");
     for (const label of ["Kategorie", "Zeitraum", "Geschäft", "Top-Artikel", "Top-Produkte", "Bonus"]) {
       expect(within(tabList).getByRole("tab", { name: label })).toBeInTheDocument();
