@@ -29,6 +29,16 @@ function apiClient() {
 }
 
 describe("SearchPage", () => {
+  it("exposes a labelled keyboard-followable link to each source receipt", async () => {
+    const api = apiClient();
+    api.search.mockResolvedValue({
+      content: [{ receiptItemId: 23, receiptId: 17, receiptDate: "2026-07-11", storeName: "REWE", description: "Cola", totalPrice: 3.49, categoryId: 4, categoryName: "Getränke", productFamilyName: null, productVariantName: null, normalizedUnitPrice: null, normalizedUnit: null, highlights: [] }],
+      page: 0, size: 20, totalElements: 1, totalPages: 1, sortBy: "receiptDate", sortDir: "desc"
+    });
+    render(<SearchPage apiClient={api as unknown as ApiClient} hasApiToken />);
+    expect(await screen.findByRole("link", { name: "Bon vom 11.07.2026 bei REWE öffnen" })).toHaveAttribute("href", "#/receipts/17");
+  });
+
   it("submits every compatible search filter and removes one active-filter chip without changing the others", async () => {
     const user = userEvent.setup();
     const api = apiClient();

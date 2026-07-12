@@ -111,6 +111,23 @@ describe("SettingsPage", () => {
     expect(screen.getByText("FULL_TEXT überträgt den vollständigen Bontext an OpenRouter. Ein manueller Reparse mit FULL_TEXT erfordert eine zusätzliche Bestätigung.")).toBeInTheDocument();
   });
 
+  it("registers unsaved settings with the global beforeunload guard and clears it after save", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    render(<SettingsPage apiClient={api as unknown as ApiClient} hasApiToken />);
+    const url = await screen.findByDisplayValue("http://paperless:8000");
+    await user.type(url, "/changed");
+    const dirtyEvent = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirtyEvent);
+    expect(dirtyEvent.defaultPrevented).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Speichern" }));
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalled());
+    const cleanEvent = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanEvent);
+    expect(cleanEvent.defaultPrevented).toBe(false);
+  });
+
   it("follows section changes from application navigation", async () => {
     const api = apiClient();
     const { rerender } = render(<SettingsPage apiClient={api as unknown as ApiClient} hasApiToken initialSection="connections" />);

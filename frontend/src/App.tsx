@@ -1,9 +1,11 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { BarChart3, Boxes, Home, ReceiptText, Search, Settings, SlidersHorizontal, Tags } from "lucide-react";
 
 import { AppShell, type NavigationItem } from "@/components/app-shell";
 import { SessionAccess } from "@/components/session-access";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ApiClient } from "@/lib/api";
+import { hasUnsavedChanges } from "@/lib/unsaved-changes";
 import { DashboardPage } from "@/pages/dashboard-page";
 import { PlaceholderPage } from "@/pages/placeholder-page";
 
@@ -27,16 +29,37 @@ const navigation: NavigationItem[] = [
 
 export default function App() {
   const [route, setRoute] = useState(() => normalizeHash(window.location.hash));
+  const [pendingRoute, setPendingRoute] = useState<string | null>(null);
+  const acceptedRoute = useRef(route);
   const [apiToken, setApiToken] = useState(() => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? "");
   const routePath = pathFromRoute(route);
   const routeParams = paramsFromRoute(route);
   const selectedReceiptId = receiptIdFromRoute(routePath);
 
   useEffect(() => {
-    const onHashChange = () => setRoute(normalizeHash(window.location.hash));
+    const onHashChange = () => {
+      const nextRoute = normalizeHash(window.location.hash);
+      if (nextRoute === acceptedRoute.current) return;
+      if (hasUnsavedChanges()) {
+        window.history.replaceState(null, "", `#${acceptedRoute.current}`);
+        setPendingRoute(nextRoute);
+        return;
+      }
+      acceptedRoute.current = nextRoute;
+      setRoute(nextRoute);
+    };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
+
+  function confirmNavigation() {
+    if (!pendingRoute) return;
+    const nextRoute = pendingRoute;
+    setPendingRoute(null);
+    acceptedRoute.current = nextRoute;
+    window.history.replaceState(null, "", `#${nextRoute}`);
+    setRoute(nextRoute);
+  }
 
   const apiClient = useMemo(() => new ApiClient(() => apiToken.trim() || null), [apiToken]);
 
@@ -89,6 +112,17 @@ export default function App() {
           />
         )}
       </Suspense>
+      <ConfirmDialog
+        cancelLabel="Hier bleiben"
+        confirmLabel="Änderungen verwerfen"
+        destructive
+        onCancel={() => setPendingRoute(null)}
+        onConfirm={confirmNavigation}
+        open={pendingRoute !== null}
+        title="Ungespeicherte Änderungen verwerfen?"
+      >
+        Beim Wechsel der Ansicht gehen die noch nicht gespeicherten Eingaben verloren.
+      </ConfirmDialog>
     </AppShell>
   );
 }

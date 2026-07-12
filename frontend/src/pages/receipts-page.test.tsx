@@ -144,6 +144,7 @@ function apiClient() {
     }),
     triggerSync: vi.fn().mockResolvedValue({ message: "Sync gestartet" }),
     paperlessRawTextStatus: vi.fn().mockResolvedValue({ status: "UNCHANGED" }),
+    settings: vi.fn().mockResolvedValue({ aiParsingTextMode: "MINIMIZED" }),
     reparseReceipt: vi.fn().mockResolvedValue(receipt),
     updateReceipt: vi.fn().mockResolvedValue(receipt),
     updateReceiptItem: vi.fn().mockResolvedValue(receipt.items[0]),
@@ -249,7 +250,6 @@ describe("ReceiptsPage", () => {
   it("keeps edit, reparse, and delete actions wired to their existing API paths", async () => {
     const user = userEvent.setup();
     const api = apiClient();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     render(<ReceiptsPage apiClient={api as unknown as ApiClient} hasApiToken selectedReceiptId={17} />);
 
     await screen.findByRole("heading", { name: "REWE" });
@@ -265,8 +265,67 @@ describe("ReceiptsPage", () => {
     await waitFor(() => expect(api.reparseReceipt).toHaveBeenCalledWith(17, false, true, null, false, "STORED"));
 
     await user.click(screen.getByRole("button", { name: "Löschen" }));
+    await user.click(screen.getByRole("button", { name: "Bon endgültig löschen" }));
     await waitFor(() => expect(api.deleteReceipt).toHaveBeenCalledWith(17));
     expect(window.location.hash).toBe("#/receipts");
+  });
+
+  it("requires explicit accessible confirmation before a FULL_TEXT reparse", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    api.settings.mockResolvedValue({ aiParsingTextMode: "FULL_TEXT" });
+    render(<ReceiptsPage apiClient={api as unknown as ApiClient} hasApiToken selectedReceiptId={17} />);
+
+    await screen.findByRole("heading", { name: "REWE" });
+    await user.click(screen.getByRole("button", { name: "Erneut parsen" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Vollständigen Bontext an OpenRouter senden?" });
+    expect(within(dialog).getByText(/vollständige Bontext.*OpenRouter/i)).toBeInTheDocument();
+    expect(api.reparseReceipt).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "Abbrechen" }));
+    expect(api.reparseReceipt).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Erneut parsen" }));
+    await user.click(await screen.findByRole("button", { name: "Volltext senden und parsen" }));
+    await waitFor(() => expect(api.reparseReceipt).toHaveBeenCalledWith(17, false, true, "FULL_TEXT", true, "STORED"));
+  });
+
+  it("uses accessible receipt dialogs with Escape cancellation and no native prompt", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    const promptSpy = vi.spyOn(window, "prompt");
+    render(<ReceiptsPage apiClient={api as unknown as ApiClient} hasApiToken selectedReceiptId={17} />);
+
+    await screen.findByRole("heading", { name: "REWE" });
+    const deleteTrigger = screen.getByRole("button", { name: "Löschen" });
+    deleteTrigger.focus();
+    await user.click(deleteTrigger);
+    const deleteDialog = screen.getByRole("dialog", { name: "Bon löschen?" });
+    expect(within(deleteDialog).getByRole("button", { name: "Abbrechen" })).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Bon löschen?" })).not.toBeInTheDocument();
+    expect(deleteTrigger).toHaveFocus();
+    expect(api.deleteReceipt).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("tab", { name: "Regelvorschläge" }));
+    await user.click(screen.getByRole("button", { name: "Ablehnen" }));
+    const rejectDialog = screen.getByRole("dialog", { name: "Parser-Regelvorschlag ablehnen?" });
+    await user.type(within(rejectDialog).getByLabelText("Ablehnungsgrund"), "Nicht passend");
+    await user.click(within(rejectDialog).getByRole("button", { name: "Vorschlag ablehnen" }));
+    await waitFor(() => expect(api.rejectParseRuleSuggestion).toHaveBeenCalledWith(41, "Nicht passend"));
+    expect(promptSpy).not.toHaveBeenCalled();
+  });
+
+  it("registers edited receipt data with the global beforeunload guard", async () => {
+    const user = userEvent.setup();
+    render(<ReceiptsPage apiClient={apiClient() as unknown as ApiClient} hasApiToken selectedReceiptId={17} />);
+    await screen.findByRole("heading", { name: "REWE" });
+    await user.click(screen.getByRole("button", { name: "Bearbeiten" }));
+    await user.clear(screen.getByLabelText("Geschäft"));
+    await user.type(screen.getByLabelText("Geschäft"), "Ungespeichert");
+    const event = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("shows the sticky action bar only while editing, restores the draft on cancel, and saves changes", async () => {
@@ -311,7 +370,6 @@ describe("ReceiptsPage", () => {
   it("shows and wires complete parser rule suggestion review controls", async () => {
     const user = userEvent.setup();
     const api = apiClient();
-    vi.spyOn(window, "prompt").mockReturnValue("Nicht passend");
     render(<ReceiptsPage apiClient={api as unknown as ApiClient} hasApiToken selectedReceiptId={17} />);
 
     await screen.findByRole("heading", { name: "REWE" });
@@ -335,6 +393,8 @@ describe("ReceiptsPage", () => {
     await waitFor(() => expect(api.acceptParseRuleSuggestion).toHaveBeenCalledWith(41, expect.objectContaining({ reparseScope: "CURRENT_RECEIPT" })));
 
     await user.click(screen.getByRole("button", { name: "Ablehnen" }));
+    await user.type(screen.getByLabelText("Ablehnungsgrund"), "Nicht passend");
+    await user.click(screen.getByRole("button", { name: "Vorschlag ablehnen" }));
     await waitFor(() => expect(api.rejectParseRuleSuggestion).toHaveBeenCalledWith(41, "Nicht passend"));
   });
 

@@ -26,7 +26,9 @@ import { StickyActionBar } from "@/components/layout/sticky-action-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { ModalDialog } from "@/components/ui/modal-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import type { ApiClient } from "@/lib/api";
@@ -34,6 +36,7 @@ import { ApiClientError } from "@/lib/api";
 import { CategoryIcon } from "@/lib/category-icons";
 import { formatCurrency, formatDate, formatDateTime, formatDateTimeParts, formatNumber, formatPercent, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useUnsavedChanges } from "@/lib/unsaved-changes";
 import type {
   CategoryDTO,
   AiParsingLogDTO,
@@ -149,6 +152,11 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
   const [editMode, setEditMode] = useState(false);
   const [overwriteManualEdits, setOverwriteManualEdits] = useState(false);
   const [paperlessRawTextStatus, setPaperlessRawTextStatus] = useState<PaperlessRawTextStatus | null>(null);
+  const [pendingReparse, setPendingReparse] = useState<{ aiTextMode: "FULL_TEXT" | null; confirmFullText: boolean }>({ aiTextMode: null, confirmFullText: false });
+  const [fullTextConfirmOpen, setFullTextConfirmOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [rejectSuggestion, setRejectSuggestion] = useState<ParseRuleSuggestionDTO | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -156,6 +164,8 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     () => new Map(categories.map((category) => [category.id, category])),
     [categories]
   );
+  const receiptDirty = Boolean(editMode && draft && selectedReceipt && JSON.stringify(draft) !== JSON.stringify(toDraft(selectedReceipt)));
+  useUnsavedChanges(receiptDirty);
 
   const loadList = useCallback(async () => {
     if (!hasApiToken) {
@@ -395,11 +405,16 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     }
   }
 
-  async function rejectParserSuggestion(suggestion: ParseRuleSuggestionDTO) {
-    const reason = window.prompt("Ablehnungsgrund", "Nicht passend");
-    if (!reason) {
-      return;
-    }
+  function rejectParserSuggestion(suggestion: ParseRuleSuggestionDTO) {
+    setRejectSuggestion(suggestion);
+    setRejectReason("");
+  }
+
+  async function confirmRejectParserSuggestion() {
+    if (!rejectSuggestion || !rejectReason.trim()) return;
+    const suggestion = rejectSuggestion;
+    const reason = rejectReason.trim();
+    setRejectSuggestion(null);
     setProcessingRuleSuggestionId(suggestion.id);
     setError(null);
     setNotice(null);
@@ -424,12 +439,12 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     setNotice(null);
 
     try {
-      const status = await apiClient.paperlessRawTextStatus(selectedReceipt.id);
-      if (status.status === "CHANGED" || status.status === "UNAVAILABLE") {
-        setPaperlessRawTextStatus(status.status);
+      const settings = await apiClient.settings();
+      if (settings.aiParsingTextMode === "FULL_TEXT") {
+        setFullTextConfirmOpen(true);
         return;
       }
-      await reparseSelectedReceipt("STORED");
+      await continueReparseSelectedReceipt({ aiTextMode: null, confirmFullText: false });
     } catch (reparseError) {
       setError(toUserMessage(reparseError));
     } finally {
@@ -437,7 +452,25 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     }
   }
 
-  async function reparseSelectedReceipt(rawTextSource: "STORED" | "PAPERLESS") {
+  async function continueReparseSelectedReceipt(config: { aiTextMode: "FULL_TEXT" | null; confirmFullText: boolean }) {
+    if (!selectedReceipt) return;
+    setPendingReparse(config);
+    setReparsing(true);
+    try {
+      const status = await apiClient.paperlessRawTextStatus(selectedReceipt.id);
+      if (status.status === "CHANGED" || status.status === "UNAVAILABLE") {
+        setPaperlessRawTextStatus(status.status);
+        return;
+      }
+      await reparseSelectedReceipt("STORED", config);
+    } catch (reparseError) {
+      setError(toUserMessage(reparseError));
+    } finally {
+      setReparsing(false);
+    }
+  }
+
+  async function reparseSelectedReceipt(rawTextSource: "STORED" | "PAPERLESS", config = pendingReparse) {
     if (!selectedReceipt) {
       return;
     }
@@ -451,8 +484,8 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
         selectedReceipt.id,
         overwriteManualEdits,
         true,
-        null,
-        false,
+        config.aiTextMode,
+        config.confirmFullText,
         rawTextSource
       );
       setSelectedReceipt(updated);
@@ -470,9 +503,8 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
   }
 
   async function deleteSelectedReceipt() {
-    if (!selectedReceipt || !window.confirm("Diesen Bon wirklich löschen?")) {
-      return;
-    }
+    if (!selectedReceipt) return;
+    setDeleteDialogOpen(false);
 
     setDeleting(true);
     setError(null);
@@ -540,7 +572,7 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
           onAcceptParserSuggestion={acceptParserSuggestion}
           onBack={returnToReceiptList}
           onCancelEdit={cancelReceiptEdit}
-          onDeleteReceipt={deleteSelectedReceipt}
+          onDeleteReceipt={() => setDeleteDialogOpen(true)}
           onDraftChange={setDraft}
           onEdit={() => setEditMode(true)}
           onReparse={startReparseSelectedReceipt}
@@ -561,14 +593,23 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
         onCancel={() => setPaperlessRawTextStatus(null)}
         onUsePaperless={() => {
           setPaperlessRawTextStatus(null);
-          void reparseSelectedReceipt("PAPERLESS");
+          void reparseSelectedReceipt("PAPERLESS", pendingReparse);
         }}
         onUseStored={() => {
           setPaperlessRawTextStatus(null);
-          void reparseSelectedReceipt("STORED");
+          void reparseSelectedReceipt("STORED", pendingReparse);
         }}
         status={paperlessRawTextStatus}
       />
+      <ConfirmDialog confirmLabel="Volltext senden und parsen" onCancel={() => setFullTextConfirmOpen(false)} onConfirm={() => { setFullTextConfirmOpen(false); void continueReparseSelectedReceipt({ aiTextMode: "FULL_TEXT", confirmFullText: true }); }} open={fullTextConfirmOpen} title="Vollständigen Bontext an OpenRouter senden?">
+        Der vollständige Bontext wird zur KI-Analyse an OpenRouter übertragen. Fahre nur fort, wenn du diese Übertragung ausdrücklich bestätigst.
+      </ConfirmDialog>
+      <ConfirmDialog confirmLabel="Bon endgültig löschen" destructive onCancel={() => setDeleteDialogOpen(false)} onConfirm={() => void deleteSelectedReceipt()} open={deleteDialogOpen} title="Bon löschen?">
+        Der Bon wird gemäß der bestehenden Löschsemantik entfernt.
+      </ConfirmDialog>
+      <ConfirmDialog confirmDisabled={!rejectReason.trim()} confirmLabel="Vorschlag ablehnen" destructive onCancel={() => setRejectSuggestion(null)} onConfirm={() => void confirmRejectParserSuggestion()} open={rejectSuggestion !== null} title="Parser-Regelvorschlag ablehnen?">
+        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Ablehnungsgrund<Input className="mt-1" onChange={(event) => setRejectReason(event.target.value)} value={rejectReason} /></label>
+      </ConfirmDialog>
     </div>
   );
 }
@@ -590,12 +631,8 @@ function PaperlessRawTextDecisionDialog({
 
   const isUnavailable = status === "UNAVAILABLE";
   return (
-    <div aria-labelledby="paperless-raw-text-dialog-title" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4" role="dialog">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <CardTitle id="paperless-raw-text-dialog-title">Paperless-Rohtext prüfen</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+    <ModalDialog onClose={onCancel} open title="Paperless-Rohtext prüfen">
+        <div className="mt-3 space-y-4">
           <p className="text-sm text-zinc-700 dark:text-zinc-300">
             {isUnavailable
               ? "Paperless ist momentan nicht erreichbar. Der Bon kann nur mit dem gespeicherten Rohtext erneut geparst werden."
@@ -606,9 +643,8 @@ function PaperlessRawTextDecisionDialog({
             <Button onClick={onUseStored} variant="secondary">Gespeicherten Rohtext verwenden</Button>
             {!isUnavailable ? <Button onClick={onUsePaperless}>Neuen Rohtext übernehmen und parsen</Button> : null}
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+    </ModalDialog>
   );
 }
 

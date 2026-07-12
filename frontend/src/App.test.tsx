@@ -1,15 +1,20 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "@/App";
+import { useUnsavedChanges } from "@/lib/unsaved-changes";
 
 vi.mock("@/pages/dashboard-page", () => ({
   DashboardPage: ({ hasApiToken }: { hasApiToken: boolean }) => <p>Dashboard page: {String(hasApiToken)}</p>
 }));
 
 vi.mock("@/pages/receipts-page", () => ({
-  ReceiptsPage: ({ selectedReceiptId }: { selectedReceiptId: number | null }) => <p>Receipts page: {selectedReceiptId ?? "list"}</p>
+  ReceiptsPage: ({ selectedReceiptId }: { selectedReceiptId: number | null }) => {
+    const dirty = selectedReceiptId === 42;
+    useUnsavedChanges(dirty);
+    return <p>Receipts page: {selectedReceiptId ?? "list"}</p>;
+  }
 }));
 
 vi.mock("@/pages/search-page", () => ({
@@ -66,8 +71,8 @@ describe("App routing and local token handling", () => {
   it("maps receipt, search, report, product, settings, and fallback hashes to the expected screen", async () => {
     render(<App />);
 
-    navigate("#/receipts/42");
-    expect(await screen.findByText("Receipts page: 42")).toBeInTheDocument();
+    navigate("#/receipts/41");
+    expect(await screen.findByText("Receipts page: 41")).toBeInTheDocument();
 
     navigate("#/search?uncategorizedOnly=true");
     expect(await screen.findByText("Search page: uncategorized=true")).toBeInTheDocument();
@@ -83,6 +88,25 @@ describe("App routing and local token handling", () => {
 
     navigate("#unknown");
     expect(await screen.findByText("Placeholder: Übersicht")).toBeInTheDocument();
+  });
+
+  it("keeps the current route when dirty navigation is cancelled and follows it after confirmation", async () => {
+    const user = userEvent.setup();
+    window.location.hash = "#/receipts/42";
+    render(<App />);
+    expect(await screen.findByText("Receipts page: 42")).toBeInTheDocument();
+
+    window.location.hash = "#/reports";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    const dialog = await screen.findByRole("dialog", { name: "Ungespeicherte Änderungen verwerfen?" });
+    expect(window.location.hash).toBe("#/receipts/42");
+    await user.click(within(dialog).getByRole("button", { name: "Hier bleiben" }));
+    expect(screen.getByText("Receipts page: 42")).toBeInTheDocument();
+
+    window.location.hash = "#/reports";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    await user.click(await screen.findByRole("button", { name: "Änderungen verwerfen" }));
+    await waitFor(() => expect(screen.getByText("Reports page")).toBeInTheDocument());
   });
 
   it.each([

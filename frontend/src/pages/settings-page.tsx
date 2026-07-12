@@ -13,6 +13,7 @@ import type { ApiClient } from "@/lib/api";
 import { ApiClientError } from "@/lib/api";
 import { CategoryIcon } from "@/lib/category-icons";
 import { formatCurrency, formatDate, formatTime } from "@/lib/format";
+import { useUnsavedChanges } from "@/lib/unsaved-changes";
 import type {
   BackupValidationReportDTO,
   CategorizationRuleDTO,
@@ -98,6 +99,7 @@ const emptyRule: CategorizationRuleRequest = {
 export function SettingsPage({ apiClient, hasApiToken, initialSection = "connections" }: SettingsPageProps) {
   const [section, setSection] = useState<SettingsSection>(initialSection);
   const [settings, setSettings] = useState<SettingsDTO>(emptySettings);
+  const [savedSettings, setSavedSettings] = useState<SettingsDTO | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfoDTO | null>(null);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [categoryIcons, setCategoryIcons] = useState<CategoryIconDTO[]>([]);
@@ -122,6 +124,7 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
   const [saving, setSaving] = useState(false);
 
   const activeCategories = useMemo(() => categories.filter((category) => category.isActive), [categories]);
+  useUnsavedChanges(savedSettings !== null && JSON.stringify(settings) !== JSON.stringify(savedSettings));
 
   useEffect(() => {
     setSection(initialSection);
@@ -145,6 +148,7 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
         apiClient.parseRuleSuggestions({ status: "" })
       ]);
       setSettings(settingsResponse);
+      setSavedSettings(settingsResponse);
       setCategories(categoryResponse);
       setRules(ruleResponse);
       setCategoryIcons(iconResponse);
@@ -180,6 +184,7 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
       } as SettingsDTO;
       const updated = await apiClient.updateSettings(request);
       setSettings(updated);
+      setSavedSettings(updated);
       setFeedback("Einstellungen gespeichert.");
     } catch (saveError) {
       setError(toUserMessage(saveError));

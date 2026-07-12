@@ -277,7 +277,7 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
                       window.location.hash = `#/receipts/${result.receiptId}`;
                     }}
                   >
-                    <td className="px-3 py-2">{formatDate(result.receiptDate)}</td>
+                    <td className="px-3 py-2"><a aria-label={`Bon vom ${formatDate(result.receiptDate)} bei ${result.storeName ?? "Unbekannt"} öffnen`} className="text-blue-700 hover:underline dark:text-blue-300" href={`#/receipts/${result.receiptId}`} onClick={(event) => event.stopPropagation()}>{formatDate(result.receiptDate)}</a></td>
                     <td className="px-3 py-2">{result.storeName ?? "Unbekannt"}</td>
                     <td className="px-3 py-2">
                       <Highlighted text={result.description} terms={result.highlights} />
