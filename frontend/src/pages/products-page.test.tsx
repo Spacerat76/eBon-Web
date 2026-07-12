@@ -144,7 +144,9 @@ function apiClient(options: {
     excludeProductPriceObservation: vi.fn().mockResolvedValue({ ...priceObservation, excluded: true, includedInComparison: false, exclusionReason: "Doppelt erfasst" }),
     includeProductPriceObservation: vi.fn().mockResolvedValue(priceObservation),
     previewProductFamilyMerge: vi.fn().mockResolvedValue(changePreview),
+    applyProductFamilyMerge: vi.fn().mockResolvedValue(changePreview),
     previewProductFamilySplit: vi.fn().mockResolvedValue({ ...changePreview, affectedItemsCount: 1 }),
+    applyProductFamilySplit: vi.fn().mockResolvedValue({ ...changePreview, affectedItemsCount: 1 }),
     search
   } as unknown as ApiClient;
 }
@@ -365,6 +367,53 @@ describe("ProductsPage", () => {
     expect(within(splitDialog).getByText("01.05.2026 – 20.06.2026")).toBeInTheDocument();
     expect(within(splitDialog).getByText(changePreview.reportImpact)).toBeInTheDocument();
     expect(within(splitDialog).getByText(/geschützte Zuordnungen/)).toBeInTheDocument();
+  });
+
+  it("invalidates a family merge preview when its source or target changes", async () => {
+    const user = userEvent.setup();
+    const api = apiClient({
+      families: [
+        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 11, name: "Pflanzendrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 12, name: "Sojadrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+      ]
+    });
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    const familyMerge = screen.getByRole("heading", { name: "Familien zusammenführen" }).closest("section")!;
+    await user.selectOptions(within(familyMerge).getByLabelText("Quellfamilie"), "10");
+    await user.selectOptions(within(familyMerge).getByLabelText("Zielfamilie"), "11");
+    await user.click(within(familyMerge).getByRole("button", { name: "Vorschau berechnen" }));
+    expect(await within(familyMerge).findByRole("button", { name: "Zusammenführen bestätigen" })).toBeInTheDocument();
+
+    await user.selectOptions(within(familyMerge).getByLabelText("Zielfamilie"), "12");
+
+    expect(within(familyMerge).queryByRole("button", { name: "Zusammenführen bestätigen" })).not.toBeInTheDocument();
+    expect(within(familyMerge).getByRole("button", { name: "Vorschau berechnen" })).toBeInTheDocument();
+    expect(api.applyProductFamilyMerge).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a split preview when the new product changes", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    await user.click(await screen.findByRole("button", { name: "Position Haferdrink bestätigt aus Bon 9 (Position 44) trennen" }));
+    const dialog = screen.getByRole("dialog");
+    const name = within(dialog).getByLabelText("Neuer Produktname");
+    await user.type(name, "Haferdrink Spezial");
+    await user.click(within(dialog).getByRole("button", { name: "Vorschau berechnen" }));
+    expect(await within(dialog).findByRole("button", { name: "Trennung bestätigen" })).toBeEnabled();
+
+    await user.type(name, " Neu");
+
+    expect(within(dialog).getByRole("button", { name: "Trennung bestätigen" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Vorschau berechnen" })).toBeInTheDocument();
+    expect(api.applyProductFamilySplit).not.toHaveBeenCalled();
   });
 
   it("finds confirmed split candidates through paginated product search", async () => {

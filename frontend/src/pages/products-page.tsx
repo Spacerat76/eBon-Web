@@ -16,13 +16,17 @@ import type {
   ProductAssignmentSource,
   ProductAssignmentStatus,
   ProductChangePreviewDTO,
+  ProductFamilyMergeRequest,
+  ProductFamilySplitRequest,
   ProductFamilyDTO,
   ProductReviewItemDTO,
   ProductReviewParams,
   ProductRuleDTO,
   ProductRuleSuggestionDTO,
   ProductVariantDTO,
+  ProductVariantMergeRequest,
   ProductVariantRequest,
+  ProductVariantSplitRequest,
   SearchResultDTO
 } from "@/lib/types";
 
@@ -391,7 +395,11 @@ function MasterData({ activeTab, apiClient, families, onChanged, onSplit, review
   const [familyTarget, setFamilyTarget] = useState("");
   const [variantSource, setVariantSource] = useState("");
   const [variantTarget, setVariantTarget] = useState("");
-  const [preview, setPreview] = useState<{ kind: "family" | "variant"; value: ProductChangePreviewDTO } | null>(null);
+  const [preview, setPreview] = useState<
+    | { kind: "family"; value: ProductChangePreviewDTO; request: ProductFamilyMergeRequest }
+    | { kind: "variant"; value: ProductChangePreviewDTO; request: ProductVariantMergeRequest }
+    | null
+  >(null);
   const [rulePreview, setRulePreview] = useState<{ rule: ProductRuleDTO; matchingItemsCount: number } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [splitFamilyId, setSplitFamilyId] = useState("");
@@ -404,14 +412,19 @@ function MasterData({ activeTab, apiClient, families, onChanged, onSplit, review
   async function createFamily() { if (!familyName.trim()) return; await apiClient.createProductFamily({ name: familyName.trim(), isActive: true }); setFamilyName(""); await onChanged(); }
   function variantRequest(): ProductVariantRequest { return { productFamilyId: Number(variantFamilyId), name: variantName.trim(), totalQuantity: variantSize ? Number(variantSize) : null, totalUnit: variantUnit || null, isActive: true }; }
   async function saveVariant() { if (!variantFamilyId || !variantName.trim()) return; if (editingVariant) { await apiClient.updateProductVariant(editingVariant.id, { ...variantRequest(), isActive: editingVariant.isActive }); } else { await apiClient.createProductVariant(variantRequest()); } setEditingVariant(null); setVariantName(""); setVariantSize(""); setVariantUnit(""); await onChanged(); }
-  async function previewFamilyMerge() { if (!familySource || !familyTarget || familySource === familyTarget) return; setPreview({ kind: "family", value: await apiClient.previewProductFamilyMerge({ sourceFamilyId: Number(familySource), targetFamilyId: Number(familyTarget) }) }); }
-  async function previewVariantMerge() { if (!variantSource || !variantTarget || variantSource === variantTarget) return; setPreview({ kind: "variant", value: await apiClient.previewProductVariantMerge({ sourceVariantId: Number(variantSource), targetVariantId: Number(variantTarget) }) }); }
-  async function applyMerge() { if (!preview) return; if (preview.kind === "family") { await apiClient.applyProductFamilyMerge({ sourceFamilyId: Number(familySource), targetFamilyId: Number(familyTarget), confirm: true }); } else { await apiClient.applyProductVariantMerge({ sourceVariantId: Number(variantSource), targetVariantId: Number(variantTarget), confirm: true }); } setMessage("Historische Zuordnungen wurden zusammengeführt."); setPreview(null); await onChanged(); }
+  async function previewFamilyMerge() { if (!familySource || !familyTarget || familySource === familyTarget) return; const request = { sourceFamilyId: Number(familySource), targetFamilyId: Number(familyTarget) }; setPreview({ kind: "family", value: await apiClient.previewProductFamilyMerge(request), request }); }
+  async function previewVariantMerge() { if (!variantSource || !variantTarget || variantSource === variantTarget) return; const request = { sourceVariantId: Number(variantSource), targetVariantId: Number(variantTarget) }; setPreview({ kind: "variant", value: await apiClient.previewProductVariantMerge(request), request }); }
+  async function applyMerge() { if (!preview) return; if (preview.kind === "family") { await apiClient.applyProductFamilyMerge({ ...preview.request, confirm: true }); } else { await apiClient.applyProductVariantMerge({ ...preview.request, confirm: true }); } setMessage("Historische Zuordnungen wurden zusammengeführt."); setPreview(null); await onChanged(); }
   async function toggleFamily(family: ProductFamilyDTO) { await apiClient.updateProductFamily(family.id, { name: family.name, defaultCategoryId: family.defaultCategoryId, isActive: !family.isActive }); await onChanged(); }
   async function toggleVariant(variant: ProductVariantDTO) { await apiClient.updateProductVariant(variant.id, { productFamilyId: variant.productFamilyId, name: variant.name, unitQuantity: variant.unitQuantity, unit: variant.unit, packageQuantity: variant.packageQuantity, packageDescription: variant.packageDescription, totalQuantity: variant.totalQuantity, totalUnit: variant.totalUnit, gtin: variant.gtin, isActive: !variant.isActive }); await onChanged(); }
   async function toggleRule(rule: ProductRuleDTO) { await apiClient.updateProductRule(rule.id, { productFamilyId: rule.productFamilyId, productVariantId: rule.productVariantId, storeName: rule.storeName, matchType: rule.matchType, matchValue: rule.matchValue, priority: rule.priority, isActive: !rule.isActive }); await onChanged(); }
   async function previewRuleApply(rule: ProductRuleDTO) { const result = await apiClient.previewProductRule({ storeName: rule.storeName, matchType: rule.matchType, matchValue: rule.matchValue }); setRulePreview({ rule, matchingItemsCount: result.matchingItemsCount }); }
   async function applyRule() { if (!rulePreview) return; await apiClient.applyProductRule(rulePreview.rule.id); setRulePreview(null); setMessage("Produktregel wurde auf die Vorschau angewendet."); await onChanged(); }
+
+  useEffect(() => {
+    setPreview(null);
+  }, [familySource, familyTarget, variantSource, variantTarget]);
+
   async function loadSplitCandidates(nextPage = 0, familyId = splitFamilyId, variantId = splitVariantId) {
     if (!familyId) { setSplitResults(null); return; }
     setSplitLoading(true);
@@ -588,7 +601,38 @@ function CorrectionDialog({ families, item, loading, onCancel, onConfirm, onNoPr
   );
 }
 
-function SplitDialog({ apiClient, item, loading, onCancel, onConfirm }: { apiClient: ApiClient; item: SplitCandidate; loading: boolean; onCancel: () => void; onConfirm: (label: string, callback: () => Promise<unknown>) => void }) { const [name, setName] = useState(""); const [size, setSize] = useState(""); const [unit, setUnit] = useState(""); const [preview, setPreview] = useState<ProductChangePreviewDTO | null>(null); const variantSplit = item.productVariantId != null; const canSplit = name.trim().length > 0; async function calculate() { if (!canSplit) return; if (variantSplit) { setPreview(await apiClient.previewProductVariantSplit({ sourceVariantId: item.productVariantId!, receiptItemIds: [item.receiptItemId], newVariant: { productFamilyId: item.productFamilyId!, name: name.trim(), totalQuantity: size ? Number(size) : null, totalUnit: unit || null, isActive: true } })); } else { setPreview(await apiClient.previewProductFamilySplit({ sourceFamilyId: item.productFamilyId!, receiptItemIds: [item.receiptItemId], newFamily: { name: name.trim(), isActive: true } })); } } function apply() { if (variantSplit) { onConfirm("Produktvariante für die Position angelegt.", () => apiClient.applyProductVariantSplit({ sourceVariantId: item.productVariantId!, receiptItemIds: [item.receiptItemId], newVariant: { productFamilyId: item.productFamilyId!, name: name.trim(), totalQuantity: size ? Number(size) : null, totalUnit: unit || null, isActive: true }, confirm: true })); } else { onConfirm("Produktfamilie für die Position angelegt.", () => apiClient.applyProductFamilySplit({ sourceFamilyId: item.productFamilyId!, receiptItemIds: [item.receiptItemId], newFamily: { name: name.trim(), isActive: true }, confirm: true })); } } return <Dialog title={variantSplit ? "Position in neue Variante trennen" : "Position in neue Familie trennen"}><p className="text-sm text-zinc-500">Nur diese Position wird nach Vorschau und Bestätigung umgehängt. Bestehende Regeln bleiben unverändert.</p><Input aria-label="Neuer Produktname" onChange={(event) => setName(event.target.value)} placeholder={variantSplit ? "Neue Variantenbezeichnung" : "Neue Familienbezeichnung"} value={name} />{variantSplit ? <div className="grid grid-cols-2 gap-2"><Input aria-label="Neue Variantenmenge" onChange={(event) => setSize(event.target.value)} placeholder="Menge" step="0.001" type="number" value={size} /><Input aria-label="Neue Varianteneinheit" onChange={(event) => setUnit(event.target.value)} placeholder="Einheit" value={unit} /></div> : null}{preview == null ? <Button disabled={!canSplit || loading} onClick={() => void calculate()} size="sm" variant="secondary">Vorschau berechnen</Button> : <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"><p>{preview.affectedItemsCount} Position wird umgehängt.</p><PreviewDetails preview={preview} /></div>}<DialogActions onCancel={onCancel} onConfirm={apply} disabled={!preview || loading} label="Trennung bestätigen" /></Dialog>; }
+function SplitDialog({ apiClient, item, loading, onCancel, onConfirm }: { apiClient: ApiClient; item: SplitCandidate; loading: boolean; onCancel: () => void; onConfirm: (label: string, callback: () => Promise<unknown>) => void }) {
+  const [name, setName] = useState("");
+  const [size, setSize] = useState("");
+  const [unit, setUnit] = useState("");
+  const [preview, setPreview] = useState<
+    | { kind: "family"; value: ProductChangePreviewDTO; request: ProductFamilySplitRequest }
+    | { kind: "variant"; value: ProductChangePreviewDTO; request: ProductVariantSplitRequest }
+    | null
+  >(null);
+  const variantSplit = item.productVariantId != null;
+  const canSplit = name.trim().length > 0;
+  async function calculate() {
+    if (!canSplit) return;
+    if (variantSplit) {
+      const request = { sourceVariantId: item.productVariantId!, receiptItemIds: [item.receiptItemId], newVariant: { productFamilyId: item.productFamilyId!, name: name.trim(), totalQuantity: size ? Number(size) : null, totalUnit: unit || null, isActive: true } };
+      setPreview({ kind: "variant", value: await apiClient.previewProductVariantSplit(request), request });
+    } else {
+      const request = { sourceFamilyId: item.productFamilyId!, receiptItemIds: [item.receiptItemId], newFamily: { name: name.trim(), isActive: true } };
+      setPreview({ kind: "family", value: await apiClient.previewProductFamilySplit(request), request });
+    }
+  }
+  function apply() {
+    if (!preview) return;
+    if (preview.kind === "variant") {
+      onConfirm("Produktvariante für die Position angelegt.", () => apiClient.applyProductVariantSplit({ ...preview.request, confirm: true }));
+    } else {
+      onConfirm("Produktfamilie für die Position angelegt.", () => apiClient.applyProductFamilySplit({ ...preview.request, confirm: true }));
+    }
+  }
+  function invalidate(setter: (value: string) => void, value: string) { setter(value); setPreview(null); }
+  return <Dialog title={variantSplit ? "Position in neue Variante trennen" : "Position in neue Familie trennen"}><p className="text-sm text-zinc-500">Nur diese Position wird nach Vorschau und Bestätigung umgehängt. Bestehende Regeln bleiben unverändert.</p><Input aria-label="Neuer Produktname" onChange={(event) => invalidate(setName, event.target.value)} placeholder={variantSplit ? "Neue Variantenbezeichnung" : "Neue Familienbezeichnung"} value={name} />{variantSplit ? <div className="grid grid-cols-2 gap-2"><Input aria-label="Neue Variantenmenge" onChange={(event) => invalidate(setSize, event.target.value)} placeholder="Menge" step="0.001" type="number" value={size} /><Input aria-label="Neue Varianteneinheit" onChange={(event) => invalidate(setUnit, event.target.value)} placeholder="Einheit" value={unit} /></div> : null}{preview == null ? <Button disabled={!canSplit || loading} onClick={() => void calculate()} size="sm" variant="secondary">Vorschau berechnen</Button> : <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"><p>{preview.value.affectedItemsCount} Position wird umgehängt.</p><PreviewDetails preview={preview.value} /></div>}<DialogActions onCancel={onCancel} onConfirm={apply} disabled={!preview || loading} label="Trennung bestätigen" /></Dialog>;
+}
 
 function RuleSuggestionDialog({ loading, onCancel, onConfirm, suggestion }: { loading: boolean; onCancel: () => void; onConfirm: (applyToExisting: boolean) => void; suggestion: ProductRuleSuggestionDTO }) { const [applyToExisting, setApplyToExisting] = useState(false); return <Dialog title="Produktregel bestätigen"><p className="text-sm text-zinc-700 dark:text-zinc-200"><span className="font-medium">{suggestion.rule.matchType}</span> "{suggestion.rule.matchValue}"</p><p className="text-sm text-zinc-500">Vorschau: {suggestion.preview.matchingItemsCount} Positionen passen zur Regel.</p><label className="flex items-start gap-2 text-sm"><input checked={applyToExisting} onChange={(event) => setApplyToExisting(event.target.checked)} type="checkbox" />Auf bestehende passende Positionen anwenden</label><DialogActions onCancel={onCancel} onConfirm={() => onConfirm(applyToExisting)} disabled={loading} label="Regel bestätigen" /></Dialog>; }
 
