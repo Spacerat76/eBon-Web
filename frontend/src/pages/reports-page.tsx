@@ -50,7 +50,8 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const loadReport = useCallback(async () => {
     if (!hasApiToken) {
@@ -62,7 +63,8 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
     }
 
     setLoading(true);
-    setError(null);
+    setLoadError(null);
+    setExportError(null);
 
     try {
       const [categoryResponse, familyResponse, variantResponse, reportResponse] = await Promise.all([
@@ -76,7 +78,7 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
       setVariants(variantResponse);
       setRows(reportResponse);
     } catch (loadError) {
-      setError(toUserMessage(loadError));
+      setLoadError(toUserMessage(loadError));
     } finally {
       setLoading(false);
     }
@@ -109,14 +111,14 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
 
   async function exportCsv() {
     setExporting(true);
-    setError(null);
+    setExportError(null);
 
     try {
       const type = reportExportType(tab);
       const blob = await apiClient.downloadReportCsv(type, filters);
       downloadBlob(blob, `ebon-report-${type}.csv`);
     } catch (exportError) {
-      setError(toUserMessage(exportError));
+      setExportError(toUserMessage(exportError));
     } finally {
       setExporting(false);
     }
@@ -147,9 +149,15 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
         title="Reports"
       />
 
-      {error ? (
+      {loadError ? (
         <StatusBanner title="Report konnte nicht geladen werden" tone="error">
-          {error}
+          {loadError}
+        </StatusBanner>
+      ) : null}
+
+      {exportError ? (
+        <StatusBanner title="CSV-Export fehlgeschlagen" tone="error">
+          {exportError}
         </StatusBanner>
       ) : null}
 
@@ -251,7 +259,7 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
         <StatusBanner ariaLabel="Report wird geladen" busy title="Report wird geladen">
           Reportdaten werden aktualisiert.
         </StatusBanner>
-      ) : !error && rows.length === 0 ? (
+      ) : !loadError && rows.length === 0 ? (
         <StatusBanner
           action={<Button onClick={resetFilters} size="sm" variant="secondary">Filter zurücksetzen</Button>}
           ariaLabel="Keine Reportdaten"
@@ -267,7 +275,7 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
             <CardTitle>{title}</CardTitle>
           </CardHeader>
           <CardContent className="h-80">
-            {loading ? <Skeleton aria-hidden="true" className="h-full w-full" /> : !error && rows.length ? <ReportChart rows={rows} tab={tab} /> : null}
+            {loading ? <Skeleton aria-hidden="true" className="h-full w-full" /> : !loadError && rows.length ? <ReportChart rows={rows} tab={tab} /> : null}
           </CardContent>
         </Card>
 
@@ -275,7 +283,7 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
           <CardHeader>
             <CardTitle id="report-table-title">Tabelle</CardTitle>
           </CardHeader>
-          {loading ? <Card><CardContent><Skeleton aria-hidden="true" className="h-48 w-full" /></CardContent></Card> : !error && rows.length ? (
+          {loading ? <Card><CardContent><Skeleton aria-hidden="true" className="h-48 w-full" /></CardContent></Card> : !loadError && rows.length ? (
             <DataTableFrame><ReportTable rows={rows} tab={tab} /></DataTableFrame>
           ) : <Card><CardContent className="min-h-48">{null}</CardContent></Card>}
         </section>

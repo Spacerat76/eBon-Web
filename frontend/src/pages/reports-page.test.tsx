@@ -8,7 +8,7 @@ import { ReportsPage } from "@/pages/reports-page";
 
 function apiClient(reportByCategory: Promise<unknown> = Promise.resolve([
   { categoryId: 1, categoryName: "Lebensmittel", total: 42.5 }
-])) {
+]), downloadReportCsv: () => Promise<Blob> = () => Promise.resolve(new Blob(["csv"]))) {
   return {
     categories: vi.fn().mockResolvedValue([
       { id: 1, name: "Lebensmittel", colorHex: "#2563eb", icon: "basket", isActive: true, sortOrder: 1, assignedItemsCount: 4 },
@@ -26,7 +26,7 @@ function apiClient(reportByCategory: Promise<unknown> = Promise.resolve([
     topItems: vi.fn().mockResolvedValue([{ description: "Haferdrink", total: 12.5, count: 5 }]),
     topProducts: vi.fn().mockResolvedValue([{ productFamilyId: 10, productFamilyName: "Haferdrink", total: 12.5, count: 5 }]),
     bonusReport: vi.fn().mockResolvedValue([{ bonusType: "PAYBACK", totalPoints: 20, totalEarnedBalance: 0.2 }]),
-    downloadReportCsv: vi.fn().mockResolvedValue(new Blob(["csv"]))
+    downloadReportCsv: vi.fn().mockImplementation(downloadReportCsv)
   };
 }
 
@@ -135,6 +135,25 @@ describe("ReportsPage", () => {
     const status = await screen.findByRole("status", { name: "Keine Reportdaten" });
     expect(within(status).getByText(/Filter anpassen/)).toBeInTheDocument();
     expect(within(status).getByRole("button", { name: "Filter zurücksetzen" })).toBeInTheDocument();
+  });
+
+  it("keeps a loaded chart and table visible when CSV export fails", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const api = apiClient(undefined, () => Promise.reject(new Error("CSV-Dienst nicht erreichbar")));
+    render(<ReportsPage apiClient={api as unknown as ApiClient} hasApiToken />);
+
+    expect(await screen.findByRole("table", { name: "Reportdaten" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Diagramm" })).toBeInTheDocument();
+    expect(screen.getByText("42,50 €")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "CSV exportieren" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText("CSV-Export fehlgeschlagen")).toBeInTheDocument();
+    expect(within(alert).getByText("CSV-Dienst nicht erreichbar")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Reportdaten" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Diagramm" })).toBeInTheDocument();
+    expect(screen.getByText("42,50 €")).toBeInTheDocument();
   });
 });
 
