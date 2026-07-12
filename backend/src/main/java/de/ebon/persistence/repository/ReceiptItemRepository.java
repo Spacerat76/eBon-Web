@@ -15,6 +15,10 @@ public interface ReceiptItemRepository extends JpaRepository<ReceiptItem, Long>,
 
     List<ReceiptItem> findByProductVariant_Id(Long productVariantId);
 
+    long countByProductFamily_Id(Long productFamilyId);
+
+    long countByProductVariant_Id(Long productVariantId);
+
     boolean existsByCategory_Id(Long categoryId);
 
     long countByCategory_Id(Long categoryId);

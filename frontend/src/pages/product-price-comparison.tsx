@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ModalDialog } from "@/components/ui/modal-dialog";
+import { StatusBanner } from "@/components/feedback/status-banner";
 import type { ApiClient } from "@/lib/api";
 import type {
   PageResponse,
@@ -38,6 +40,7 @@ export function ProductPriceComparison({
   const [observations, setObservations] = useState<PageResponse<ProductPriceObservationDTO> | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
   const [excludeItem, setExcludeItem] = useState<ProductPriceObservationDTO | null>(null);
   const [exclusionReason, setExclusionReason] = useState("");
 
@@ -73,6 +76,7 @@ export function ProductPriceComparison({
       setReport(nextReport);
       setObservations(nextObservations);
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Preisvergleich konnte nicht geladen werden.");
     } finally {
       setLoading(false);
@@ -92,9 +96,11 @@ export function ProductPriceComparison({
       await apiClient.excludeProductPriceObservation(excludeItem.receiptItemId, exclusionReason.trim());
       setExcludeItem(null);
       setExclusionReason("");
+      setMessageTone("success");
       setMessage("Preisbeobachtung wurde aus dem Vergleich ausgeschlossen.");
       await load();
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Ausschluss konnte nicht gespeichert werden.");
     } finally {
       setLoading(false);
@@ -105,9 +111,11 @@ export function ProductPriceComparison({
     setLoading(true);
     try {
       await apiClient.includeProductPriceObservation(observation.receiptItemId);
+      setMessageTone("success");
       setMessage("Preisbeobachtung wird wieder berücksichtigt.");
       await load();
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Wiederaufnahme konnte nicht gespeichert werden.");
     } finally {
       setLoading(false);
@@ -128,7 +136,10 @@ export function ProductPriceComparison({
       link.download = scope === "family" ? "product-family-price-comparison.csv" : "product-variant-price-comparison.csv";
       link.click();
       URL.revokeObjectURL(url);
+      setMessageTone("success");
+      setMessage("CSV-Export wurde erstellt.");
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "CSV-Export konnte nicht erstellt werden.");
     }
   }
@@ -185,7 +196,8 @@ export function ProductPriceComparison({
         </CardHeader>
       </Card>
 
-      {message ? <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">{message}</div> : null}
+      {loading ? <StatusBanner ariaLabel="Preisaktion wird ausgeführt" busy title="Preisaktion wird ausgeführt" /> : null}
+      {message ? <StatusBanner title={messageTone === "error" ? "Preisaktion fehlgeschlagen" : "Preisaktion abgeschlossen"} tone={messageTone}>{message}</StatusBanner> : null}
 
       {report ? <>
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -249,8 +261,7 @@ function ObservationsTable({
 }
 
 function ExcludeDialog({ loading, onCancel, onConfirm, onReasonChange, reason }: { loading: boolean; onCancel: () => void; onConfirm: () => void; onReasonChange: (value: string) => void; reason: string }) {
-  const titleId = "product-price-exclusion-title";
-  return <div aria-labelledby={titleId} aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog"><Card className="w-full max-w-md"><CardHeader><CardTitle><span id={titleId}>Preisbeobachtung ausschließen</span></CardTitle><p className="text-sm text-zinc-500">Der Ausschluss ändert keine Bon-Daten und kann später rückgängig gemacht werden.</p></CardHeader><CardContent className="space-y-4"><Input aria-label="Ausschlussgrund" maxLength={200} onChange={(event) => onReasonChange(event.target.value)} placeholder="Grund für den Ausschluss" value={reason} /><div className="flex justify-end gap-2"><Button onClick={onCancel} size="sm" variant="ghost">Abbrechen</Button><Button disabled={loading || !reason.trim()} onClick={onConfirm} size="sm" variant="danger">Ausschließen</Button></div></CardContent></Card></div>;
+  return <ModalDialog onClose={onCancel} open title="Preisbeobachtung ausschließen"><div className="mt-2 space-y-4"><p className="text-sm text-zinc-500">Der Ausschluss ändert keine Bon-Daten und kann später rückgängig gemacht werden.</p><Input aria-label="Ausschlussgrund" maxLength={200} onChange={(event) => onReasonChange(event.target.value)} placeholder="Grund für den Ausschluss" value={reason} /><div className="flex justify-end gap-2"><Button onClick={onCancel} size="sm" variant="ghost">Abbrechen</Button><Button disabled={loading || !reason.trim()} onClick={onConfirm} size="sm" variant="danger">Ausschließen</Button></div></div></ModalDialog>;
 }
 
 function EmptyState({ text }: { text: string }) {

@@ -225,14 +225,18 @@ public class ProductManagementService {
         Category category = family.getDefaultCategory();
         return new ProductFamilyDto(
                 family.getId(), family.getName(), category == null ? null : category.getId(),
-                category == null ? null : category.getName(), family.isActive(), family.getCreatedAt(), family.getUpdatedAt());
+                category == null ? null : category.getName(), family.isActive(),
+                productVariantRepository.countByProductFamily_Id(family.getId()),
+                receiptItemRepository.countByProductFamily_Id(family.getId()),
+                family.getCreatedAt(), family.getUpdatedAt());
     }
 
     private ProductVariantDto toVariantDto(ProductVariant variant) {
         return new ProductVariantDto(
                 variant.getId(), variant.getProductFamily().getId(), variant.getProductFamily().getName(), variant.getName(),
                 variant.getUnitQuantity(), variant.getUnit(), variant.getPackageQuantity(), variant.getPackageDescription(),
-                variant.getTotalQuantity(), variant.getTotalUnit(), variant.getGtin(), variant.isActive());
+                variant.getTotalQuantity(), variant.getTotalUnit(), variant.getGtin(), variant.isActive(),
+                receiptItemRepository.countByProductVariant_Id(variant.getId()));
     }
 
     private ProductRuleDto toRuleDto(ProductRule rule) {

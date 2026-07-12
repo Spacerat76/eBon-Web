@@ -127,8 +127,8 @@ function apiClient(options: {
   priceObservations?: ProductPriceObservationDTO[];
   searchResults?: PageResponse<SearchResultDTO>[];
 } = {}) {
-  const families = options.families ?? [{ id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }];
-  const variants = options.variants ?? [{ id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true }];
+  const families = options.families ?? [{ id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 1, assignedItemsCount: 42, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }];
+  const variants = options.variants ?? [{ id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true, assignedItemsCount: 18 }];
   const search = vi.fn();
   (options.searchResults ?? [searchPage([assignedSearchResult], 0, 1)]).forEach((result) => search.mockResolvedValueOnce(result));
   return {
@@ -137,6 +137,10 @@ function apiClient(options: {
     productVariants: vi.fn().mockResolvedValue(variants),
     productRules: vi.fn().mockResolvedValue(options.rules ?? []),
     categories: vi.fn().mockResolvedValue([{ id: 2, name: "Milchprodukte und Eier", colorHex: "#00838F", icon: "milk", isActive: true, sortOrder: 1, assignedItemsCount: 1 }]),
+    createProductFamily: vi.fn().mockResolvedValue(families[0]),
+    updateProductFamily: vi.fn().mockResolvedValue(families[0]),
+    createProductVariant: vi.fn().mockResolvedValue(variants[0]),
+    updateProductVariant: vi.fn().mockResolvedValue(variants[0]),
     acceptProductReview: vi.fn().mockResolvedValue({ ...reviewItem, assignmentSource: "MANUAL", assignmentStatus: "CONFIRMED" }),
     correctProductReview: vi.fn().mockResolvedValue({ ...reviewItem, assignmentSource: "MANUAL", assignmentStatus: "CONFIRMED" }),
     productFamilyPrices: vi.fn().mockResolvedValue(priceReport),
@@ -208,8 +212,8 @@ describe("ProductsPage", () => {
     const api = apiClient({
       reviewItems: [filetraeucherlingReview],
       families: [
-        { id: 6, name: "Fluconazol Accord 50 mg", defaultCategoryId: 6, defaultCategoryName: "Gesundheit", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
-        { id: 11, name: "Filetraeucherling", defaultCategoryId: 1, defaultCategoryName: "Fleisch und Wurst", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+        { id: 6, name: "Fluconazol Accord 50 mg", defaultCategoryId: 6, defaultCategoryName: "Gesundheit", isActive: true, variantCount: 0, assignedItemsCount: 0, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 11, name: "Filetraeucherling", defaultCategoryId: 1, defaultCategoryName: "Fleisch und Wurst", isActive: true, variantCount: 0, assignedItemsCount: 0, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
       ],
       variants: []
     });
@@ -237,8 +241,8 @@ describe("ProductsPage", () => {
     const api = apiClient({
       reviewItems: [{ ...reviewItem, suggestedProductFamilyId: null, suggestedProductFamilyName: null, suggestedProductVariantId: null, suggestedProductVariantName: null }],
       families: [
-        { id: 6, name: "Fluconazol Accord 50 mg", defaultCategoryId: 6, defaultCategoryName: "Gesundheit", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
-        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+        { id: 6, name: "Fluconazol Accord 50 mg", defaultCategoryId: 6, defaultCategoryName: "Gesundheit", isActive: true, variantCount: 0, assignedItemsCount: 0, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 1, assignedItemsCount: 42, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
       ]
     });
     render(<ProductsPage apiClient={api} hasApiToken />);
@@ -261,6 +265,21 @@ describe("ProductsPage", () => {
     }));
   });
 
+  it("closes product dialogs with Escape and restores trigger focus", async () => {
+    const user = userEvent.setup();
+    render(<ProductsPage apiClient={apiClient()} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    const trigger = screen.getByRole("button", { name: "Korrigieren" });
+    await user.click(trigger);
+    expect(screen.getByRole("dialog", { name: "Produktzuordnung prüfen" })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog", { name: "Produktzuordnung prüfen" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("separates family, variant, rule, and structure master data into focused tabs", async () => {
     const user = userEvent.setup();
     render(<ProductsPage apiClient={apiClient()} hasApiToken />);
@@ -270,7 +289,7 @@ describe("ProductsPage", () => {
 
     expect(screen.getByRole("heading", { name: "Produktfamilien" })).toBeInTheDocument();
     expect(screen.getAllByText("Haferdrink").length).toBeGreaterThan(0);
-    expect(screen.getByText(/1 Variante · 1 offene Zuordnung/)).toBeInTheDocument();
+    expect(screen.getByText(/1 Variante · 42 Zuordnungen/)).toBeInTheDocument();
     expect(screen.getByText("Kategorie: Milchprodukte und Eier")).toBeInTheDocument();
     expect(screen.getByText("aktiv")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Produktvarianten" })).not.toBeInTheDocument();
@@ -280,7 +299,7 @@ describe("ProductsPage", () => {
     expect(screen.getByRole("heading", { name: "Produktvarianten" })).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Variantenfamilie"), "10");
     expect(screen.getByText("Haferdrink 1 l")).toBeInTheDocument();
-    expect(screen.getByText(/Gesamtmenge 1 l · 1 offene Zuordnung/)).toBeInTheDocument();
+    expect(screen.getByText(/Gesamtmenge 1 l · 18 Zuordnungen/)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Produktfamilien" })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Regeln" }));
@@ -294,16 +313,51 @@ describe("ProductsPage", () => {
     expect(screen.queryByRole("heading", { name: "Produktregeln" })).not.toBeInTheDocument();
   });
 
+  it("edits all product family master data fields", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Familien" }));
+    await user.click(screen.getByRole("button", { name: "Familie Haferdrink bearbeiten" }));
+    await user.clear(screen.getByLabelText("Name der Produktfamilie"));
+    await user.type(screen.getByLabelText("Name der Produktfamilie"), "Haferdrink Bio");
+    await user.selectOptions(screen.getByLabelText("Standardkategorie"), "");
+    await user.click(screen.getByLabelText("Produktfamilie aktiv"));
+    await user.click(screen.getByRole("button", { name: "Familie aktualisieren" }));
+
+    await waitFor(() => expect(api.updateProductFamily).toHaveBeenCalledWith(10, {
+      name: "Haferdrink Bio",
+      defaultCategoryId: null,
+      isActive: false
+    }));
+  });
+
+  it("announces product master-data mutation failures without an unhandled rejection", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    vi.mocked(api.createProductFamily).mockRejectedValueOnce(new Error("Familie konnte nicht gespeichert werden"));
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Familien" }));
+    await user.type(screen.getByLabelText("Neue Produktfamilie"), "Fehlerfamilie");
+    await user.click(screen.getByRole("button", { name: "Anlegen" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Familie konnte nicht gespeichert werden");
+  });
+
   it("gives every repeated product administration action an object-specific accessible name", async () => {
     const user = userEvent.setup();
     const api = apiClient({
       families: [
-        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
-        { id: 11, name: "Pflanzendrink", defaultCategoryId: null, defaultCategoryName: null, isActive: false, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 2, assignedItemsCount: 42, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 11, name: "Pflanzendrink", defaultCategoryId: null, defaultCategoryName: null, isActive: false, variantCount: 0, assignedItemsCount: 0, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
       ],
       variants: [
-        { id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true },
-        { id: 21, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 0,5 l", unitQuantity: 0.5, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 0.5, totalUnit: "l", gtin: null, isActive: false }
+        { id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true, assignedItemsCount: 18 },
+        { id: 21, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 0,5 l", unitQuantity: 0.5, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 0.5, totalUnit: "l", gtin: null, isActive: false, assignedItemsCount: 4 }
       ],
       rules: [
         { id: 30, productFamilyId: 10, productFamilyName: "Haferdrink", productVariantId: 20, productVariantName: "Haferdrink 1 l", storeName: "dm", matchType: "EXACT", matchValue: "Haferdrink Barista", priority: 100, isActive: true },
@@ -340,8 +394,8 @@ describe("ProductsPage", () => {
     const user = userEvent.setup();
     const api = apiClient({
       families: [
-        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
-        { id: 11, name: "Pflanzendrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 1, assignedItemsCount: 42, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 11, name: "Pflanzendrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 0, assignedItemsCount: 5, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
       ]
     });
     render(<ProductsPage apiClient={api} hasApiToken />);
@@ -373,9 +427,9 @@ describe("ProductsPage", () => {
     const user = userEvent.setup();
     const api = apiClient({
       families: [
-        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
-        { id: 11, name: "Pflanzendrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
-        { id: 12, name: "Sojadrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 1, assignedItemsCount: 42, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 11, name: "Pflanzendrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 0, assignedItemsCount: 5, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 12, name: "Sojadrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 0, assignedItemsCount: 2, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
       ]
     });
     render(<ProductsPage apiClient={api} hasApiToken />);

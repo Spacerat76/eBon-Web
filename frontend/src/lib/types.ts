@@ -476,6 +476,8 @@ export interface ProductFamilyDTO {
   defaultCategoryId: number | null;
   defaultCategoryName: string | null;
   isActive: boolean;
+  variantCount: number;
+  assignedItemsCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -499,6 +501,7 @@ export interface ProductVariantDTO {
   totalUnit: string | null;
   gtin: string | null;
   isActive: boolean;
+  assignedItemsCount: number;
 }
 
 export interface ProductVariantRequest {

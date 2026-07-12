@@ -15,10 +15,10 @@ function apiClient(reportByCategory: Promise<unknown> = Promise.resolve([
       { id: 2, name: "Haushalt", colorHex: "#16a34a", icon: "home", isActive: true, sortOrder: 2, assignedItemsCount: 2 }
     ]),
     productFamilies: vi.fn().mockResolvedValue([
-      { id: 10, name: "Haferdrink", defaultCategoryId: 1, defaultCategoryName: "Lebensmittel", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+      { id: 10, name: "Haferdrink", defaultCategoryId: 1, defaultCategoryName: "Lebensmittel", isActive: true, variantCount: 1, assignedItemsCount: 3, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
     ]),
     productVariants: vi.fn().mockResolvedValue([
-      { id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true }
+      { id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true, assignedItemsCount: 3 }
     ]),
     reportByCategory: vi.fn().mockReturnValue(reportByCategory),
     reportByPeriod: vi.fn().mockResolvedValue([{ periodStart: "2026-06-01", period: "Juni 2026", total: 42.5 }]),

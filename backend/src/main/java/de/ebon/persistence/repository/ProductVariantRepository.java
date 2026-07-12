@@ -8,5 +8,7 @@ public interface ProductVariantRepository extends JpaRepository<ProductVariant, 
 
     List<ProductVariant> findByProductFamily_IdOrderByNameAsc(Long productFamilyId);
 
+    long countByProductFamily_Id(Long productFamilyId);
+
     List<ProductVariant> findByActiveTrueOrderByProductFamily_NameAscNameAsc();
 }

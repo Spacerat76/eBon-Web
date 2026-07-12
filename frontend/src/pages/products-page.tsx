@@ -2,11 +2,13 @@ import { Check, CircleOff, Eraser, GitFork, Loader2, Pencil, Plus, RefreshCw, Sp
 import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { StatusBanner } from "@/components/feedback/status-banner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterBar } from "@/components/data/filter-bar";
 import { PageTabs } from "@/components/layout/page-tabs";
 import { Input } from "@/components/ui/input";
+import { ModalDialog } from "@/components/ui/modal-dialog";
 import type { ApiClient } from "@/lib/api";
 import { ProductPriceComparison } from "@/pages/product-price-comparison";
 import type {
@@ -51,6 +53,7 @@ export function ProductsPage({ apiClient, hasApiToken }: { apiClient: ApiClient;
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [pageMessageTone, setPageMessageTone] = useState<"success" | "error">("success");
   const [selected, setSelected] = useState<ProductReviewItemDTO | null>(null);
   const [splitItem, setSplitItem] = useState<SplitCandidate | null>(null);
   const [suggestion, setSuggestion] = useState<ProductRuleSuggestionDTO | null>(null);
@@ -90,6 +93,7 @@ export function ProductsPage({ apiClient, hasApiToken }: { apiClient: ApiClient;
       setCategories(nextCategories);
       setPage(nextReview.page);
     } catch (error) {
+      setPageMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Produktdaten konnten nicht geladen werden.");
     } finally {
       setLoading(false);
@@ -104,6 +108,7 @@ export function ProductsPage({ apiClient, hasApiToken }: { apiClient: ApiClient;
     setLoading(true);
     try {
       await callback();
+      setPageMessageTone("success");
       setMessage(label);
       setSelected(null);
       setSplitItem(null);
@@ -111,6 +116,7 @@ export function ProductsPage({ apiClient, hasApiToken }: { apiClient: ApiClient;
       setSuggestionItemId(null);
       await load();
     } catch (error) {
+      setPageMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Aktion konnte nicht ausgeführt werden.");
       setLoading(false);
     }
@@ -126,6 +132,7 @@ export function ProductsPage({ apiClient, hasApiToken }: { apiClient: ApiClient;
         priority: 100
       }));
     } catch (error) {
+      setPageMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Regelvorschlag konnte nicht erstellt werden.");
     } finally {
       setLoading(false);
@@ -158,7 +165,8 @@ export function ProductsPage({ apiClient, hasApiToken }: { apiClient: ApiClient;
         </Button>
       </div>
 
-      {message ? <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">{message}</div> : null}
+      {loading ? <StatusBanner ariaLabel="Produktdaten werden verarbeitet" busy title="Produktdaten werden verarbeitet" /> : null}
+      {message ? <StatusBanner title={pageMessageTone === "error" ? "Produktaktion fehlgeschlagen" : "Produktaktion abgeschlossen"} tone={pageMessageTone}>{message}</StatusBanner> : null}
 
       <PageTabs
         active={activeTab}
@@ -194,7 +202,7 @@ export function ProductsPage({ apiClient, hasApiToken }: { apiClient: ApiClient;
       ) : activeTab === "prices" ? (
         <ProductPriceComparison apiClient={apiClient} families={families} variants={variants} />
       ) : (
-        <MasterData activeTab={activeTab} apiClient={apiClient} families={families} onChanged={load} onSplit={setSplitItem} reviewItems={review?.content ?? []} rules={rules} variants={variants} variantsByFamily={variantsByFamily} />
+        <MasterData activeTab={activeTab} apiClient={apiClient} categories={categories} families={families} onChanged={load} onSplit={setSplitItem} rules={rules} variants={variants} variantsByFamily={variantsByFamily} />
       )}
 
       {selected ? <CorrectionDialog families={families} item={selected} loading={loading} onCancel={() => setSelected(null)} onConfirm={(request) => void action("Produktzuordnung korrigiert.", () => apiClient.correctProductReview(selected.receiptItemId, request))} onNoProduct={() => void action("Position als keine Produktposition markiert.", () => apiClient.markProductReviewNoProduct(selected.receiptItemId))} variantsByFamily={variantsByFamily} /> : null}
@@ -384,7 +392,7 @@ function ReviewTable({ categories, families, filters, loading, onAccept, onClear
   );
 }
 
-function MasterData({ activeTab, apiClient, families, onChanged, onSplit, reviewItems, rules, variants, variantsByFamily }: { activeTab: Exclude<ProductPageTab, "review" | "prices">; apiClient: ApiClient; families: ProductFamilyDTO[]; onChanged: () => Promise<void>; onSplit: (item: SplitCandidate) => void; reviewItems: ProductReviewItemDTO[]; rules: ProductRuleDTO[]; variants: ProductVariantDTO[]; variantsByFamily: Map<number, ProductVariantDTO[]> }) {
+function MasterData({ activeTab, apiClient, categories, families, onChanged, onSplit, rules, variants, variantsByFamily }: { activeTab: Exclude<ProductPageTab, "review" | "prices">; apiClient: ApiClient; categories: CategoryDTO[]; families: ProductFamilyDTO[]; onChanged: () => Promise<void>; onSplit: (item: SplitCandidate) => void; rules: ProductRuleDTO[]; variants: ProductVariantDTO[]; variantsByFamily: Map<number, ProductVariantDTO[]> }) {
   const [familyName, setFamilyName] = useState("");
   const [variantFamilyId, setVariantFamilyId] = useState("");
   const [variantName, setVariantName] = useState("");
@@ -402,6 +410,8 @@ function MasterData({ activeTab, apiClient, families, onChanged, onSplit, review
   >(null);
   const [rulePreview, setRulePreview] = useState<{ rule: ProductRuleDTO; matchingItemsCount: number } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "error" | "info">("info");
+  const [mutationBusy, setMutationBusy] = useState(false);
   const [splitFamilyId, setSplitFamilyId] = useState("");
   const [splitVariantId, setSplitVariantId] = useState("");
   const [splitQuery, setSplitQuery] = useState("");
@@ -409,17 +419,31 @@ function MasterData({ activeTab, apiClient, families, onChanged, onSplit, review
   const [splitResults, setSplitResults] = useState<PageResponse<SearchResultDTO> | null>(null);
   const [splitLoading, setSplitLoading] = useState(false);
 
-  async function createFamily() { if (!familyName.trim()) return; await apiClient.createProductFamily({ name: familyName.trim(), isActive: true }); setFamilyName(""); await onChanged(); }
+  async function perform(success: string, task: () => Promise<void>) {
+    setMutationBusy(true);
+    setMessage(null);
+    try {
+      await task();
+      setMessageTone("success");
+      setMessage(success);
+    } catch (error) {
+      setMessageTone("error");
+      setMessage(error instanceof Error ? error.message : "Produktaktion konnte nicht ausgeführt werden.");
+    } finally {
+      setMutationBusy(false);
+    }
+  }
+  async function createFamily() { if (!familyName.trim()) return; await perform("Produktfamilie wurde angelegt.", async () => { await apiClient.createProductFamily({ name: familyName.trim(), isActive: true }); setFamilyName(""); await onChanged(); }); }
   function variantRequest(): ProductVariantRequest { return { productFamilyId: Number(variantFamilyId), name: variantName.trim(), totalQuantity: variantSize ? Number(variantSize) : null, totalUnit: variantUnit || null, isActive: true }; }
-  async function saveVariant() { if (!variantFamilyId || !variantName.trim()) return; if (editingVariant) { await apiClient.updateProductVariant(editingVariant.id, { ...variantRequest(), isActive: editingVariant.isActive }); } else { await apiClient.createProductVariant(variantRequest()); } setEditingVariant(null); setVariantName(""); setVariantSize(""); setVariantUnit(""); await onChanged(); }
-  async function previewFamilyMerge() { if (!familySource || !familyTarget || familySource === familyTarget) return; const request = { sourceFamilyId: Number(familySource), targetFamilyId: Number(familyTarget) }; setPreview({ kind: "family", value: await apiClient.previewProductFamilyMerge(request), request }); }
-  async function previewVariantMerge() { if (!variantSource || !variantTarget || variantSource === variantTarget) return; const request = { sourceVariantId: Number(variantSource), targetVariantId: Number(variantTarget) }; setPreview({ kind: "variant", value: await apiClient.previewProductVariantMerge(request), request }); }
-  async function applyMerge() { if (!preview) return; if (preview.kind === "family") { await apiClient.applyProductFamilyMerge({ ...preview.request, confirm: true }); } else { await apiClient.applyProductVariantMerge({ ...preview.request, confirm: true }); } setMessage("Historische Zuordnungen wurden zusammengeführt."); setPreview(null); await onChanged(); }
-  async function toggleFamily(family: ProductFamilyDTO) { await apiClient.updateProductFamily(family.id, { name: family.name, defaultCategoryId: family.defaultCategoryId, isActive: !family.isActive }); await onChanged(); }
-  async function toggleVariant(variant: ProductVariantDTO) { await apiClient.updateProductVariant(variant.id, { productFamilyId: variant.productFamilyId, name: variant.name, unitQuantity: variant.unitQuantity, unit: variant.unit, packageQuantity: variant.packageQuantity, packageDescription: variant.packageDescription, totalQuantity: variant.totalQuantity, totalUnit: variant.totalUnit, gtin: variant.gtin, isActive: !variant.isActive }); await onChanged(); }
-  async function toggleRule(rule: ProductRuleDTO) { await apiClient.updateProductRule(rule.id, { productFamilyId: rule.productFamilyId, productVariantId: rule.productVariantId, storeName: rule.storeName, matchType: rule.matchType, matchValue: rule.matchValue, priority: rule.priority, isActive: !rule.isActive }); await onChanged(); }
-  async function previewRuleApply(rule: ProductRuleDTO) { const result = await apiClient.previewProductRule({ storeName: rule.storeName, matchType: rule.matchType, matchValue: rule.matchValue }); setRulePreview({ rule, matchingItemsCount: result.matchingItemsCount }); }
-  async function applyRule() { if (!rulePreview) return; await apiClient.applyProductRule(rulePreview.rule.id); setRulePreview(null); setMessage("Produktregel wurde auf die Vorschau angewendet."); await onChanged(); }
+  async function saveVariant() { if (!variantFamilyId || !variantName.trim()) return; await perform(editingVariant ? "Produktvariante wurde aktualisiert." : "Produktvariante wurde angelegt.", async () => { if (editingVariant) { await apiClient.updateProductVariant(editingVariant.id, { ...variantRequest(), isActive: editingVariant.isActive }); } else { await apiClient.createProductVariant(variantRequest()); } setEditingVariant(null); setVariantName(""); setVariantSize(""); setVariantUnit(""); await onChanged(); }); }
+  async function previewFamilyMerge() { if (!familySource || !familyTarget || familySource === familyTarget) return; const request = { sourceFamilyId: Number(familySource), targetFamilyId: Number(familyTarget) }; await perform("Merge-Vorschau wurde berechnet.", async () => { setPreview({ kind: "family", value: await apiClient.previewProductFamilyMerge(request), request }); }); }
+  async function previewVariantMerge() { if (!variantSource || !variantTarget || variantSource === variantTarget) return; const request = { sourceVariantId: Number(variantSource), targetVariantId: Number(variantTarget) }; await perform("Merge-Vorschau wurde berechnet.", async () => { setPreview({ kind: "variant", value: await apiClient.previewProductVariantMerge(request), request }); }); }
+  async function applyMerge() { if (!preview) return; await perform("Historische Zuordnungen wurden zusammengeführt.", async () => { if (preview.kind === "family") { await apiClient.applyProductFamilyMerge({ ...preview.request, confirm: true }); } else { await apiClient.applyProductVariantMerge({ ...preview.request, confirm: true }); } setPreview(null); await onChanged(); }); }
+  async function toggleFamily(family: ProductFamilyDTO) { await perform("Produktfamilie wurde aktualisiert.", async () => { await apiClient.updateProductFamily(family.id, { name: family.name, defaultCategoryId: family.defaultCategoryId, isActive: !family.isActive }); await onChanged(); }); }
+  async function toggleVariant(variant: ProductVariantDTO) { await perform("Produktvariante wurde aktualisiert.", async () => { await apiClient.updateProductVariant(variant.id, { productFamilyId: variant.productFamilyId, name: variant.name, unitQuantity: variant.unitQuantity, unit: variant.unit, packageQuantity: variant.packageQuantity, packageDescription: variant.packageDescription, totalQuantity: variant.totalQuantity, totalUnit: variant.totalUnit, gtin: variant.gtin, isActive: !variant.isActive }); await onChanged(); }); }
+  async function toggleRule(rule: ProductRuleDTO) { await perform("Produktregel wurde aktualisiert.", async () => { await apiClient.updateProductRule(rule.id, { productFamilyId: rule.productFamilyId, productVariantId: rule.productVariantId, storeName: rule.storeName, matchType: rule.matchType, matchValue: rule.matchValue, priority: rule.priority, isActive: !rule.isActive }); await onChanged(); }); }
+  async function previewRuleApply(rule: ProductRuleDTO) { await perform("Regelvorschau wurde berechnet.", async () => { const result = await apiClient.previewProductRule({ storeName: rule.storeName, matchType: rule.matchType, matchValue: rule.matchValue }); setRulePreview({ rule, matchingItemsCount: result.matchingItemsCount }); }); }
+  async function applyRule() { if (!rulePreview) return; await perform("Produktregel wurde auf die Vorschau angewendet.", async () => { await apiClient.applyProductRule(rulePreview.rule.id); setRulePreview(null); await onChanged(); }); }
 
   useEffect(() => {
     setPreview(null);
@@ -446,8 +470,8 @@ function MasterData({ activeTab, apiClient, families, onChanged, onSplit, review
     }
   }
   const visibleVariants = variantFamilyId ? variants.filter((variant) => variant.productFamilyId === Number(variantFamilyId)) : [];
-  const familyAssignments = assignmentCounts(reviewItems, "family");
-  const variantAssignments = assignmentCounts(reviewItems, "variant");
+  const familyAssignments = new Map(families.map((family) => [family.id, family.assignedItemsCount]));
+  const variantAssignments = new Map(variants.map((variant) => [variant.id, variant.assignedItemsCount]));
 
   useEffect(() => {
     if (activeTab !== "structure") return;
@@ -459,6 +483,9 @@ function MasterData({ activeTab, apiClient, families, onChanged, onSplit, review
   }, [activeTab, families, splitFamilyId]);
 
   return <>
+    {mutationBusy ? <StatusBanner ariaLabel="Produktaktion wird ausgeführt" busy title="Produktaktion wird ausgeführt" /> : null}
+    {message ? <StatusBanner title={messageTone === "error" ? "Produktaktion fehlgeschlagen" : "Produktaktion abgeschlossen"} tone={messageTone}>{message}</StatusBanner> : null}
+    {activeTab === "families" ? <FamilyEditor apiClient={apiClient} categories={categories} families={families} onChanged={onChanged} /> : null}
     {activeTab === "families" ? <Card><CardHeader><CardTitle>Produktfamilien</CardTitle></CardHeader><CardContent className="space-y-3"><div className="flex gap-2"><Input aria-label="Neue Produktfamilie" onChange={(event) => setFamilyName(event.target.value)} placeholder="Neue Produktfamilie" value={familyName} /><Button onClick={() => void createFamily()} size="sm"><Plus className="h-4 w-4" />Anlegen</Button></div><div className="divide-y divide-zinc-100 rounded-md border border-zinc-200 dark:divide-zinc-900 dark:border-zinc-800">{families.map((family) => { const variantCount = variantsByFamily.get(family.id)?.length ?? 0; return <div className="flex flex-col gap-2 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between" key={family.id}><div><p className="font-medium">{family.name}</p><p className="text-xs text-zinc-500">{variantCount} {variantCount === 1 ? "Variante" : "Varianten"} · {assignmentLabel(familyAssignments.get(family.id) ?? 0)}</p><p className="text-xs text-zinc-500">Kategorie: {family.defaultCategoryName ?? "Keine Standardkategorie"}</p></div><div className="flex items-center gap-2"><Badge tone={family.isActive ? "green" : "yellow"}>{family.isActive ? "aktiv" : "inaktiv"}</Badge><Button aria-label={`Familie ${family.name} ${family.isActive ? "deaktivieren" : "aktivieren"}`} onClick={() => void toggleFamily(family)} size="sm" variant="ghost">{family.isActive ? "Deaktivieren" : "Aktivieren"}</Button></div></div>; })}</div></CardContent></Card> : null}
 
     {activeTab === "variants" ? <Card><CardHeader><CardTitle>Produktvarianten</CardTitle></CardHeader><CardContent className="space-y-3"><div className="grid gap-2 sm:grid-cols-2"><select aria-label="Variantenfamilie" className={selectClass} onChange={(event) => { setVariantFamilyId(event.target.value); setEditingVariant(null); setVariantName(""); setVariantSize(""); setVariantUnit(""); }} value={variantFamilyId}><option value="">Produktfamilie wählen</option>{families.filter((family) => family.isActive).map((family) => <option key={family.id} value={family.id}>{family.name}</option>)}</select><Input aria-label="Variantenname" onChange={(event) => setVariantName(event.target.value)} placeholder="Variantenname" value={variantName} /><Input aria-label="Variantenmenge" min="0.001" onChange={(event) => setVariantSize(event.target.value)} placeholder="Gesamtmenge, z. B. 0.5" step="0.001" type="number" value={variantSize} /><Input aria-label="Varianteneinheit" onChange={(event) => setVariantUnit(event.target.value)} placeholder="Einheit, z. B. l" value={variantUnit} /></div><div className="flex gap-2"><Button disabled={!variantFamilyId} onClick={() => void saveVariant()} size="sm">{editingVariant ? "Variante aktualisieren" : "Variante anlegen"}</Button>{editingVariant ? <Button onClick={() => { setEditingVariant(null); setVariantName(""); setVariantSize(""); setVariantUnit(""); }} size="sm" variant="secondary">Abbrechen</Button> : null}</div>{variantFamilyId ? <div className="divide-y divide-zinc-100 rounded-md border border-zinc-200 dark:divide-zinc-900 dark:border-zinc-800">{visibleVariants.map((variant) => { const variantLabel = `${variant.productFamilyName}: ${variant.name}`; return <div className="flex flex-col gap-2 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between" key={variant.id}><div><p className="font-medium">{variant.name}</p><p className="text-xs text-zinc-500">{variant.productFamilyName} · {variant.totalQuantity ? `Gesamtmenge ${variant.totalQuantity} ${variant.totalUnit ?? ""}` : "ohne feste Gesamtmenge"} · {assignmentLabel(variantAssignments.get(variant.id) ?? 0)}</p></div><div className="flex items-center gap-1"><Badge tone={variant.isActive ? "green" : "yellow"}>{variant.isActive ? "aktiv" : "inaktiv"}</Badge><Button aria-label={`Variante ${variantLabel} bearbeiten`} onClick={() => { setEditingVariant(variant); setVariantFamilyId(String(variant.productFamilyId)); setVariantName(variant.name); setVariantSize(variant.totalQuantity?.toString() ?? ""); setVariantUnit(variant.totalUnit ?? ""); }} size="sm" variant="ghost">Bearbeiten</Button><Button aria-label={`Variante ${variantLabel} ${variant.isActive ? "deaktivieren" : "aktivieren"}`} onClick={() => void toggleVariant(variant)} size="sm" variant="ghost">{variant.isActive ? "Deaktivieren" : "Aktivieren"}</Button></div></div>; })}{visibleVariants.length === 0 ? <p className="p-3 text-sm text-zinc-500">Für diese Produktfamilie sind noch keine Varianten angelegt.</p> : null}</div> : <p className="rounded-md border border-zinc-200 p-3 text-sm text-zinc-500 dark:border-zinc-800">Wähle zuerst eine Produktfamilie. Danach werden nur deren Varianten angezeigt.</p>}</CardContent></Card> : null}
@@ -471,19 +498,47 @@ function MasterData({ activeTab, apiClient, families, onChanged, onSplit, review
   </>;
 }
 
-function assignmentCounts(items: ProductReviewItemDTO[], scope: "family" | "variant"): Map<number, number> {
-  const counts = new Map<number, number>();
-  for (const item of items) {
-    const id = scope === "family"
-      ? item.currentProductFamilyId ?? item.suggestedProductFamilyId
-      : item.currentProductVariantId ?? item.suggestedProductVariantId;
-    if (id != null) counts.set(id, (counts.get(id) ?? 0) + 1);
-  }
-  return counts;
+function assignmentLabel(count: number): string {
+  return `${count} ${count === 1 ? "Zuordnung" : "Zuordnungen"}`;
 }
 
-function assignmentLabel(count: number): string {
-  return `${count} offene ${count === 1 ? "Zuordnung" : "Zuordnungen"} (aktuelle Seite)`;
+function FamilyEditor({ apiClient, categories, families, onChanged }: { apiClient: ApiClient; categories: CategoryDTO[]; families: ProductFamilyDTO[]; onChanged: () => Promise<void> }) {
+  const [editing, setEditing] = useState<ProductFamilyDTO | null>(null);
+  const [name, setName] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [active, setActive] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+
+  function start(family: ProductFamilyDTO) {
+    setEditing(family);
+    setName(family.name);
+    setCategoryId(family.defaultCategoryId == null ? "" : String(family.defaultCategoryId));
+    setActive(family.isActive);
+    setFeedback(null);
+  }
+
+  async function save() {
+    if (!editing || !name.trim()) return;
+    setBusy(true);
+    setFeedback(null);
+    try {
+      await apiClient.updateProductFamily(editing.id, {
+        name: name.trim(),
+        defaultCategoryId: categoryId ? Number(categoryId) : null,
+        isActive: active
+      });
+      setFeedback({ tone: "success", text: "Produktfamilie wurde aktualisiert." });
+      setEditing(null);
+      await onChanged();
+    } catch (error) {
+      setFeedback({ tone: "error", text: error instanceof Error ? error.message : "Produktfamilie konnte nicht aktualisiert werden." });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return <Card><CardHeader><CardTitle>Familienstammdaten bearbeiten</CardTitle></CardHeader><CardContent className="space-y-3">{busy ? <StatusBanner busy title="Produktfamilie wird gespeichert" /> : null}{feedback ? <StatusBanner title={feedback.tone === "error" ? "Speichern fehlgeschlagen" : "Speichern abgeschlossen"} tone={feedback.tone}>{feedback.text}</StatusBanner> : null}{editing ? <div className="grid gap-2 sm:grid-cols-2"><Input aria-label="Name der Produktfamilie" disabled={busy} onChange={(event) => setName(event.target.value)} value={name} /><select aria-label="Standardkategorie" className={selectClass} disabled={busy} onChange={(event) => setCategoryId(event.target.value)} value={categoryId}><option value="">Keine Standardkategorie</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><label className="flex items-center gap-2 text-sm"><input aria-label="Produktfamilie aktiv" checked={active} disabled={busy} onChange={(event) => setActive(event.target.checked)} type="checkbox" />Produktfamilie aktiv</label><div className="flex gap-2"><Button disabled={busy || !name.trim()} onClick={() => void save()} size="sm">Familie aktualisieren</Button><Button disabled={busy} onClick={() => setEditing(null)} size="sm" variant="secondary">Abbrechen</Button></div></div> : <div className="flex flex-wrap gap-2">{families.map((family) => <Button aria-label={`Familie ${family.name} bearbeiten`} key={family.id} onClick={() => start(family)} size="sm" variant="secondary">{family.name} bearbeiten</Button>)}</div>}</CardContent></Card>;
 }
 
 function MergeCard({ families, kind, message, onApply, onPreview, onSourceChange, onTargetChange, preview, source, target }: { families: Array<{ id: number; name: string }>; kind: "family" | "variant"; message: string | null; onApply: () => void; onPreview: () => void; onSourceChange: (value: string) => void; onTargetChange: (value: string) => void; preview: ProductChangePreviewDTO | null; source: string; target: string }) {
@@ -528,7 +583,7 @@ function CorrectionDialog({ families, item, loading, onCancel, onConfirm, onNoPr
   }
 
   return (
-    <Dialog title="Produktzuordnung prüfen">
+    <Dialog onClose={onCancel} title="Produktzuordnung prüfen">
       <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800">
         <div className="text-xs uppercase text-zinc-500">Bon-Position</div>
         <div className="mt-1 font-medium text-zinc-950 dark:text-zinc-50">{item.description}</div>
@@ -631,14 +686,14 @@ function SplitDialog({ apiClient, item, loading, onCancel, onConfirm }: { apiCli
     }
   }
   function invalidate(setter: (value: string) => void, value: string) { setter(value); setPreview(null); }
-  return <Dialog title={variantSplit ? "Position in neue Variante trennen" : "Position in neue Familie trennen"}><p className="text-sm text-zinc-500">Nur diese Position wird nach Vorschau und Bestätigung umgehängt. Bestehende Regeln bleiben unverändert.</p><Input aria-label="Neuer Produktname" onChange={(event) => invalidate(setName, event.target.value)} placeholder={variantSplit ? "Neue Variantenbezeichnung" : "Neue Familienbezeichnung"} value={name} />{variantSplit ? <div className="grid grid-cols-2 gap-2"><Input aria-label="Neue Variantenmenge" onChange={(event) => invalidate(setSize, event.target.value)} placeholder="Menge" step="0.001" type="number" value={size} /><Input aria-label="Neue Varianteneinheit" onChange={(event) => invalidate(setUnit, event.target.value)} placeholder="Einheit" value={unit} /></div> : null}{preview == null ? <Button disabled={!canSplit || loading} onClick={() => void calculate()} size="sm" variant="secondary">Vorschau berechnen</Button> : <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"><p>{preview.value.affectedItemsCount} Position wird umgehängt.</p><PreviewDetails preview={preview.value} /></div>}<DialogActions onCancel={onCancel} onConfirm={apply} disabled={!preview || loading} label="Trennung bestätigen" /></Dialog>;
+  return <Dialog onClose={onCancel} title={variantSplit ? "Position in neue Variante trennen" : "Position in neue Familie trennen"}><p className="text-sm text-zinc-500">Nur diese Position wird nach Vorschau und Bestätigung umgehängt. Bestehende Regeln bleiben unverändert.</p><Input aria-label="Neuer Produktname" onChange={(event) => invalidate(setName, event.target.value)} placeholder={variantSplit ? "Neue Variantenbezeichnung" : "Neue Familienbezeichnung"} value={name} />{variantSplit ? <div className="grid grid-cols-2 gap-2"><Input aria-label="Neue Variantenmenge" onChange={(event) => invalidate(setSize, event.target.value)} placeholder="Menge" step="0.001" type="number" value={size} /><Input aria-label="Neue Varianteneinheit" onChange={(event) => invalidate(setUnit, event.target.value)} placeholder="Einheit" value={unit} /></div> : null}{preview == null ? <Button disabled={!canSplit || loading} onClick={() => void calculate()} size="sm" variant="secondary">Vorschau berechnen</Button> : <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"><p>{preview.value.affectedItemsCount} Position wird umgehängt.</p><PreviewDetails preview={preview.value} /></div>}<DialogActions onCancel={onCancel} onConfirm={apply} disabled={!preview || loading} label="Trennung bestätigen" /></Dialog>;
 }
 
-function RuleSuggestionDialog({ loading, onCancel, onConfirm, suggestion }: { loading: boolean; onCancel: () => void; onConfirm: (applyToExisting: boolean) => void; suggestion: ProductRuleSuggestionDTO }) { const [applyToExisting, setApplyToExisting] = useState(false); return <Dialog title="Produktregel bestätigen"><p className="text-sm text-zinc-700 dark:text-zinc-200"><span className="font-medium">{suggestion.rule.matchType}</span> "{suggestion.rule.matchValue}"</p><p className="text-sm text-zinc-500">Vorschau: {suggestion.preview.matchingItemsCount} Positionen passen zur Regel.</p><label className="flex items-start gap-2 text-sm"><input checked={applyToExisting} onChange={(event) => setApplyToExisting(event.target.checked)} type="checkbox" />Auf bestehende passende Positionen anwenden</label><DialogActions onCancel={onCancel} onConfirm={() => onConfirm(applyToExisting)} disabled={loading} label="Regel bestätigen" /></Dialog>; }
+function RuleSuggestionDialog({ loading, onCancel, onConfirm, suggestion }: { loading: boolean; onCancel: () => void; onConfirm: (applyToExisting: boolean) => void; suggestion: ProductRuleSuggestionDTO }) { const [applyToExisting, setApplyToExisting] = useState(false); return <Dialog onClose={onCancel} title="Produktregel bestätigen"><p className="text-sm text-zinc-700 dark:text-zinc-200"><span className="font-medium">{suggestion.rule.matchType}</span> "{suggestion.rule.matchValue}"</p><p className="text-sm text-zinc-500">Vorschau: {suggestion.preview.matchingItemsCount} Positionen passen zur Regel.</p><label className="flex items-start gap-2 text-sm"><input checked={applyToExisting} onChange={(event) => setApplyToExisting(event.target.checked)} type="checkbox" />Auf bestehende passende Positionen anwenden</label><DialogActions onCancel={onCancel} onConfirm={() => onConfirm(applyToExisting)} disabled={loading} label="Regel bestätigen" /></Dialog>; }
 
-function RuleApplyDialog({ matchingItemsCount, onCancel, onConfirm, rule }: { matchingItemsCount: number; onCancel: () => void; onConfirm: () => void; rule: ProductRuleDTO }) { return <Dialog title="Produktregel rückwirkend anwenden"><p className="text-sm text-zinc-600 dark:text-zinc-300">{rule.matchType} "{rule.matchValue}" passt auf {matchingItemsCount} bestehende Positionen.</p><p className="text-sm text-zinc-500">Manuelle Bestätigungen und bereits geschützte Zuordnungen werden vom Backend nicht still überschrieben.</p><DialogActions onCancel={onCancel} onConfirm={onConfirm} disabled={false} label="Anwendung bestätigen" /></Dialog>; }
+function RuleApplyDialog({ matchingItemsCount, onCancel, onConfirm, rule }: { matchingItemsCount: number; onCancel: () => void; onConfirm: () => void; rule: ProductRuleDTO }) { return <Dialog onClose={onCancel} title="Produktregel rückwirkend anwenden"><p className="text-sm text-zinc-600 dark:text-zinc-300">{rule.matchType} "{rule.matchValue}" passt auf {matchingItemsCount} bestehende Positionen.</p><p className="text-sm text-zinc-500">Manuelle Bestätigungen und bereits geschützte Zuordnungen werden vom Backend nicht still überschrieben.</p><DialogActions onCancel={onCancel} onConfirm={onConfirm} disabled={false} label="Anwendung bestätigen" /></Dialog>; }
 
-function Dialog({ children, title }: { children: React.ReactNode; title: string }) { return <div aria-label={title} aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog"><Card className="w-full max-w-lg"><CardHeader><CardTitle>{title}</CardTitle></CardHeader><CardContent className="space-y-3">{children}</CardContent></Card></div>; }
+function Dialog({ children, onClose, title }: { children: React.ReactNode; onClose: () => void; title: string }) { return <ModalDialog onClose={onClose} open title={title}><div className="mt-3 space-y-3">{children}</div></ModalDialog>; }
 function DialogActions({ disabled, label, onCancel, onConfirm }: { disabled: boolean; label: string; onCancel: () => void; onConfirm: () => void }) { return <div className="flex justify-end gap-2"><Button onClick={onCancel} size="sm" variant="secondary">Abbrechen</Button><Button disabled={disabled} onClick={onConfirm} size="sm">{label}</Button></div>; }
 function IconButton({ children, disabled, label, onClick }: { children: React.ReactNode; disabled: boolean; label: string; onClick: () => void }) { return <button aria-label={label} className="flex h-8 w-8 items-center justify-center rounded-md border border-zinc-200 text-zinc-600 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-900" disabled={disabled} onClick={onClick} title={label} type="button">{children}</button>; }
 function TokenHint() { return <Card><CardContent className="py-10 text-center text-sm text-zinc-500">Für Produktzuordnungen muss oben ein API-Token gesetzt sein.</CardContent></Card>; }
