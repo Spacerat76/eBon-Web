@@ -97,7 +97,7 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
             <a
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex h-16 min-w-20 flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-medium",
+                "relative flex h-16 min-w-20 flex-1 flex-col items-center justify-center gap-1 px-2 text-xs font-medium",
                 active ? "text-zinc-950 dark:text-zinc-50" : "text-zinc-500 dark:text-zinc-400"
               )}
               href={item.href}
@@ -105,6 +105,14 @@ export function AppShell({ children, navigation, route, utility }: AppShellProps
             >
               <Icon className="h-5 w-5" />
               <span>{item.label}</span>
+              {item.count === undefined ? null : (
+                <span
+                  aria-label={`${item.count} offene Aufgaben`}
+                  className="absolute right-2 top-1 rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200"
+                >
+                  {item.count}
+                </span>
+              )}
             </a>
           );
         })}

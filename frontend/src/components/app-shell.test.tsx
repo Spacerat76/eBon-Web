@@ -26,9 +26,22 @@ describe("AppShell", () => {
     for (const link of screen.getAllByRole("link", { name: "Bons" })) {
       expect(link).toHaveAttribute("aria-current", "page");
     }
-    expect(screen.getByText("12")).toHaveAccessibleName("12 offene Aufgaben");
     expect(screen.queryByLabelText("API-Token")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Zugriff" })).toBeInTheDocument();
+  });
+
+  it("shows accessible task counts in desktop and mobile navigation", () => {
+    render(
+      <AppShell navigation={navigation} route="/">
+        <p>Übersicht</p>
+      </AppShell>
+    );
+
+    const countBadges = screen.getAllByText("12");
+    expect(countBadges).toHaveLength(2);
+    for (const badge of countBadges) {
+      expect(badge).toHaveAccessibleName("12 offene Aufgaben");
+    }
   });
 
   it("keeps the session token entry reachable when no token exists", async () => {
