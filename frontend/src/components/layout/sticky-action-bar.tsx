@@ -17,7 +17,7 @@ export function StickyActionBar({
   saving: boolean;
 }): JSX.Element {
   return (
-    <div className="sticky bottom-4 z-30 flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800 dark:bg-zinc-950/95">
+    <div className="sticky bottom-20 z-30 flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800 dark:bg-zinc-950/95 lg:bottom-4">
       <p aria-live="polite" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
         {message}
       </p>

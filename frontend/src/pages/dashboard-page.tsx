@@ -184,8 +184,8 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
         />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(24rem,0.88fr)]">
-        <Card>
+      <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(24rem,0.88fr)]">
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Ausgaben nach Kategorie</CardTitle>
           </CardHeader>
@@ -225,7 +225,7 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Letzte Bons</CardTitle>
           </CardHeader>
@@ -279,8 +279,8 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <Card>
+      <section className="grid min-w-0 gap-4 xl:grid-cols-2">
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Bonus neu im Zeitraum</CardTitle>
           </CardHeader>
@@ -309,7 +309,7 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Sync-Log</CardTitle>
           </CardHeader>

@@ -76,9 +76,10 @@ describe("shared redesign components", () => {
   });
 
   it("keeps save and cancel actions available in the sticky action bar", () => {
-    render(<StickyActionBar message="3 Felder geändert" onCancel={vi.fn()} onSave={vi.fn()} saving={false} />);
+    const { container } = render(<StickyActionBar message="3 Felder geändert" onCancel={vi.fn()} onSave={vi.fn()} saving={false} />);
     expect(screen.getByRole("button", { name: "Abbrechen" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Änderungen speichern" })).toBeInTheDocument();
+    expect(container.firstElementChild).toHaveClass("bottom-20", "lg:bottom-4");
   });
 
   it("does not send the masked placeholder as a changed secret", async () => {

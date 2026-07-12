@@ -117,6 +117,17 @@ describe("DashboardPage", () => {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
 
+    const categoryCard = screen.getByRole("heading", { name: "Ausgaben nach Kategorie" }).closest("section");
+    const recentCard = screen.getByRole("heading", { name: "Letzte Bons" }).closest("section");
+    const bonusCard = screen.getByRole("heading", { name: "Bonus neu im Zeitraum" }).closest("section");
+    const syncLogCard = screen.getByRole("heading", { name: "Sync-Log" }).closest("section");
+    expect(categoryCard).toHaveClass("min-w-0");
+    expect(recentCard).toHaveClass("min-w-0");
+    expect(categoryCard?.parentElement).toHaveClass("min-w-0");
+    expect(bonusCard).toHaveClass("min-w-0");
+    expect(syncLogCard).toHaveClass("min-w-0");
+    expect(syncLogCard?.parentElement).toHaveClass("min-w-0");
+
     expect(screen.getByRole("status")).toHaveTextContent("Sync bereit");
     expect(screen.getByRole("status")).toHaveTextContent("Neu: 3");
     expect(screen.getByRole("status")).toHaveTextContent("Entfernt: 2");

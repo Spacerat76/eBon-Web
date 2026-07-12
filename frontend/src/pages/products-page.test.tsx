@@ -123,6 +123,8 @@ function apiClient(options: {
   reviewItems?: ProductReviewItemDTO[];
   families?: Awaited<ReturnType<ApiClient["productFamilies"]>>;
   variants?: Awaited<ReturnType<ApiClient["productVariants"]>>;
+  rules?: Awaited<ReturnType<ApiClient["productRules"]>>;
+  priceObservations?: ProductPriceObservationDTO[];
   searchResults?: PageResponse<SearchResultDTO>[];
 } = {}) {
   const families = options.families ?? [{ id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }];
@@ -133,12 +135,12 @@ function apiClient(options: {
     productReview: vi.fn().mockResolvedValue({ content: options.reviewItems ?? [reviewItem], page: 0, size: 30, totalElements: options.reviewItems?.length ?? 1, totalPages: 1, sortBy: "reviewPriority", sortDir: "desc" }),
     productFamilies: vi.fn().mockResolvedValue(families),
     productVariants: vi.fn().mockResolvedValue(variants),
-    productRules: vi.fn().mockResolvedValue([]),
+    productRules: vi.fn().mockResolvedValue(options.rules ?? []),
     categories: vi.fn().mockResolvedValue([{ id: 2, name: "Milchprodukte und Eier", colorHex: "#00838F", icon: "milk", isActive: true, sortOrder: 1, assignedItemsCount: 1 }]),
     acceptProductReview: vi.fn().mockResolvedValue({ ...reviewItem, assignmentSource: "MANUAL", assignmentStatus: "CONFIRMED" }),
     correctProductReview: vi.fn().mockResolvedValue({ ...reviewItem, assignmentSource: "MANUAL", assignmentStatus: "CONFIRMED" }),
     productFamilyPrices: vi.fn().mockResolvedValue(priceReport),
-    productFamilyPriceObservations: vi.fn().mockResolvedValue({ content: [priceObservation, excludedPriceObservation], page: 0, size: 50, totalElements: 2, totalPages: 1, sortBy: "receiptDate", sortDir: "desc" }),
+    productFamilyPriceObservations: vi.fn().mockResolvedValue({ content: options.priceObservations ?? [priceObservation, excludedPriceObservation], page: 0, size: 50, totalElements: options.priceObservations?.length ?? 2, totalPages: 1, sortBy: "receiptDate", sortDir: "desc" }),
     excludeProductPriceObservation: vi.fn().mockResolvedValue({ ...priceObservation, excluded: true, includedInComparison: false, exclusionReason: "Doppelt erfasst" }),
     includeProductPriceObservation: vi.fn().mockResolvedValue(priceObservation),
     previewProductFamilyMerge: vi.fn().mockResolvedValue(changePreview),
@@ -290,6 +292,48 @@ describe("ProductsPage", () => {
     expect(screen.queryByRole("heading", { name: "Produktregeln" })).not.toBeInTheDocument();
   });
 
+  it("gives every repeated product administration action an object-specific accessible name", async () => {
+    const user = userEvent.setup();
+    const api = apiClient({
+      families: [
+        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 11, name: "Pflanzendrink", defaultCategoryId: null, defaultCategoryName: null, isActive: false, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+      ],
+      variants: [
+        { id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true },
+        { id: 21, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 0,5 l", unitQuantity: 0.5, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 0.5, totalUnit: "l", gtin: null, isActive: false }
+      ],
+      rules: [
+        { id: 30, productFamilyId: 10, productFamilyName: "Haferdrink", productVariantId: 20, productVariantName: "Haferdrink 1 l", storeName: "dm", matchType: "EXACT", matchValue: "Haferdrink Barista", priority: 100, isActive: true },
+        { id: 31, productFamilyId: 10, productFamilyName: "Haferdrink", productVariantId: 21, productVariantName: "Haferdrink 0,5 l", storeName: null, matchType: "CONTAINS", matchValue: "Haferdrink Natur", priority: 110, isActive: false }
+      ]
+    });
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Familien" }));
+    expect(screen.getByRole("button", { name: "Familie Haferdrink deaktivieren" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Familie Pflanzendrink aktivieren" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Deaktivieren" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aktivieren" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Varianten" }));
+    await user.selectOptions(screen.getByLabelText("Variantenfamilie"), "10");
+    expect(screen.getByRole("button", { name: "Variante Haferdrink: Haferdrink 1 l bearbeiten" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Variante Haferdrink: Haferdrink 1 l deaktivieren" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Variante Haferdrink: Haferdrink 0,5 l bearbeiten" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Variante Haferdrink: Haferdrink 0,5 l aktivieren" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Bearbeiten" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Deaktivieren" })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Regeln" }));
+    expect(screen.getByRole("button", { name: "Produktregel Haferdrink Barista für dm deaktivieren" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Produktregel Haferdrink Barista für dm anwenden" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Produktregel Haferdrink Natur für alle Geschäfte aktivieren" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Produktregel Haferdrink Natur für alle Geschäfte anwenden" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Anwenden" })).not.toBeInTheDocument();
+  });
+
   it("keeps merge and split previews explicit about impact and protected assignments", async () => {
     const user = userEvent.setup();
     const api = apiClient({
@@ -361,12 +405,15 @@ describe("ProductsPage", () => {
     expect(screen.getAllByText("1,99 € / l").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Ausreißer").length).toBeGreaterThan(0);
     expect(screen.getByText("Doppelt erfasst")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Wieder aufnehmen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preisbeobachtung Haferdrink Barista doppelt vom 20.6.2026 bei dm (Position 45) wieder aufnehmen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preisbeobachtung Haferdrink Barista vom 20.6.2026 bei dm (Position 44) ausschließen" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Wieder aufnehmen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Ausschließen" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Wieder aufnehmen" }));
+    await user.click(screen.getByRole("button", { name: "Preisbeobachtung Haferdrink Barista doppelt vom 20.6.2026 bei dm (Position 45) wieder aufnehmen" }));
     await waitFor(() => expect(api.includeProductPriceObservation).toHaveBeenCalledWith(45));
 
-    await user.click(screen.getByRole("button", { name: "Ausschließen" }));
+    await user.click(screen.getByRole("button", { name: "Preisbeobachtung Haferdrink Barista vom 20.6.2026 bei dm (Position 44) ausschließen" }));
     expect(screen.getByRole("dialog", { name: "Preisbeobachtung ausschließen" })).toBeInTheDocument();
     await user.type(screen.getByLabelText("Ausschlussgrund"), "Doppelt erfasst");
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Ausschließen" }));
