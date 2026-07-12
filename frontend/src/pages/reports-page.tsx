@@ -2,6 +2,10 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Download, Loader2 } from "lucide-react";
 
+import { DataTableFrame } from "@/components/data/data-table";
+import { FilterBar } from "@/components/data/filter-bar";
+import { PageHeader } from "@/components/layout/page-header";
+import { PageTabs } from "@/components/layout/page-tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -121,22 +125,24 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        actions={(
+          <Button disabled={exporting} onClick={exportCsv} size="sm" variant="secondary">
+            {exporting ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Download aria-hidden="true" className="h-4 w-4" />}
+            CSV exportieren
+          </Button>
+        )}
+        context="Analyse"
+        description="Ausgaben, Käufe und Bonuswerte mit einem gemeinsamen Filtersatz auswerten."
+        title="Reports"
+      />
+
       {error ? <ErrorBox message={error} /> : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Reports</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {tabs.map((entry) => (
-              <Button key={entry.id} onClick={() => setTab(entry.id)} size="sm" variant={tab === entry.id ? "primary" : "secondary"}>
-                {entry.label}
-              </Button>
-            ))}
-          </div>
+      <PageTabs active={tab} onChange={setTab} tabs={tabs} />
 
-          <div className="grid gap-3 xl:grid-cols-[190px_150px_150px_minmax(220px,1fr)_180px_120px]">
+      <FilterBar>
+          <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[190px_150px_150px_minmax(180px,1fr)_180px_120px]">
             <Field label="Zeitraum">
               <select className={selectClassName} onChange={(event) => updatePreset(event.target.value as RangePreset)} value={preset}>
                 <option value="currentMonth">Aktueller Monat</option>
@@ -195,8 +201,8 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
               </select>
             </Field>
           </div>
-          {tab === "topProducts" ? <div className="max-w-xs"><Field label="Top-Produkte sortieren nach"><select className={selectClassName} onChange={(event) => setFilters((current) => ({ ...current, topProductSort: event.target.value as "total" | "count" }))} value={filters.topProductSort ?? "total"}><option value="total">Ausgaben</option><option value="count">Kaufhäufigkeit</option></select></Field></div> : null}
-          <div className="grid gap-3 md:grid-cols-2">
+          {tab === "topProducts" ? <div className="w-full sm:w-64"><Field label="Top-Produkte sortieren nach"><select className={selectClassName} onChange={(event) => setFilters((current) => ({ ...current, topProductSort: event.target.value as "total" | "count" }))} value={filters.topProductSort ?? "total"}><option value="total">Ausgaben</option><option value="count">Kaufhäufigkeit</option></select></Field></div> : null}
+          <div className="grid w-full gap-3 sm:grid-cols-2 xl:w-auto xl:min-w-[420px]">
             <Field label="Produktfamilie">
               <select
                 className={selectClassName}
@@ -222,31 +228,29 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
               </select>
             </Field>
           </div>
-        </CardContent>
-      </Card>
+          <p aria-live="polite" className="w-full text-xs text-zinc-500 dark:text-zinc-400">
+            Aktive Auswertung: {title} · {filters.dateFrom ?? "offen"} bis {filters.dateTo ?? "offen"}
+          </p>
+      </FilterBar>
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
-        <Card>
-          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <Card aria-label="Diagramm" role="region">
+          <CardHeader>
             <CardTitle>{title}</CardTitle>
-            <Button disabled={exporting} onClick={exportCsv} size="sm" variant="secondary">
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              CSV
-            </Button>
           </CardHeader>
           <CardContent className="h-80">
             {loading ? <Skeleton className="h-full w-full" /> : rows.length ? <ReportChart rows={rows} tab={tab} /> : <EmptyState text="Keine Reportdaten" />}
           </CardContent>
         </Card>
 
-        <Card>
+        <section aria-labelledby="report-table-title" className="min-w-0">
           <CardHeader>
-            <CardTitle>Tabelle</CardTitle>
+            <CardTitle id="report-table-title">Tabelle</CardTitle>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
-            {loading ? <Skeleton className="h-48 w-full" /> : rows.length ? <ReportTable rows={rows} tab={tab} /> : <EmptyState text="Keine Daten" />}
-          </CardContent>
-        </Card>
+          {loading ? <Card><CardContent><Skeleton className="h-48 w-full" /></CardContent></Card> : rows.length ? (
+            <DataTableFrame><ReportTable rows={rows} tab={tab} /></DataTableFrame>
+          ) : <Card><CardContent><EmptyState text="Keine Daten" /></CardContent></Card>}
+        </section>
       </section>
     </div>
   );
@@ -317,22 +321,40 @@ function ReportChart({ rows, tab }: { rows: ReportRow[]; tab: ReportTab }) {
 }
 
 function ReportTable({ rows, tab }: { rows: ReportRow[]; tab: ReportTab }) {
+  const headings = tableHeadings(tab);
   return (
-    <table className="w-full min-w-[420px] text-sm">
+    <table aria-label="Reportdaten" className="w-full min-w-[520px] text-sm">
+      <caption className="sr-only">Daten der aktiven Auswertung {tabs.find((entry) => entry.id === tab)?.label}</caption>
+      <thead className="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-400">
+        <tr>
+          <th className="px-4 py-3" scope="col">{headings[0]}</th>
+          <th className="px-4 py-3 text-right" scope="col">{headings[1]}</th>
+          {headings[2] ? <th className="px-4 py-3 text-right" scope="col">{headings[2]}</th> : null}
+        </tr>
+      </thead>
       <tbody>
         {rows.map((row, index) => {
           const cells = tableCells(row, tab);
           return (
             <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-900" key={index}>
-              <td className="px-3 py-2 font-medium">{cells[0]}</td>
-              <td className="px-3 py-2 text-right">{cells[1]}</td>
-              {cells[2] ? <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400">{cells[2]}</td> : null}
+              <td className="px-4 py-3 font-medium">{cells[0]}</td>
+              <td className="px-4 py-3 text-right tabular-nums">{cells[1]}</td>
+              {headings[2] ? <td className="px-4 py-3 text-right tabular-nums text-zinc-500 dark:text-zinc-400">{cells[2] ?? "–"}</td> : null}
             </tr>
           );
         })}
       </tbody>
     </table>
   );
+}
+
+function tableHeadings(tab: ReportTab): string[] {
+  if (tab === "category") return ["Kategorie", "Ausgaben"];
+  if (tab === "period") return ["Zeitraum", "Ausgaben"];
+  if (tab === "store") return ["Geschäft", "Ausgaben", "Bons"];
+  if (tab === "topItems") return ["Artikel", "Ausgaben", "Käufe"];
+  if (tab === "topProducts") return ["Produktfamilie", "Ausgaben", "Käufe"];
+  return ["Bonustyp", "Punkte", "Guthaben"];
 }
 
 function chartData(rows: ReportRow[], tab: ReportTab): Array<{ label: string; value: number }> {
