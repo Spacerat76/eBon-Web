@@ -62,6 +62,7 @@ export default function App() {
           <ReceiptsPage
             apiClient={apiClient}
             hasApiToken={Boolean(apiToken.trim())}
+            key={selectedReceiptId === null ? "receipt-list" : `receipt-${selectedReceiptId}`}
             selectedReceiptId={selectedReceiptId}
           />
         ) : routePath === "/search" ? (
