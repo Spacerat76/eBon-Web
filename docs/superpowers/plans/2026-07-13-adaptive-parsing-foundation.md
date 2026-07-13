@@ -38,7 +38,7 @@
 - Test: `backend/src/test/java/de/ebon/persistence/model/PersistenceModelBehaviorTests.java`
 
 **Interfaces:**
-- Produces: `ReceiptFormatProfileRepository#findFirstByStateAndStoreNameKeyAndStoreBranchKeyAndFingerprintOrderByVersionDesc(...)`.
+- Produces: `ReceiptFormatProfileRepository#findFirstByStateAndStoreNameKeyAndStoreBranchKeyAndFingerprintAndFingerprintVersionOrderByVersionDesc(...)`.
 - Produces: `Receipt#getReceiptFormatProfile()`, `ReceiptItem#getExtractionStatus()`, and `ParseStatus.PARSE_REVIEW`.
 - Consumes: existing `receipt`, `receipt_item`, and Flyway conventions.
 

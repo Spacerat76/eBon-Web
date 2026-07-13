@@ -310,6 +310,18 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
     }
 
     @Test
+    void receiptProfileReferenceRejectsMissingVersionWithProfileId() {
+        ReceiptFormatProfile profile = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+        Receipt receipt = new Receipt(91006, "sanitized receipt text");
+        receipt.useFormatProfile(profile);
+        receiptRepository.saveAndFlush(receipt);
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "update receipt set format_profile_version = null where id = ?", receipt.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
     void traceProfileReferenceRejectsVersionAndNullPairMismatches() {
         ReceiptFormatProfile profile = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
         Receipt receipt = receiptRepository.saveAndFlush(new Receipt(91004, "sanitized receipt text"));
@@ -330,6 +342,18 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
 
         assertThatThrownBy(() -> jdbcTemplate.update(
                 "update receipt_parse_trace set format_profile_id = null where id = ?", trace.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void traceProfileReferenceRejectsMissingVersionWithProfileId() {
+        ReceiptFormatProfile profile = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+        Receipt receipt = receiptRepository.saveAndFlush(new Receipt(91007, "sanitized receipt text"));
+        ReceiptParseTrace trace = receiptParseTraceRepository.saveAndFlush(new ReceiptParseTrace(
+                receipt, profile, 1, ParseLineType.POSITION, 0, "{}", "recognized", false));
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "update receipt_parse_trace set format_profile_version = null where id = ?", trace.getId()))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -362,6 +386,14 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
                 first);
 
         assertThatThrownBy(() -> receiptFormatProfileRepository.saveAndFlush(differentStore))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void profilePredecessorMustHaveTheSameFingerprintVersion() {
+        ReceiptFormatProfile first = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+
+        assertThatThrownBy(() -> receiptFormatProfileRepository.saveAndFlush(profile(2, 2, first)))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
