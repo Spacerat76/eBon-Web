@@ -51,6 +51,31 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
     @Autowired
     private EntityManager entityManager;
 
+    @Test
+    void confirmedOpenItemRulesIncludeReweConstraintAndExcludeOriginal() {
+        Integer confirmedRules = jdbcTemplate.queryForObject(
+                """
+                select count(*)
+                from categorization_rule r
+                join category c on c.id = r.category_id
+                where r.match_type = 'EXACT'
+                  and r.match_field = 'DESCRIPTION'
+                  and r.match_value in (
+                    'SPARERIBS','RD HUEFTE','ROULADE FRZ','KIPA GEF. VEGAN','Nasi Goreng','Baml Goreng',
+                    'CORNICHONS KRAEU','DELIKATESS SENF','TAFELMEERRETTICH','TRIOLADE','Verano Vanilla',
+                    'FH-DOSE 450ML','TIEFKUEHLTASCHE','Paradies Baby C Power','Paradies Micro AAA 4 St',
+                    'Mayben B&K Sonnencreme 100ml','SauBär Badezubehör Pad','essence Nagelkleber fix it!',
+                    'o.b.ExtraProtect Super 42St','LEBENSMITTEL','BEDIENUNGSTHEKE'
+                  )
+                """, Integer.class);
+        Integer originalRule = jdbcTemplate.queryForObject(
+                "select count(*) from categorization_rule where lower(match_value) = 'original'",
+                Integer.class);
+
+        assertThat(confirmedRules).isEqualTo(21);
+        assertThat(originalRule).isZero();
+    }
+
     // Verifies Flyway creates required schema objects, reference data, settings, and guarded category seeds.
     @Test
     void flywayCreatesSchemaAndReferenceData() {
@@ -343,15 +368,15 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
                         "Baumarkt und Garten",
                         "Kleidung und Schuhe",
                         null,
-                        null);
+                        "Lebensmittel");
         assertThat(items.subList(0, 12)).allSatisfy(item -> {
             assertThat(item.getCategorySource()).isEqualTo(CategorySource.RULE);
             assertThat(item.isManuallyEdited()).isFalse();
         });
-        assertThat(items.subList(12, 14)).allSatisfy(item -> {
-            assertThat(item.getCategory()).isNull();
-            assertThat(item.getCategorySource()).isNull();
-        });
+        assertThat(items.get(12).getCategory()).isNull();
+        assertThat(items.get(12).getCategorySource()).isNull();
+        assertThat(items.get(13).getCategorySource()).isEqualTo(CategorySource.RULE);
+        assertThat(items.get(13).isManuallyEdited()).isFalse();
     }
 
     // Verifies V22 repairs C&A rule assignments created before its product-specific rules existed.

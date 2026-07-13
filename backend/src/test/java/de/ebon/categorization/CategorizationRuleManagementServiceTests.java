@@ -142,6 +142,23 @@ class CategorizationRuleManagementServiceTests extends PostgresIntegrationTestSu
         assertThat(count).isEqualTo(2);
     }
 
+    @Test
+    void createAndPreviewPreserveOptionalStoreConstraint() {
+        Category category = category("Fleisch und Wurst");
+        receiptWithItem("REWE", "BEDIENUNGSTHEKE");
+        receiptWithItem("EDEKA", "BEDIENUNGSTHEKE");
+
+        CategorizationRuleDto created = ruleManagementService.create(new CategorizationRuleRequest(
+                category.getId(), RuleMatchField.DESCRIPTION, RuleMatchType.EXACT,
+                "BEDIENUNGSTHEKE", 10, true, false, " REWE "));
+        long count = ruleManagementService.preview(new CategorizationRulePreviewRequest(
+                category.getId(), RuleMatchField.DESCRIPTION, RuleMatchType.EXACT,
+                "BEDIENUNGSTHEKE", "REWE"));
+
+        assertThat(created.storeName()).isEqualTo("REWE");
+        assertThat(count).isEqualTo(1);
+    }
+
     // Verifies previewing with an explicit category and rejecting rule creation against inactive categories.
     @Test
     void previewWithExplicitCategoryAndCreateOnInactiveCategoryFails() {

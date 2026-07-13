@@ -51,6 +51,7 @@ public class CategorizationRuleManagementService {
                 request.matchField(),
                 request.matchType(),
                 request.matchValue().trim(),
+                request.storeName(),
                 request.priority() == null ? 100 : request.priority());
         if (Boolean.FALSE.equals(request.isActive())) {
             rule.deactivate();
@@ -70,6 +71,7 @@ public class CategorizationRuleManagementService {
                 request.matchField(),
                 request.matchType(),
                 request.matchValue().trim(),
+                request.storeName(),
                 request.priority() == null ? 100 : request.priority(),
                 request.isActive());
         if (Boolean.TRUE.equals(request.applyToExisting())) {
@@ -98,6 +100,7 @@ public class CategorizationRuleManagementService {
                 request.matchField(),
                 request.matchType(),
                 request.matchValue().trim(),
+                request.storeName(),
                 100);
         return receiptItemRepository.findAll().stream()
                 .filter(item -> !item.isManuallyEdited())
@@ -136,6 +139,7 @@ public class CategorizationRuleManagementService {
                 rule.getMatchValue(),
                 rule.getPriority(),
                 rule.isActive(),
-                rule.getCreatedAt());
+                rule.getCreatedAt(),
+                rule.getStoreName());
     }
 }

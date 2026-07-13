@@ -617,6 +617,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 - **F-03.6:** Eine Kategorisierung kann für einzelne Positionen oder alle gleichen Beschreibungen im gesamten Datenbestand angewendet werden (Bulk-Kategorisierung).
 - **F-03.7:** Wenn kein `OPENROUTER_API_KEY` konfiguriert ist, wird der KI-Fallback übersprungen. Positionen bleiben unkategorisiert (`category_id = NULL`, `category_source = NULL`) und werden in der UI als „Ohne Kategorie" angezeigt.
 - **F-03.8:** `category_source = AI` darf nie ohne gesetzte `category_id` persistiert werden. `category_source = NULL` bedeutet, dass die Position noch offen ist und vom Nutzer später manuell kategorisiert werden kann.
+- **F-03.9:** Eine Beschreibungsregel kann optional auf einen Händler eingeschränkt werden. In diesem Fall müssen Beschreibung und `store_name` gemeinsam passen; der Händlervergleich ist nach Trimmen case-insensitive und exakt.
 
 ### F-04: Suche
 
@@ -665,7 +666,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 ### F-07: Kategorisierungsregeln verwalten
 
 - **F-07.1:** Der Nutzer kann Kategorisierungsregeln anlegen, bearbeiten, deaktivieren und löschen.
-- **F-07.2:** Regelfelder: Zielkategorie, Match-Feld (`DESCRIPTION` oder `STORE_NAME`), Match-Typ (`CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `EXACT`, `REGEX`), Match-Wert, Priorität.
+- **F-07.2:** Regelfelder: Zielkategorie, Match-Feld (`DESCRIPTION` oder `STORE_NAME`), Match-Typ (`CONTAINS`, `STARTS_WITH`, `ENDS_WITH`, `EXACT`, `REGEX`), Match-Wert, optionale Händlerbedingung für `DESCRIPTION` und Priorität.
 - **F-07.3:** Bei Speichern einer neuen Regel kann der Nutzer wählen, ob alle bestehenden Positionen ohne Kategorie oder mit KI-Kategorie rückwirkend mit der neuen Regel kategorisiert werden sollen (Bulk-Apply).
 - **F-07.4:** Eine Regelvorschau zeigt vor dem Speichern an, wie viele bestehende Positionen von der Regel betroffen wären.
 

@@ -71,6 +71,23 @@ class PersistenceModelBehaviorTests {
         assertThat(rule.isActive()).isFalse();
     }
 
+    @Test
+    void categorizationRuleNormalizesOptionalStoreConstraint() {
+        CategorizationRule rule = new CategorizationRule(
+                new Category("Fleisch und Wurst", null, null, 1),
+                RuleMatchField.DESCRIPTION,
+                RuleMatchType.EXACT,
+                "BEDIENUNGSTHEKE",
+                " REWE ",
+                100);
+
+        assertThat(rule.getStoreName()).isEqualTo("REWE");
+
+        rule.update(null, null, null, null, "   ", null, null);
+
+        assertThat(rule.getStoreName()).isNull();
+    }
+
     // Verifies receipt parsing/manual updates keep currency defaults and mark manual edits correctly.
     @Test
     void receiptApplyAndUpdateUseCurrencyFallbackAndManualEditFlags() {

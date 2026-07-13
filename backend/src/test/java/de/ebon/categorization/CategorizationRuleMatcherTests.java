@@ -47,6 +47,22 @@ class CategorizationRuleMatcherTests {
                 .isFalse();
     }
 
+    @Test
+    void requiresMatchingStoreWhenDescriptionRuleHasStoreConstraint() {
+        CategorizationRule rule = new CategorizationRule(
+                new Category("Test", null, null, 1),
+                RuleMatchField.DESCRIPTION,
+                RuleMatchType.EXACT,
+                "BEDIENUNGSTHEKE",
+                " REWE ",
+                100);
+
+        assertThat(matcher.matches(rule, receiptItem("BEDIENUNGSTHEKE", "rewe"))).isTrue();
+        assertThat(matcher.matches(rule, receiptItem("BEDIENUNGSTHEKE", "EDEKA"))).isFalse();
+        assertThat(matcher.matches(rule, receiptItemWithoutReceipt())).isFalse();
+        assertThat(rule.getStoreName()).isEqualTo("REWE");
+    }
+
     private CategorizationRule rule(RuleMatchField field, RuleMatchType type, String value) {
         return new CategorizationRule(new Category("Test", null, null, 1), field, type, value, 100);
     }

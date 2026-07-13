@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
 class CategorizationRuleMatcher {
 
     boolean matches(CategorizationRule rule, ReceiptItem item) {
+        if (!matchesStoreConstraint(rule, item)) {
+            return false;
+        }
         String target = target(rule, item);
         if (target == null || rule.getMatchValue() == null) {
             return false;
@@ -33,6 +36,14 @@ class CategorizationRuleMatcher {
                     || (!compactValue.isEmpty() && compactTarget.equals(compactValue));
             case REGEX -> regexMatches(rule.getMatchValue(), target);
         };
+    }
+
+    private boolean matchesStoreConstraint(CategorizationRule rule, ReceiptItem item) {
+        if (rule.getStoreName() == null) {
+            return true;
+        }
+        String actual = item.getReceipt() == null ? null : item.getReceipt().getStoreName();
+        return actual != null && actual.trim().equalsIgnoreCase(rule.getStoreName());
     }
 
     private String target(CategorizationRule rule, ReceiptItem item) {

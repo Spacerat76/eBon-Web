@@ -43,6 +43,7 @@ function apiClient() {
     rules: vi.fn().mockResolvedValue([
       { id: 3, categoryId: 1, categoryName: "Lebensmittel", matchField: "DESCRIPTION", matchType: "CONTAINS", matchValue: "MILCH", priority: 10, isActive: true }
     ]),
+    previewRule: vi.fn().mockResolvedValue({ matchingItemsCount: 0 }),
     parseRuleSuggestions: vi.fn().mockResolvedValue({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0 }),
     systemInfo: vi.fn().mockResolvedValue({ version: "1.7.0" }),
     reparseAllReceipts: vi.fn().mockResolvedValue({ message: "Neu geparst.", totalReceipts: 4, processedReceipts: 4, skippedManualReceipts: 0, deletedReceipts: 0, deletedSyncLogs: 0 }),
@@ -72,6 +73,26 @@ describe("SettingsPage", () => {
     expect(screen.getByText("Keine Parser-Regelvorschläge")).toBeInTheDocument();
     await user.click(within(tabList).getByRole("tab", { name: "Systeminformationen" }));
     expect(screen.getByText("1.7.0")).toBeInTheDocument();
+  });
+
+  it("previews and displays a store-specific description rule", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    api.rules.mockResolvedValue([
+      { id: 3, categoryId: 1, categoryName: "Lebensmittel", matchField: "DESCRIPTION", matchType: "EXACT", matchValue: "BEDIENUNGSTHEKE", storeName: "REWE", priority: 10, isActive: true }
+    ]);
+    api.previewRule.mockResolvedValue({ matchingItemsCount: 1 });
+    render(<SettingsPage apiClient={api as unknown as ApiClient} hasApiToken />);
+
+    await user.click(await screen.findByRole("tab", { name: "Kategorisierungsregeln" }));
+    expect(screen.getByText("Nur bei Händler: REWE")).toBeInTheDocument();
+    const ruleCard = screen.getByRole("heading", { name: "Neue Regel" }).closest("section") as HTMLElement;
+    const [matchValueInput, storeNameInput] = within(ruleCard).getAllByRole("textbox");
+    await user.type(storeNameInput, "REWE");
+    await user.type(matchValueInput, "BEDIENUNGSTHEKE");
+    await user.click(screen.getByRole("button", { name: "Vorschau" }));
+
+    expect(api.previewRule).toHaveBeenCalledWith(expect.objectContaining({ storeName: "REWE" }));
   });
 
   it("keeps masked secrets unchanged and tests both connections", async () => {
@@ -142,7 +163,7 @@ describe("SettingsPage", () => {
 
     await user.click(screen.getByRole("tab", { name: "Kategorisierungsregeln" }));
     const ruleCard = screen.getByRole("heading", { name: "Neue Regel" }).closest("section");
-    await user.type(within(ruleCard as HTMLElement).getByRole("textbox"), "MILCH");
+    await user.type(within(ruleCard as HTMLElement).getAllByRole("textbox")[0], "MILCH");
     const ruleEvent = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(ruleEvent);
     expect(ruleEvent.defaultPrevented).toBe(true);

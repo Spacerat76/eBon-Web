@@ -409,6 +409,7 @@ export interface CategorizationRuleDTO {
   priority: number;
   isActive: boolean;
   createdAt: string;
+  storeName?: string | null;
 }
 
 export interface CategorizationRuleRequest {
@@ -419,6 +420,7 @@ export interface CategorizationRuleRequest {
   priority?: number | null;
   isActive?: boolean | null;
   applyToExisting?: boolean | null;
+  storeName?: string | null;
 }
 
 export interface CategorizationRulePreviewRequest {
@@ -426,6 +428,7 @@ export interface CategorizationRulePreviewRequest {
   matchField: RuleMatchField;
   matchType: RuleMatchType;
   matchValue: string;
+  storeName?: string | null;
 }
 
 export interface CategorizationRulePreviewResponse {

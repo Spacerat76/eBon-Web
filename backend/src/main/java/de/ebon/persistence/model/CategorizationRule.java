@@ -38,6 +38,9 @@ public class CategorizationRule {
     @Column(name = "match_value", nullable = false, length = 512)
     private String matchValue;
 
+    @Column(name = "store_name", length = 255)
+    private String storeName;
+
     @Column(nullable = false)
     private int priority = 100;
 
@@ -51,10 +54,21 @@ public class CategorizationRule {
     }
 
     public CategorizationRule(Category category, RuleMatchField matchField, RuleMatchType matchType, String matchValue, int priority) {
+        this(category, matchField, matchType, matchValue, null, priority);
+    }
+
+    public CategorizationRule(
+            Category category,
+            RuleMatchField matchField,
+            RuleMatchType matchType,
+            String matchValue,
+            String storeName,
+            int priority) {
         this.category = category;
         this.matchField = matchField;
         this.matchType = matchType;
         this.matchValue = matchValue;
+        this.storeName = normalizeStoreName(storeName);
         this.priority = priority;
     }
 
@@ -85,6 +99,10 @@ public class CategorizationRule {
         return matchValue;
     }
 
+    public String getStoreName() {
+        return storeName;
+    }
+
     public int getPriority() {
         return priority;
     }
@@ -104,6 +122,17 @@ public class CategorizationRule {
             String matchValue,
             Integer priority,
             Boolean active) {
+        update(category, matchField, matchType, matchValue, storeName, priority, active);
+    }
+
+    public void update(
+            Category category,
+            RuleMatchField matchField,
+            RuleMatchType matchType,
+            String matchValue,
+            String storeName,
+            Integer priority,
+            Boolean active) {
         if (category != null) {
             this.category = category;
         }
@@ -116,6 +145,7 @@ public class CategorizationRule {
         if (matchValue != null) {
             this.matchValue = matchValue;
         }
+        this.storeName = normalizeStoreName(storeName);
         if (priority != null) {
             this.priority = priority;
         }
@@ -126,5 +156,9 @@ public class CategorizationRule {
 
     public void deactivate() {
         active = false;
+    }
+
+    private static String normalizeStoreName(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 }

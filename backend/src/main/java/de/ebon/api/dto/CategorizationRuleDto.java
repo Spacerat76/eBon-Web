@@ -13,5 +13,6 @@ public record CategorizationRuleDto(
         String matchValue,
         int priority,
         boolean isActive,
-        OffsetDateTime createdAt) {
+        OffsetDateTime createdAt,
+        String storeName) {
 }

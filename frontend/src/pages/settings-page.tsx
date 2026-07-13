@@ -91,6 +91,7 @@ const emptyRule: CategorizationRuleRequest = {
   matchField: "DESCRIPTION",
   matchType: "CONTAINS",
   matchValue: "",
+  storeName: null,
   priority: 100,
   isActive: true,
   applyToExisting: false
@@ -440,7 +441,8 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
         categoryId: ruleDraft.categoryId || null,
         matchField: ruleDraft.matchField,
         matchType: ruleDraft.matchType,
-        matchValue: ruleDraft.matchValue
+        matchValue: ruleDraft.matchValue,
+        storeName: ruleDraft.storeName
       });
       setRulePreview(response.matchingItemsCount);
     } catch (previewError) {
@@ -541,6 +543,7 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
       matchField: rule.matchField,
       matchType: rule.matchType,
       matchValue: rule.matchValue,
+      storeName: rule.storeName ?? null,
       priority: rule.priority,
       isActive: rule.isActive,
       applyToExisting: false
@@ -1307,7 +1310,7 @@ function RuleSettings({
           </Field>
           <div className="grid gap-3 md:grid-cols-2">
             <Field help="Position prüft den Artikeltext, Geschäft prüft den Laden-Namen." label="Match-Feld">
-              <select className={selectClassName} onChange={(event) => onRuleDraftChange({ ...ruleDraft, matchField: event.target.value as RuleMatchField })} value={ruleDraft.matchField}>
+              <select className={selectClassName} onChange={(event) => onRuleDraftChange({ ...ruleDraft, matchField: event.target.value as RuleMatchField, storeName: event.target.value === "STORE_NAME" ? null : ruleDraft.storeName })} value={ruleDraft.matchField}>
                 <option value="DESCRIPTION">Position</option>
                 <option value="STORE_NAME">Geschäft</option>
               </select>
@@ -1325,6 +1328,11 @@ function RuleSettings({
           <Field help="Suchtext oder Regex. Regeln sollten so präzise sein, dass sie keine falschen Produkte treffen." label="Match-Wert">
             <Input onChange={(event) => onRuleDraftChange({ ...ruleDraft, matchValue: event.target.value })} value={ruleDraft.matchValue} />
           </Field>
+          {ruleDraft.matchField === "DESCRIPTION" ? (
+            <Field help="Optional: Die Regel greift nur, wenn der Händlername exakt übereinstimmt." label="Nur bei Händler (optional)">
+              <Input onChange={(event) => onRuleDraftChange({ ...ruleDraft, storeName: event.target.value })} value={ruleDraft.storeName ?? ""} />
+            </Field>
+          ) : null}
           <Field help="Niedrigste Priorität gewinnt. Spezifische Regeln sollten kleinere Werte haben als breite Fallback-Regeln." label="Priorität">
             <Input onChange={(event) => onRuleDraftChange({ ...ruleDraft, priority: Number(event.target.value) })} type="number" value={ruleDraft.priority ?? 100} />
           </Field>
@@ -1369,6 +1377,7 @@ function RuleSettings({
                   <td className="px-3 py-2">
                     <div className="font-medium">{matchFieldLabel(rule.matchField)} · {matchTypeLabel(rule.matchType)}</div>
                     <div className="text-xs text-zinc-500 dark:text-zinc-400">{rule.matchValue}</div>
+                    {rule.storeName ? <div className="text-xs text-zinc-500 dark:text-zinc-400">Nur bei Händler: {rule.storeName}</div> : null}
                   </td>
                   <td className="px-3 py-2">{rule.categoryName}</td>
                   <td className="px-3 py-2">{rule.isActive ? <Badge tone="green">Aktiv</Badge> : <Badge>Inaktiv</Badge>}</td>
@@ -1402,6 +1411,7 @@ function normalizeRule(rule: CategorizationRuleRequest): CategorizationRuleReque
   return {
     ...rule,
     matchValue: rule.matchValue.trim(),
+    storeName: rule.storeName?.trim() || null,
     applyToExisting: Boolean(rule.applyToExisting)
   };
 }
