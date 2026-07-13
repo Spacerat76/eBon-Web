@@ -50,6 +50,10 @@ public class ReceiptItem {
     @Column(name = "discount_amount", precision = 10, scale = 2)
     private BigDecimal discountAmount;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "extraction_status", nullable = false, length = 32)
+    private ExtractionStatus extractionStatus = ExtractionStatus.CONFIRMED;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "product_family_id")
     private ProductFamily productFamily;
@@ -273,6 +277,17 @@ public class ReceiptItem {
 
     public BigDecimal getDiscountAmount() {
         return discountAmount;
+    }
+
+    public ExtractionStatus getExtractionStatus() {
+        return extractionStatus;
+    }
+
+    public void setExtractionStatus(ExtractionStatus extractionStatus) {
+        if (extractionStatus == null) {
+            throw new IllegalArgumentException("Extraktionsstatus darf nicht null sein.");
+        }
+        this.extractionStatus = extractionStatus;
     }
 
     public ProductFamily getProductFamily() {

@@ -127,6 +127,36 @@ class PersistenceModelBehaviorTests {
         assertThat(receipt.getParseStatus()).isEqualTo(ParseStatus.MANUALLY_EDITED);
     }
 
+    @Test
+    void adaptiveParsingModelsExposeConservativeDefaultsAndPredecessor() {
+        ReceiptFormatProfile predecessor = new ReceiptFormatProfile(
+                FormatProfileScope.STORE,
+                "rewe",
+                "",
+                "layout-v1",
+                1,
+                1,
+                "{\"schemaVersion\":1}",
+                FormatProfileSource.AI_GENERATED,
+                null);
+        ReceiptFormatProfile profile = new ReceiptFormatProfile(
+                FormatProfileScope.STORE,
+                "rewe",
+                "",
+                "layout-v1",
+                1,
+                2,
+                "{\"schemaVersion\":1}",
+                FormatProfileSource.AI_GENERATED,
+                predecessor);
+        ReceiptItem item = new ReceiptItem(0, "Bio Milch", new BigDecimal("2.49"));
+
+        assertThat(ParseStatus.valueOf("PARSE_REVIEW")).isEqualTo(ParseStatus.PARSE_REVIEW);
+        assertThat(profile.getState()).isEqualTo(FormatProfileState.QUARANTINE);
+        assertThat(profile.getPredecessor()).isEqualTo(predecessor);
+        assertThat(item.getExtractionStatus()).isEqualTo(ExtractionStatus.CONFIRMED);
+    }
+
     // Verifies receipt lifecycle defaults initialize timestamps without overwriting preset values.
     @Test
     void receiptPrePersistInitializesAndKeepsExistingTimestamps() throws Exception {

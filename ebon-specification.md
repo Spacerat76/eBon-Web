@@ -172,9 +172,11 @@ Die Datei `.env.example` dokumentiert alle erforderlichen Umgebungsvariablen mit
 | `bonus_balance` | NUMERIC(10,2) | NULL | In diesem Einkauf neu gesammeltes Bonusguthaben, nicht der aktuelle Kontostand (geparst) |
 | `bonus_points` | NUMERIC(10,2) | NULL | In diesem Einkauf neu gesammelte Payback-Punkte o.Ä. aus dem Bon (geparst) |
 | `bonus_type` | VARCHAR(64) | NULL | Art des Bonusprogramms (z.B. „Payback", „DeutschlandCard", „Bonusclub") |
-| `parse_status` | VARCHAR(32) | NOT NULL | Enum: `PENDING`, `PARSED`, `PARSE_ERROR`, `MANUALLY_EDITED` |
+| `parse_status` | VARCHAR(32) | NOT NULL | Enum: `PENDING`, `PARSED`, `PARSE_REVIEW`, `PARSE_ERROR`, `MANUALLY_EDITED` |
 | `parse_source` | VARCHAR(32) | NULL | Quelle des aktuellen Parsergebnisses: `RULE`, `AI`, optional später `MANUAL_CORRECTED`; NULL solange kein verwertbares Parsergebnis vorliegt |
 | `parse_error_message` | TEXT | NULL | Fehlermeldung bei `PARSE_ERROR` |
+| `format_profile_id` | BIGINT | FK → receipt_format_profile.id, NULL | Unveränderliche Profilversion, die für den Parse verwendet wurde; nur zusammen mit `format_profile_version` gesetzt |
+| `format_profile_version` | INTEGER | NULL | Mit `format_profile_id` konsistente Profilversionsnummer |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update (automatisch) |
 | `deleted_at` | TIMESTAMPTZ | NULL | Soft-Delete-Zeitpunkt, z.B. bei `TAG_REMOVED` |
 | `delete_reason` | VARCHAR(32) | NULL | Enum: `USER_DELETED`, `TAG_REMOVED`, falls `deleted_at` gesetzt ist |
@@ -192,6 +194,7 @@ Die Datei `.env.example` dokumentiert alle erforderlichen Umgebungsvariablen mit
 | `unit_price` | NUMERIC(10,2) | NULL | Einzelpreis |
 | `total_price` | NUMERIC(10,2) | NOT NULL | Gesamtpreis der Position |
 | `discount_amount` | NUMERIC(10,2) | NULL | Rabattbetrag (sofern erkennbar) |
+| `extraction_status` | VARCHAR(32) | NOT NULL, DEFAULT `CONFIRMED` | Enum: `CONFIRMED`, `NEEDS_REVIEW`; nur bestätigte Positionen dürfen automatische Folgeprozesse und Lernen auslösen |
 | `product_family_id` | BIGINT | FK → product_family.id, NULL | Zugeordnete Produktfamilie für Phase-15-Preisvergleiche |
 | `product_variant_id` | BIGINT | FK → product_variant.id, NULL | Zugeordnete Produktvariante; NULL, wenn nur Familie bekannt oder kein Produkt |
 | `product_assignment_source` | VARCHAR(32) | NULL | Enum: `RULE`, `AI`, `MANUAL`, `HISTORY`; nur gesetzt, wenn Produktzuordnung gesetzt ist |
@@ -204,6 +207,46 @@ Die Datei `.env.example` dokumentiert alle erforderlichen Umgebungsvariablen mit
 | `category_source` | VARCHAR(32) | NULL | Enum: `RULE`, `AI`, `MANUAL`; nur gesetzt, wenn `category_id` gesetzt ist |
 | `is_manually_edited` | BOOLEAN | NOT NULL, DEFAULT FALSE | Wurde die Position manuell bearbeitet |
 | `updated_at` | TIMESTAMPTZ | NOT NULL | Letztes Update |
+
+#### 4.1.2a `receipt_format_profile` (deklaratives Bonformat-Profil)
+
+Profildefinitionen sind unveränderliche JSON-Objekte mit `schemaVersion = 1`; es wird kein generierter Code und kein beliebiges Skript ausgeführt. Eine neue Anpassung erzeugt stets eine neue Version mit direktem Vorgänger derselben Händler-/Filial-/Fingerprint-Identität.
+
+| Spalte | Typ | Constraints | Beschreibung |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Interne Profil-ID |
+| `scope` | VARCHAR(32) | NOT NULL | Enum: `STORE`, `BRANCH` |
+| `store_name_key` | VARCHAR(255) | NOT NULL | Normalisierter Händlerschlüssel |
+| `store_branch_key` | VARCHAR(255) | NOT NULL | Normalisierter Filialschlüssel; leer bei Store-Profilen |
+| `fingerprint` | VARCHAR(128) | NOT NULL | Stabiler Layout-Fingerprint |
+| `fingerprint_version` | INTEGER | NOT NULL | Version des Fingerprint-Algorithmus und Teil der Profilidentität |
+| `profile_schema_version` | INTEGER | NOT NULL, `= 1` | Persistierte Schemaspezifikation; muss `profile_definition.schemaVersion` entsprechen |
+| `version` | INTEGER | NOT NULL | Fortlaufende Version innerhalb derselben Profilidentität |
+| `predecessor_id` | BIGINT | FK → receipt_format_profile.id, NULL | NULL nur für Version 1, sonst exakt die direkte Vorversion derselben Identität |
+| `profile_definition` | JSONB | NOT NULL | Geschlossene deklarative Profildefinition; nach Anlage unveränderlich |
+| `state` | VARCHAR(32) | NOT NULL | Enum: `QUARANTINE`, `ACTIVE`, `SUSPENDED`, `RETIRED` |
+| `source` | VARCHAR(32) | NOT NULL | Enum: `AI_GENERATED`, `LEGACY_BOOTSTRAP`, `USER_CORRECTED` |
+| `activated_at`, `suspended_at`, `replaced_at` | TIMESTAMPTZ | NULL | Lebenszykluszeitpunkte |
+| `suspension_reason` | TEXT | NULL | Grund für Suspendierung/Rollback |
+| `hit_count`, `monitored_hit_count` | INTEGER | NOT NULL, DEFAULT 0 | Treffer- und Überwachungszähler |
+| `created_at`, `updated_at` | TIMESTAMPTZ | NOT NULL | Anlage und letzte Lebenszyklusänderung |
+
+Pro `(scope, store_name_key, store_branch_key, fingerprint, fingerprint_version)` darf höchstens eine Version `ACTIVE` sein.
+
+#### 4.1.2b `receipt_parse_trace` (Parser-Zeilenspur)
+
+| Spalte | Typ | Constraints | Beschreibung |
+|---|---|---|---|
+| `id` | BIGSERIAL | PK | Interne Trace-ID |
+| `receipt_id` | BIGINT | FK → receipt.id, NOT NULL, ON DELETE CASCADE | Zugehöriger Bon |
+| `format_profile_id`, `format_profile_version` | BIGINT / INTEGER | konsistentes Nullpaar, FK → receipt_format_profile(id, version) | Verwendete unveränderliche Profilversion; bei Legacy-Spuren beide NULL |
+| `line_number` | INTEGER | NOT NULL | 1-basierte Originalzeile |
+| `line_type` | VARCHAR(32) | NOT NULL | Enum: `POSITION`, `METADATA`, `PAYMENT`, `TOTAL`, `TAX`, `IGNORED_SAFE`, `UNRESOLVED` |
+| `position_index` | INTEGER | NULL | Zugeordnete Bonposition |
+| `extracted_fields` | JSONB | NOT NULL | Strukturierte Feldzuordnungen, keine Prompts oder KI-Rohantworten |
+| `reason` | TEXT | NULL | Klassifikationsbegründung |
+| `needs_review` | BOOLEAN | NOT NULL | Markiert ungeklärte/reviewpflichtige Zeilen |
+| `created_at` | TIMESTAMPTZ | NOT NULL | Anlagezeitpunkt |
 
 #### 4.1.3 `category` (Warengruppe/Kategorie)
 
@@ -521,7 +564,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
   - Geschäftsname (`store_name`) und Filiale/Adresse (`store_branch`)
   - Einzelne Kaufpositionen mit: Bezeichnung, Menge, Einheit, Einzelpreis, Gesamtpreis, Rabatt
   - Gesamtbetrag (`total_amount`)
-- **F-02.3:** Der Parser verwendet **primär** reguläre Ausdrücke und strukturbasiertes Parsen (regelbasiert). Der Parser ist erweiterbar für verschiedene Bon-Formate (Store-spezifische Parser als Strategy-Pattern).
+- **F-02.3:** Der Parser verwendet **primär** reguläre Ausdrücke und strukturbasiertes Parsen (regelbasiert). Versionierte Händler-/Filialprofile sind geschlossene deklarative JSON-Definitionen und werden anhand normalisierter Händler-/Filialschlüssel sowie eines versionsgebundenen Layout-Fingerprints ausgewählt; Profilcode oder beliebige Skripte werden nie ausgeführt.
 - **F-02.3a:** Schlägt das regelbasierte Parsing fehl (kein vollständiger Parse möglich), kann ein **KI-Fallback** über OpenRouter.ai durchgeführt werden. Der Fallback ist über `ai_parsing_fallback_enabled` konfigurierbar, standardmäßig aktiv und läuft nur, wenn ein OpenRouter API-Key verfügbar ist. Für manuelle Reparse-Aufrufe kann der Nutzer den KI-Fallback explizit verwenden oder deaktivieren.
 - **F-02.3b:** Der OpenRouter-Parsing-Fallback folgt einem kontrollierten Hybrid-Ansatz: Ein KI-Ergebnis darf den aktuellen Bon automatisch als `PARSED` speichern, aber nur wenn JSON syntaktisch valide ist, das Schema erfüllt ist, Pflichtfelder vorhanden sind, `overallConfidence >= ai_parsing_min_confidence` gilt, `receiptDate`, `storeName`, `totalAmount` valide sind, mindestens eine Position mit `description` und `totalPrice` existiert, `positionIndex` fortlaufend ist, Zahlenformate korrekt normalisiert sind und die Summentoleranz `0.02` erfüllt ist. Erfolgreiche KI-Parses setzen `receipt.parse_source = AI`.
 - **F-02.3c:** Der Prompt enthält den minimierten oder vollständigen `raw_text`, den Regelparser-Teilparse, den Fehlergrund des Regelparsers, Pflichtfelder, Summenvalidierung, die Bonusdefinition („nur im Einkauf neu gesammelt") und die Anweisung, ausschließlich JSON zurückzugeben. Die KI muss ein vollständiges finales JSON liefern. Teilantworten oder Antworten außerhalb des Schemas werden nicht als `PARSED` übernommen.
@@ -537,8 +580,9 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
   - `bonus_balance`: In diesem Einkauf neu gesammeltes Bonusguthaben, nicht das aktuelle Bonuskonto-/Punkteguthaben
   - `bonus_points`: In diesem Einkauf neu gesammelte Payback-Punkte oder ähnliche Punktesysteme (mit Typ-Angabe)
   - `bonus_type`: Art des Bonusprogramms (z.B. „Payback", „DeutschlandCard", „Bonusclub")
-- **F-02.5:** Kann ein Bon nicht vollständig geparst werden, wird `parse_status = PARSE_ERROR` gesetzt und `parse_error_message` befüllt. Teilweise geparste Daten werden dennoch gespeichert.
-- **F-02.6:** Ein erfolgreich geparstes Dokument erhält `parse_status = PARSED`. **Definition „PARSED":** Ein Bon gilt als erfolgreich geparst (PARSED), wenn mindestens `total_amount`, `receipt_date` und `store_name` extrahiert wurden UND mindestens eine `receipt_item` mit gültigem `total_price` vorliegt. Fehlen einzelne optionale Felder (z.B. `receipt_time`, `store_branch`), gilt der Bon dennoch als PARSED.
+- **F-02.5:** Sind Pflichtfelder, Schema, Positionsindizes, Summenprüfung oder grundlegende Konsistenz nicht erfüllt, wird `parse_status = PARSE_ERROR` gesetzt und `parse_error_message` befüllt. Teilweise geparste Daten werden dennoch gespeichert.
+- **F-02.6:** Ein erfolgreich und vollständig abgedeckt geparstes Dokument erhält `parse_status = PARSED`. **Definition „PARSED":** Mindestens `total_amount`, `receipt_date` und `store_name` wurden extrahiert, mindestens eine `receipt_item` besitzt einen gültigen `total_price`, die Summentoleranz `0.02` ist erfüllt und keine plausible relevante Zeile bleibt `UNRESOLVED`. Fehlen einzelne optionale Felder (z.B. `receipt_time`, `store_branch`), gilt der Bon dennoch als `PARSED`.
+- **F-02.6a:** Sind die Pflichtfelder und erkannten Positionen verwendbar, aber mindestens eine plausible relevante Zeile bleibt `UNRESOLVED`, erhält der Bon `parse_status = PARSE_REVIEW`. Jede plausible Zeile wird als Position, Metadaten/Zahlung/Summe/Steuer, explizit sicher ignoriert oder ungeklärt klassifiziert und in `receipt_parse_trace` gespeichert. Automatische Kategorisierung, Produktzuordnung und Lernprozesse dürfen nur `receipt_item` mit `extraction_status = CONFIRMED` verarbeiten; `NEEDS_REVIEW` erzeugt kein Lernwissen.
 - **F-02.7:** Der Nutzer kann den Re-Parse eines einzelnen Bons über die UI triggern (UC-09).
 - **F-02.7a:** Vor einem Einzel-Reparse prüft die Anwendung den aktuellen Paperless-Text des zugehörigen Dokuments gegen den gespeicherten `receipt.raw_text`. Der Vergleich normalisiert ausschließlich Zeilenenden (`CRLF`/`LF`); sonstige Textunterschiede gelten als Änderung.
 - **F-02.7b:** Bei geändertem Paperless-Text fragt die Detailansicht ausdrücklich, ob der neue Text übernommen und für den Reparse verwendet werden soll. Der Nutzer kann alternativ den gespeicherten Rohtext verwenden oder abbrechen. Die Statusprüfung überträgt weder Rohtext noch Hashes an die UI.
@@ -550,7 +594,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 - Deutsche Zahlenformate werden normalisiert: `1,99` → `1.99`, `1.234,56` → `1234.56`.
 - Negative Beträge, Rabatte, Coupons und Pfandpositionen werden als eigene Positionen gespeichert, sofern sie im Bon als Position erscheinen.
 - Mehrzeilige Artikelbezeichnungen werden zu einer `description` zusammengeführt.
-- Die Summe aller `receipt_item.total_price` darf vom `receipt.total_amount` maximal um `0.02` abweichen. Größere Abweichungen setzen `parse_status = PARSE_ERROR`, speichern aber den Teilparse.
+- Die Summe aller `receipt_item.total_price` darf vom `receipt.total_amount` maximal um `0.02` abweichen. Die Toleranz gilt unverändert auch für Profile; größere Abweichungen setzen `parse_status = PARSE_ERROR`, speichern aber den Teilparse.
 - `receipt_item.position_index` ist pro Bon fortlaufend und eindeutig.
 
 **JSON-Schema für KI-Parsing-Fallback (semantisch):**
@@ -868,7 +912,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 **Alternativer Ablauf – Paperless-NGX nicht erreichbar:**
 - Das System markiert den Sync als fehlgeschlagen, schreibt einen Logeintrag. Kein Datenverlust.
 
-**Nachbedingung:** Alle neuen eBON-Dokumente sind als aktive `receipt` in der DB, neue Receipts haben `parse_status = PARSED` oder `PARSE_ERROR`. Dokumente mit entferntem Tag sind nicht physisch gelöscht, sondern per `deleted_at` ausgeblendet.
+**Nachbedingung:** Alle neuen eBON-Dokumente sind als aktive `receipt` in der DB, neue Receipts haben `parse_status = PARSED`, `PARSE_REVIEW` oder `PARSE_ERROR`. Dokumente mit entferntem Tag sind nicht physisch gelöscht, sondern per `deleted_at` ausgeblendet.
 
 ---
 
@@ -1248,7 +1292,7 @@ Fehlerresponse-Format:
 
 Query-Parameter für `GET /api/receipts`:
 - `page` (default 0), `size` (default 20), `sortBy` (default `receiptDate`), `sortDir` (`asc`/`desc`)
-- `status` (`PENDING`, `PARSED`, `PARSE_ERROR`, `MANUALLY_EDITED`)
+- `status` (`PENDING`, `PARSED`, `PARSE_REVIEW`, `PARSE_ERROR`, `MANUALLY_EDITED`)
 - `dateFrom` (ISO 8601 Date), `dateTo` (ISO 8601 Date)
 - `store` (partial match)
 - `includeDeleted` (default `false`; nur für administrative Ansichten)
@@ -2433,7 +2477,11 @@ Jede `expected.json` folgt dem KI-Parsing-JSON-Schema aus F-02. Bei negativen Te
 **Parsing:**
 
 - Given ein gültiger Corpus-Bon, when der Parser läuft, then erfüllt das Ergebnis die Definition `PARSED`.
+- Given Pflichtfelder und erkannte Positionen sind verwendbar, aber eine plausible relevante Zeile bleibt ungeklärt, then wird `PARSE_REVIEW` gesetzt und jede relevante Zeile in `receipt_parse_trace` klassifiziert.
+- Given eine Position hat `extraction_status = NEEDS_REVIEW`, then erzeugt sie keine automatische Kategorie-/Produktzuordnung und kein Lernwissen.
 - Given die Item-Summe weicht um mehr als `0.02` vom Gesamtbetrag ab, then wird `PARSE_ERROR` gesetzt und der Teilparse gespeichert.
+- Given zwei Fingerprint-Algorithmusversionen erzeugen denselben Fingerprint-Text, then werden ihre aktiven Profile getrennt ausgewählt.
+- Given Profildefinition, Vorgängerkette oder gespeicherte Profil-ID/Version widersprechen der unveränderlichen Profilidentität, then lehnt die Datenbank die Änderung ab.
 - Given regelbasiertes Parsing scheitert und KI liefert valides JSON, then wird der Bon aus dem KI-JSON gespeichert.
 - Given KI liefert invalides JSON, then wird kein ungeprüftes Ergebnis persistiert.
 - Given der aktuelle Paperless-Rohtext eines Einzelbons abweicht, when der Nutzer „Neuen Rohtext übernehmen und parsen“ bestätigt, then wird der neue Text transaktional gespeichert und geparst.

@@ -4,11 +4,21 @@ import de.ebon.categorization.CategorizationService;
 import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.CategorySource;
 import de.ebon.persistence.model.DeleteReason;
+import de.ebon.persistence.model.ExtractionStatus;
+import de.ebon.persistence.model.FormatProfileScope;
+import de.ebon.persistence.model.FormatProfileSource;
+import de.ebon.persistence.model.FormatProfileState;
+import de.ebon.persistence.model.ParseLineType;
+import de.ebon.persistence.model.ParseStatus;
 import de.ebon.persistence.model.Receipt;
+import de.ebon.persistence.model.ReceiptFormatProfile;
 import de.ebon.persistence.model.ReceiptItem;
+import de.ebon.persistence.model.ReceiptParseTrace;
 import de.ebon.persistence.repository.AppSettingRepository;
 import de.ebon.persistence.repository.CategoryRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
+import de.ebon.persistence.repository.ReceiptFormatProfileRepository;
+import de.ebon.persistence.repository.ReceiptParseTraceRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
 import de.ebon.support.PostgresIntegrationTestSupport;
 import jakarta.persistence.EntityManager;
@@ -22,9 +32,12 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceUtils;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @Transactional
@@ -44,6 +57,12 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
 
     @Autowired
     private ReceiptItemRepository receiptItemRepository;
+
+    @Autowired
+    private ReceiptFormatProfileRepository receiptFormatProfileRepository;
+
+    @Autowired
+    private ReceiptParseTraceRepository receiptParseTraceRepository;
 
     @Autowired
     private CategorizationService categorizationService;
@@ -142,6 +161,275 @@ class MigrationAndRepositorySmokeTests extends PostgresIntegrationTestSupport {
         assertThat(appSettingRepository.findById("ai_categorization_min_confidence")).isPresent()
                 .get()
                 .satisfies(setting -> assertThat(setting.getValue()).isEqualTo("0.900"));
+    }
+
+    @Test
+    void flywayCreatesAdaptiveParsingPersistence() {
+        Integer profileAndTraceTables = jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from information_schema.tables
+                        where table_schema = 'public'
+                          and table_name in ('receipt_format_profile', 'receipt_parse_trace')
+                        """,
+                Integer.class);
+        Integer adaptiveColumns = jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from information_schema.columns
+                        where table_schema = 'public'
+                          and ((table_name = 'receipt' and column_name in ('format_profile_id', 'format_profile_version'))
+                            or (table_name = 'receipt_item' and column_name = 'extraction_status'))
+                        """,
+                Integer.class);
+        Integer migrationVersion = jdbcTemplate.queryForObject(
+                "select max(version::integer) from flyway_schema_history where success = true",
+                Integer.class);
+
+        assertThat(profileAndTraceTables).isEqualTo(2);
+        assertThat(adaptiveColumns).isEqualTo(3);
+        assertThat(migrationVersion).isEqualTo(31);
+    }
+
+    @Test
+    void adaptiveParsingPersistenceSupportsReviewProfilesAndTraceCascade() {
+        ReceiptFormatProfile predecessor = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+        ReceiptFormatProfile profile = receiptFormatProfileRepository.saveAndFlush(profile(1, 2, predecessor));
+        Receipt receipt = new Receipt(91001, "sanitized receipt text");
+        receipt.applyParseResult(
+                ParseStatus.PARSE_REVIEW,
+                "Eine plausible Zeile ist ungeklärt.",
+                null,
+                null,
+                "REWE",
+                null,
+                new BigDecimal("2.49"),
+                "EUR",
+                null,
+                null,
+                null);
+        receipt.useFormatProfile(profile);
+        ReceiptItem item = new ReceiptItem(0, "Bio Milch", new BigDecimal("2.49"));
+        item.setExtractionStatus(ExtractionStatus.NEEDS_REVIEW);
+        receipt.addItem(item);
+        receiptRepository.saveAndFlush(receipt);
+
+        ReceiptParseTrace trace = new ReceiptParseTrace(
+                receipt,
+                profile,
+                7,
+                ParseLineType.UNRESOLVED,
+                null,
+                "{}",
+                "Preisähnliche Zeile blieb ungeklärt.",
+                true);
+        receiptParseTraceRepository.saveAndFlush(trace);
+        entityManager.clear();
+
+        Receipt reloaded = receiptRepository.findById(receipt.getId()).orElseThrow();
+        assertThat(reloaded.getParseStatus()).isEqualTo(ParseStatus.PARSE_REVIEW);
+        assertThat(reloaded.getReceiptFormatProfile().getId()).isEqualTo(profile.getId());
+        assertThat(reloaded.getFormatProfileVersion()).isEqualTo(2);
+        assertThat(receiptFormatProfileRepository.findById(profile.getId())).isPresent()
+                .get()
+                .extracting(savedProfile -> savedProfile.getPredecessor().getId())
+                .isEqualTo(predecessor.getId());
+        assertThat(receiptFormatProfileRepository
+                .findFirstByStateAndStoreNameKeyAndStoreBranchKeyAndFingerprintAndFingerprintVersionOrderByVersionDesc(
+                        FormatProfileState.QUARANTINE, "rewe", "", "layout-v1", 1))
+                .isPresent()
+                .get()
+                .extracting(ReceiptFormatProfile::getVersion)
+                .isEqualTo(2);
+        assertThat(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()))
+                .singleElement()
+                .extracting(ReceiptItem::getExtractionStatus)
+                .isEqualTo(ExtractionStatus.NEEDS_REVIEW);
+        assertThat(receiptParseTraceRepository.countByReceipt_Id(receipt.getId())).isOne();
+
+        receiptRepository.delete(reloaded);
+        receiptRepository.flush();
+
+        assertThat(receiptParseTraceRepository.countByReceipt_Id(receipt.getId())).isZero();
+    }
+
+    @Test
+    void onlyOneActiveProfileExistsPerNormalizedScopeAndFingerprint() {
+        ReceiptFormatProfile first = profile(1, 1, null);
+        first.activate();
+        receiptFormatProfileRepository.saveAndFlush(first);
+
+        ReceiptFormatProfile duplicate = profile(1, 2, first);
+        duplicate.activate();
+
+        assertThatThrownBy(() -> receiptFormatProfileRepository.saveAndFlush(duplicate))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void profileLookupSeparatesFingerprintAlgorithmVersions() {
+        ReceiptFormatProfile fingerprintV1 = profile(1, 1, null);
+        fingerprintV1.activate();
+        receiptFormatProfileRepository.saveAndFlush(fingerprintV1);
+        ReceiptFormatProfile fingerprintV2 = profile(2, 1, null);
+        fingerprintV2.activate();
+        receiptFormatProfileRepository.saveAndFlush(fingerprintV2);
+
+        assertThat(receiptFormatProfileRepository
+                .findFirstByStateAndStoreNameKeyAndStoreBranchKeyAndFingerprintAndFingerprintVersionOrderByVersionDesc(
+                        FormatProfileState.ACTIVE, "rewe", "", "layout-v1", 1))
+                .contains(fingerprintV1);
+        assertThat(receiptFormatProfileRepository
+                .findFirstByStateAndStoreNameKeyAndStoreBranchKeyAndFingerprintAndFingerprintVersionOrderByVersionDesc(
+                        FormatProfileState.ACTIVE, "rewe", "", "layout-v1", 2))
+                .contains(fingerprintV2);
+    }
+
+    @Test
+    void receiptProfileReferenceRejectsVersionAndNullPairMismatches() {
+        ReceiptFormatProfile profile = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+        Receipt receipt = new Receipt(91002, "sanitized receipt text");
+        receipt.useFormatProfile(profile);
+        receiptRepository.saveAndFlush(receipt);
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "update receipt set format_profile_version = 99 where id = ?", receipt.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void receiptProfileReferenceRejectsPartialNullPair() {
+        ReceiptFormatProfile profile = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+        Receipt receipt = new Receipt(91003, "sanitized receipt text");
+        receipt.useFormatProfile(profile);
+        receiptRepository.saveAndFlush(receipt);
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "update receipt set format_profile_id = null where id = ?", receipt.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void traceProfileReferenceRejectsVersionAndNullPairMismatches() {
+        ReceiptFormatProfile profile = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+        Receipt receipt = receiptRepository.saveAndFlush(new Receipt(91004, "sanitized receipt text"));
+        ReceiptParseTrace trace = receiptParseTraceRepository.saveAndFlush(new ReceiptParseTrace(
+                receipt, profile, 1, ParseLineType.POSITION, 0, "{}", "recognized", false));
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "update receipt_parse_trace set format_profile_version = 99 where id = ?", trace.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void traceProfileReferenceRejectsPartialNullPair() {
+        ReceiptFormatProfile profile = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+        Receipt receipt = receiptRepository.saveAndFlush(new Receipt(91005, "sanitized receipt text"));
+        ReceiptParseTrace trace = receiptParseTraceRepository.saveAndFlush(new ReceiptParseTrace(
+                receipt, profile, 1, ParseLineType.POSITION, 0, "{}", "recognized", false));
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "update receipt_parse_trace set format_profile_id = null where id = ?", trace.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void profileVersionsRequireAnImmediatePredecessor() {
+        ReceiptFormatProfile first = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+
+        assertThatThrownBy(() -> receiptFormatProfileRepository.saveAndFlush(profile(1, 3, first)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void profileVersionsAfterOneRequireAPredecessor() {
+        assertThatThrownBy(() -> receiptFormatProfileRepository.saveAndFlush(profile(1, 2, null)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void profilePredecessorMustHaveTheSameIdentity() {
+        ReceiptFormatProfile first = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+        ReceiptFormatProfile differentStore = new ReceiptFormatProfile(
+                FormatProfileScope.STORE,
+                "aldi",
+                "",
+                "layout-v1",
+                1,
+                2,
+                "{\"schemaVersion\":1}",
+                FormatProfileSource.AI_GENERATED,
+                first);
+
+        assertThatThrownBy(() -> receiptFormatProfileRepository.saveAndFlush(differentStore))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void profileDefinitionSchemaVersionMustMatchPersistedVersion() {
+        ReceiptFormatProfile mismatched = new ReceiptFormatProfile(
+                FormatProfileScope.STORE,
+                "rewe",
+                "",
+                "layout-v1",
+                1,
+                1,
+                "{\"schemaVersion\":2}",
+                FormatProfileSource.AI_GENERATED,
+                null);
+
+        assertThatThrownBy(() -> receiptFormatProfileRepository.saveAndFlush(mismatched))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void profileDefinitionRequiresSchemaVersionOne() {
+        ReceiptFormatProfile missingSchemaVersion = new ReceiptFormatProfile(
+                FormatProfileScope.STORE,
+                "rewe",
+                "",
+                "layout-v1",
+                1,
+                1,
+                "{}",
+                FormatProfileSource.AI_GENERATED,
+                null);
+
+        assertThatThrownBy(() -> receiptFormatProfileRepository.saveAndFlush(missingSchemaVersion))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void persistedProfileSchemaVersionIsExactlyOne() {
+        ReceiptFormatProfile unsupportedSchemaVersion = profile(1, 1, null);
+        ReflectionTestUtils.setField(unsupportedSchemaVersion, "profileSchemaVersion", 2);
+
+        assertThatThrownBy(() -> receiptFormatProfileRepository.saveAndFlush(unsupportedSchemaVersion))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void profileDefinitionIsImmutableAfterCreation() {
+        ReceiptFormatProfile profile = receiptFormatProfileRepository.saveAndFlush(profile(1, 1, null));
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "update receipt_format_profile set profile_definition = '{\"schemaVersion\":1,\"changed\":true}' where id = ?",
+                profile.getId()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    private ReceiptFormatProfile profile(
+            int fingerprintVersion, int version, ReceiptFormatProfile predecessor) {
+        return new ReceiptFormatProfile(
+                FormatProfileScope.STORE,
+                "rewe",
+                "",
+                "layout-v1",
+                fingerprintVersion,
+                version,
+                "{\"schemaVersion\":1}",
+                FormatProfileSource.AI_GENERATED,
+                predecessor);
     }
 
     // Verifies the Phase 15a schema provides product master data, assignments, and conservative history defaults.

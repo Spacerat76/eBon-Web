@@ -8,6 +8,9 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
@@ -78,6 +81,13 @@ public class Receipt {
     @Column(name = "parse_error_message", columnDefinition = "text")
     private String parseErrorMessage;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "format_profile_id")
+    private ReceiptFormatProfile receiptFormatProfile;
+
+    @Column(name = "format_profile_version")
+    private Integer formatProfileVersion;
+
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
@@ -122,6 +132,11 @@ public class Receipt {
 
     public void clearItems() {
         items.clear();
+    }
+
+    public void useFormatProfile(ReceiptFormatProfile profile) {
+        this.receiptFormatProfile = profile;
+        this.formatProfileVersion = profile == null ? null : profile.getVersion();
     }
 
     public void applyParseResult(
@@ -292,6 +307,14 @@ public class Receipt {
 
     public String getParseErrorMessage() {
         return parseErrorMessage;
+    }
+
+    public ReceiptFormatProfile getReceiptFormatProfile() {
+        return receiptFormatProfile;
+    }
+
+    public Integer getFormatProfileVersion() {
+        return formatProfileVersion;
     }
 
     public void setStoreName(String storeName) {
