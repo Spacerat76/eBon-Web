@@ -214,6 +214,25 @@ Ein valider KI-Parse darf den aktuellen Bon übernehmen. Parallel erzeugt die KI
 
 ## 9. Profil-Lebenszyklus
 
+### 9.0 Initialer Profil-Bootstrap aus Paperless
+
+Bei der Einführung werden vorhandene Händlerprofile initial aus echten Paperless-Dokumenten erzeugt. Der Zugriff auf Paperless ist dabei strikt lesend und verwendet ausschließlich die vorhandenen `GET`-Operationen für tag-gefilterte Dokumente beziehungsweise Einzeldokumente.
+
+Der Bootstrap folgt diesen Regeln:
+
+- Zuerst wird eine unveränderliche Vorschau erzeugt; erst eine ausdrücklich angewendete Bootstrap-Ausführung schreibt Profile und Evidenz.
+- Als Vergleichsbasis wird jeder Paperless-Rohtext frisch mit der unveränderten Legacy-Parserstrategie verarbeitet.
+- Bereits persistierte `receipt_item`-Werte, manuelle Bonkorrekturen, Kategorien und Produktzuordnungen werden nicht gelesen und nicht als Wahrheit verwendet.
+- Dokumente werden nach normalisiertem Händler, optionaler Filiale und Layout-Fingerabdruck gruppiert.
+- Ein generiertes Profil muss alle vom Legacy-Parser erkannten Felder und Positionen reproduzieren, ohne zusätzliche Werte zu erfinden.
+- Plausible Positionszeilen, die der Legacy-Parser nicht erkennt, bleiben `UNRESOLVED`. Sie werden weder geraten noch aus manuellen Daten ergänzt.
+- Ein Profil mit `UNRESOLVED`-Zeilen darf erzeugt werden, bleibt aber in `QUARANTINE` und führt zu `PARSE_REVIEW`, bis echte vollständige Evidenz vorliegt.
+- Nur Profile mit drei verschiedenen, vollständigen und konfliktfreien Legacy-Vergleichen dürfen durch den Bootstrap direkt aktiv werden; danach gelten dieselben Schattenprüfungen wie für jede andere Promotion.
+- Der Bootstrap-Bericht enthält nur Dokument-IDs, Händler-/Filialschlüssel, Fingerabdrücke, Zähler und strukturierte Unterschiede. Private Bontexte werden weder exportiert noch geloggt oder als Test-Fixtures committet.
+- Fehlende Paperless- oder OpenRouter-Verbindungen brechen den betroffenen Bootstrap-Lauf nachvollziehbar ab; es werden keine Teilgruppen still als erfolgreich markiert.
+
+Der Bootstrap ist wiederholbar und idempotent. Derselbe Händler-/Filial-/Fingerabdruck-Cluster mit derselben Profildefinition erzeugt keine doppelte Version oder Evidenz.
+
 ### 9.1 Zustände
 
 - `QUARANTINE`: nur Schattenausführung
@@ -506,10 +525,11 @@ Die Einführung erfolgt in kontrollierten Schritten mit getrennten Kill-Switches
 
 1. Aktuellen Teilparse-Fehler beheben und Parse-Trace einführen.
 2. Profilinterpreter nur im Schattenmodus betreiben.
-3. KI-Profilgenerierung und Quarantäne aktivieren.
-4. Automatische Promotion und Rollback aktivieren.
-5. Lernende Kategorisierung aktivieren.
-6. Automatische Produktfamilienanlage zuletzt aktivieren.
+3. Initialen Paperless-Bootstrap zuerst als Vorschau und anschließend angewendet ausführen; Legacy-Ergebnisse dienen ohne manuelle Zuordnungen als Vergleich, nicht erkannte Positionen bleiben offen.
+4. KI-Profilgenerierung und Quarantäne aktivieren.
+5. Automatische Promotion und Rollback aktivieren.
+6. Lernende Kategorisierung aktivieren.
+7. Automatische Produktfamilienanlage zuletzt aktivieren.
 
 Kill-Switches müssen mindestens Profilpromotion, Kategorienlernen und Produktfamilien-Neuanlage unabhängig deaktivieren können, ohne vorhandene aktive Regeln oder reguläres Parsing abzuschalten.
 
@@ -521,6 +541,7 @@ Die spätere Implementierung muss `ebon-specification.md` konsistent anpassen. I
 - Eng begrenzte händlerspezifische Kategorie-Exact-Regeln dürfen nach drei konsistenten KI-Treffern automatisch aktiviert werden.
 - `PARSE_REVIEW` wird als eigener Qualitätsstatus ergänzt.
 - Formatprofile können optional filialbezogen sein.
+- Vorhandene Händlerprofile werden initial über einen strikt lesenden Paperless-Bootstrap erzeugt; als Vergleich dient ein frischer Legacy-Parse ohne persistierte manuelle Zuordnungen, und nicht erkannte Positionen bleiben offen.
 - Neue Produktfamilien dürfen bei einer einzelnen KI-Entscheidung ab `0,98` und bestandenen Schutzprüfungen automatisch angelegt werden.
 
 Bestehende Guardrails zu Summentoleranz, Secret-Masking, manuellen Änderungen, Produktvarianten, `NO_PRODUCT`, Backup/Restore und externen Testaufrufen bleiben unverändert bindend.
