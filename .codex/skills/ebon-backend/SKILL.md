@@ -1,85 +1,51 @@
-# eBon Backend Skill
+---
+name: ebon-backend
+description: Use when changing eBon Spring Boot code, persistence, Flyway migrations, REST DTOs, OpenAPI, security, settings, Paperless sync, OpenRouter integration, backup, restore, reset, or backend tests.
+---
 
-Use this skill for Spring Boot backend work, persistence, REST APIs, security, settings, sync, backup/restore, OpenAPI, and backend tests.
+# eBon Backend
 
-## Read First
+## Spec Routing
 
-- `ebon-specification.md` sections 4, 5, 6, 7, 8, 10, 12, 13, 14, 16, 17.
-- `AGENTS.md`.
+Search `ebon-specification.md` headings with `rg` and read only the sections governing the changed feature plus its acceptance criteria. Use `ebon-parser` for parsing internals and `ebon-adaptive-processing` for learned profile/rule lifecycles.
 
-## Architecture Rules
+## Persistence and API
 
-- Do not expose JPA entities directly from controllers.
-- Use explicit DTOs and validation annotations.
-- Keep DTOs, OpenAPI schemas, and frontend types aligned.
-- Use Flyway for every database schema change.
-- Protect every endpoint except `GET /api/health` with Bearer token auth.
-- Swagger UI and `/v3/api-docs` must be token-protected or configurable off.
+- Use Flyway for every schema change; keep constraints, JPA models, repositories, backup/restore, and reset semantics consistent.
+- Return explicit DTOs, never JPA entities. Align validation, OpenAPI, error format, and frontend types.
+- Protect all endpoints except `GET /api/health` with app Bearer auth. Keep Swagger protected or configurable off.
+- Preserve `receipt.parse_source`: `RULE` for deterministic parsing and `AI` only for an adopted validated AI parse.
 
-## Data Rules
+## Integrity
 
-- Receipts use soft-delete via `deleted_at` and `delete_reason`.
-- `TAG_REMOVED` is only applied after complete successful Paperless pagination.
-- Uncategorized receipt items must keep both `category_id = NULL` and `category_source = NULL`; never persist a fake "Ohne Kategorie" category or a source badge without a category.
-- Category hard-delete is allowed only when unreferenced; otherwise deactivate.
-- Secrets must be centrally masked before logging, returning through APIs, or exporting backups.
-- Backup restore must be transactional.
-- Data-maintenance reset operations must be explicit, confirmed, and transactional. They may delete imported receipts, receipt items, parser/AI/sync detail data, but must keep categories, categorization rules, settings, backups, and Flyway history.
-- `receipt.parse_source` must reflect the current parser source: `RULE` for rule-based parser output and `AI` for adopted OpenRouter KI parsing output.
-- OpenRouter KI parsing attempts belong in `ai_parsing_log`, not `ai_categorization_log`.
-- KI-generated parser rules must be stored as `parse_rule_suggestion` first. They become active `parse_rule` rows only after explicit user acceptance.
-- Accepted parser rule suggestions must remain audit-linked to the generated `parse_rule` and may be exported as Flyway migration drafts.
-- Backup/restore must include `ai_parsing_log` and `parse_rule_suggestion`, while preserving the default rule that full prompts and raw KI responses are not exported.
-- Product assignment uses product families and variants. Do not collapse variants with different sizes, units, or package structures into one variant.
-- Product rules are separate from `categorization_rule`; a product family default category may fill only empty categories and must not overwrite existing or manual categories.
-- A `receipt_item` may have at most one product assignment in Phase 15. Store `NO_PRODUCT` for pure discounts, coupons, payment lines, and rounding differences.
-- Product assignment sources and statuses must distinguish rule, KI, manual, trusted history, review-needed, rejected, confirmed, auto-assigned, and no-product states.
-- Trusted product history must not be built from KI-only matches. Count manual assignments, accepted suggestions/rules, and rule-based automatic matches.
-- Imported-receipts reset must keep product families, variants, and product rules. Product-data reset must be a separate explicit, confirmed operation.
-- Product price exclusions must be audit-friendly and reversible so outliers do not silently distort reports.
+- Soft-delete receipts. Apply `TAG_REMOVED` only after complete successful Paperless pagination.
+- Represent uncategorized items only as `category_id = NULL` and `category_source = NULL`.
+- Hard-delete categories only when unreferenced; otherwise deactivate.
+- Make restore/reset/merge/split/bulk/retroactive operations previewed where applicable, explicitly confirmed, transactional, and protective of manual edits and unrelated master data.
+- Keep imported-receipt reset separate from product-data reset. Preserve settings, backups, rules, master data, and Flyway history according to the specification.
 
-## API and Settings Rules
+## Integrations and Privacy
 
-- `ReceiptDTO.paperlessDocumentUrl` is optional and must be built from `PAPERLESS_PUBLIC_BASE_URL` or a configured document URL template, not from secret-bearing API URLs.
-- Paperless document links returned by the API must never contain API tokens or other secrets.
-- Re-parse-all defaults to preserving manual edits (`overwriteManualEdits=false`) unless the user explicitly confirms overwriting.
-- Search, receipt lists, and dashboard links that target uncategorized work must use the same semantic state: `category_id = NULL` and `category_source = NULL`.
-- Settings must expose separate KI parsing controls: enabled flag, parsing model, max tokens, temperature, minimum confidence, sync call limit, text mode, and local debug-snippet flag.
-- Manual reparse with KI text mode `FULL_TEXT` must require explicit confirmation before sending full receipt text to OpenRouter.
-- API DTOs for receipts must expose `parseSource` and a prompt-free `aiParsingSummary` when available.
-- Receipt item DTOs must expose product family, product variant, assignment source/status, confidence, and computed unit price when Phase 15 fields are present.
-- Product APIs must provide previews before retroactive rule application, merge/split, bulk reassignment, and product-data reset.
-- Product price report APIs must support family-level unit-price comparison and variant-level concrete price comparison, with `store_name` and `store_name + store_branch` grouping options.
-- Product KI assignment uses existing KI categorization/OpenRouter settings in Phase 15; do not add separate product KI sync limits unless the specification changes.
+- Keep Paperless, app, and OpenRouter credentials server-side and use their distinct auth schemes.
+- Mock Paperless/OpenRouter in tests. Mask secrets centrally in logs, APIs, errors, and backups.
+- Store parsing attempts in `ai_parsing_log`; do not store/export full prompts or raw responses by default.
+- Persist AI parser rules as `parse_rule_suggestion` first. Activate `parse_rule` only after user acceptance and retain the audit link.
+- Build `paperlessDocumentUrl` only from a browser-public URL/template.
 
-## External Integrations
+## Product Persistence
 
-- Paperless-NGX auth: `Authorization: Token <PAPERLESS_API_TOKEN>`.
-- App auth: `Authorization: Bearer <APP_API_TOKEN>`.
-- OpenRouter auth: `Authorization: Bearer <OPENROUTER_API_KEY>`.
-- Tests must mock Paperless-NGX and OpenRouter.ai.
-
-## Backend Test Priorities
-
-- Security: unauthorized endpoints return `401`.
-- Sync: import, idempotency, pagination failure, sync lock, `TAG_REMOVED`.
-- Parser and categorization integration boundaries.
-- OpenRouter KI parsing: valid JSON adoption, invalid JSON rejection, low-confidence rejection, sync-call limit, missing API key, disabled fallback, `FULL_TEXT` confirmation, and prompt/response snippet masking.
-- Parser rule suggestions: validation, edit, accept, reject, generated `parse_rule`, and migration export.
-- Settings: masked secret update semantics.
-- Settings/data maintenance: Paperless public URL/template, re-parse-all defaults, and reset safety.
-- Backup/restore: dry-run, incompatible manifest, rollback on failure.
-- API validation and error format.
-- Product data model: family/variant migrations, size/unit/package normalization, and one-product-per-item constraints.
-- Product assignment: rule, trusted history, KI mock, review-needed fallback, `NO_PRODUCT`, default-category fill without overwrites.
-- Product maintenance: previewed retroactive apply, merge/split, reset safety, reversible price-exclusion handling.
-- Product reports: effective paid price, optional regular price when derivable, unit conversion, multi-pack handling, last/minimum/average/median calculations.
+- Allow one product assignment per item. Preserve family/variant size, unit, and package distinctions.
+- Keep product rules separate from categorization rules. A default category fills only an empty category.
+- Exclude AI-only assignments from trusted history. Make price exclusions reversible and auditable.
+- Use `NO_PRODUCT` for true non-product lines; deposits/bags may remain products when useful.
 
 ## Verification
+
+Write focused tests for changed behavior and failure paths, then run:
 
 ```bash
 cd backend
 mvn verify
 ```
 
-If backend does not exist yet, create the minimal skeleton before adding feature code.
+Use `ebon-qa` before completion and add every other changed-surface gate.
