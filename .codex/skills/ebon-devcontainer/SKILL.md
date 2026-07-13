@@ -1,40 +1,28 @@
-# eBon Devcontainer Skill
+---
+name: ebon-devcontainer
+description: Use when changing eBon devcontainer files, Docker Compose, environment examples, toolchain images, ports, local PostgreSQL, or initial project scaffolding.
+---
 
-Use this skill when creating or changing the development environment, Docker Compose setup, `.env.example`, or project scaffolding.
+# eBon Devcontainer
 
-## Read First
+## Contract
 
-- `ebon-specification.md` sections 3.1, 10, 11, 16, 17.
-- `AGENTS.md`.
+Keep development deterministic without host-level Java, Maven, Node.js, or PostgreSQL installations. Use `.devcontainer/`, Compose files, `.env.example`, and the setup section of `README.md` as one synchronized environment contract.
 
-## Goals
+Read only affected parts of `ebon-specification.md` sections 3.1, 10, 11, 16, and 17.
 
-- The project must be usable through a Devcontainer without host-level Java, Maven, Node.js, or PostgreSQL installs.
-- Devcontainer setup must be deterministic and documented.
-- Example secrets must be safe fake values.
+## Required Environment
 
-## Required Files
-
-- `.devcontainer/devcontainer.json`
-- `.devcontainer/Dockerfile`
-- `.devcontainer/docker-compose.devcontainer.yml`
-- `.env.example`
-- `docker-compose.yml`
-- `README.md` setup instructions
-
-## Checklist
-
-- Forward ports `5173`, `8080`, and `5432`.
-- Include Java, Maven, Node.js, Docker CLI, PostgreSQL client, Git, curl, and jq.
-- Start a local PostgreSQL development database.
-- Keep dev database credentials obviously non-production.
-- Never write real API tokens into tracked files.
-- Keep `.env.example` current when new settings are added, including `AI_PARSING_*` and `OPENROUTER_PARSING_*` variables for the OpenRouter KI parsing fallback.
-- Document fallback version choices if Java 25 or PostgreSQL 18 images are unavailable.
+- Maintain `.devcontainer/devcontainer.json`, its Dockerfile/Compose inputs, root `docker-compose.yml`, and `.env.example` together.
+- Provide Java, Maven, Node.js, Docker CLI, PostgreSQL client, Git, curl, and jq.
+- Forward `5173`, `8080`, and `5432`; provide local PostgreSQL with obviously non-production credentials.
+- Keep example secrets fake. Add every new setting to `.env.example`, including relevant `AI_PARSING_*` and `OPENROUTER_PARSING_*` variables.
+- Pin or explain tool/image versions. Document a safe fallback when a requested Java or PostgreSQL image is unavailable.
+- Do not change production behavior merely to simplify local setup.
 
 ## Verification
 
-Run or document why unavailable:
+Run focused configuration checks while editing. Before completion run:
 
 ```bash
 java -version
@@ -43,3 +31,5 @@ node --version
 npm --version
 docker compose config
 ```
+
+Also verify the devcontainer can start when runtime files changed. Report unavailable tools instead of assuming success. Use `ebon-qa` for the accumulated completion gate.
