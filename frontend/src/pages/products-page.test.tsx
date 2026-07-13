@@ -433,6 +433,74 @@ describe("ProductsPage", () => {
     expect(within(splitDialog).getByText(/geschützte Zuordnungen/)).toBeInTheDocument();
   });
 
+  it("announces a pending merge preview as an in-progress product action", async () => {
+    const user = userEvent.setup();
+    const pending = deferred<typeof changePreview>();
+    const api = apiClient({
+      families: [
+        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 1, assignedItemsCount: 42, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 11, name: "Pflanzendrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 0, assignedItemsCount: 5, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+      ]
+    });
+    vi.mocked(api.previewProductFamilyMerge).mockReturnValueOnce(pending.promise);
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    const card = screen.getByRole("heading", { name: "Familien zusammenführen" }).closest("section")!;
+    await user.selectOptions(within(card).getByLabelText("Quellfamilie"), "10");
+    await user.selectOptions(within(card).getByLabelText("Zielfamilie"), "11");
+    await user.click(within(card).getByRole("button", { name: "Vorschau berechnen" }));
+
+    expect(screen.getByText("Produktaktion läuft")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Merge-Vorschau wird berechnet.");
+    expect(screen.queryByText("Produktaktion abgeschlossen")).not.toBeInTheDocument();
+    pending.resolve(changePreview);
+  });
+
+  it("applies the frozen family merge preview request with explicit confirmation and resets the inputs", async () => {
+    const user = userEvent.setup();
+    const api = apiClient({
+      families: [
+        { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 1, assignedItemsCount: 42, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" },
+        { id: 11, name: "Pflanzendrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 0, assignedItemsCount: 5, createdAt: "2026-06-01T00:00:00Z", updatedAt: "2026-06-01T00:00:00Z" }
+      ]
+    });
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    const card = screen.getByRole("heading", { name: "Familien zusammenführen" }).closest("section")!;
+    await user.selectOptions(within(card).getByLabelText("Quellfamilie"), "10");
+    await user.selectOptions(within(card).getByLabelText("Zielfamilie"), "11");
+    await user.click(within(card).getByRole("button", { name: "Vorschau berechnen" }));
+    const frozenRequest = vi.mocked(api.previewProductFamilyMerge).mock.calls[0][0];
+    await user.click(await within(card).findByRole("button", { name: "Zusammenführen bestätigen" }));
+
+    await waitFor(() => expect(api.applyProductFamilyMerge).toHaveBeenCalledWith({ ...frozenRequest, confirm: true }));
+    expect(within(card).getByLabelText("Quellfamilie")).toHaveValue("");
+    expect(within(card).getByLabelText("Zielfamilie")).toHaveValue("");
+    expect(within(card).getByRole("button", { name: "Vorschau berechnen" })).toBeInTheDocument();
+  });
+
+  it("applies the frozen family split preview request with explicit confirmation and closes the dialog", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    render(<ProductsPage apiClient={api} hasApiToken />);
+
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Struktur" }));
+    await user.click(await screen.findByRole("button", { name: "Position Haferdrink bestätigt aus Bon 9 (Position 44) trennen" }));
+    const dialog = screen.getByRole("dialog");
+    await user.type(within(dialog).getByLabelText("Neuer Produktname"), "Haferdrink Spezial");
+    await user.click(within(dialog).getByRole("button", { name: "Vorschau berechnen" }));
+    const frozenRequest = vi.mocked(api.previewProductFamilySplit).mock.calls[0][0];
+    await user.click(await within(dialog).findByRole("button", { name: "Trennung bestätigen" }));
+
+    await waitFor(() => expect(api.applyProductFamilySplit).toHaveBeenCalledWith({ ...frozenRequest, confirm: true }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
   it("invalidates a family merge preview when its source or target changes", async () => {
     const user = userEvent.setup();
     const api = apiClient({

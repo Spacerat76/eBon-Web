@@ -19,10 +19,10 @@ public interface ReceiptItemRepository extends JpaRepository<ReceiptItem, Long>,
 
     long countByProductVariant_Id(Long productVariantId);
 
-    @Query("select new de.ebon.persistence.repository.IdCount(i.productFamily.id, count(i)) from ReceiptItem i where i.productFamily is not null group by i.productFamily.id")
+    @Query("select new de.ebon.persistence.repository.IdCount(i.productFamily.id, count(i)) from ReceiptItem i where i.productFamily is not null and i.receipt.deletedAt is null group by i.productFamily.id")
     List<IdCount> countGroupedByProductFamily();
 
-    @Query("select new de.ebon.persistence.repository.IdCount(i.productVariant.id, count(i)) from ReceiptItem i where i.productVariant is not null group by i.productVariant.id")
+    @Query("select new de.ebon.persistence.repository.IdCount(i.productVariant.id, count(i)) from ReceiptItem i where i.productVariant is not null and i.receipt.deletedAt is null group by i.productVariant.id")
     List<IdCount> countGroupedByProductVariant();
 
     boolean existsByCategory_Id(Long categoryId);
