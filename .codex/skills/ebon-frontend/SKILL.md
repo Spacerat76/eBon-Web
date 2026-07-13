@@ -1,80 +1,43 @@
-# eBon Frontend Skill
+---
+name: ebon-frontend
+description: Use when changing eBon React, TypeScript, Vite, routing, API clients, German operational UI, forms, tables, dashboards, reports, review queues, settings, or frontend tests.
+---
 
-Use this skill for React, TypeScript, Vite, shadcn/ui, Tailwind CSS, dashboards, forms, tables, reports, and frontend integration work.
+# eBon Frontend
 
-## Read First
+## Product Experience
 
-- `ebon-specification.md` sections F-19, 8, 9, 14, 16, 17.
-- `AGENTS.md`.
+Build a utilitarian single-user expense tool, not a marketing site. The UI language is Deutsch. Show the usable dashboard first. Optimize dense operational work for desktop/tablet while keeping mobile usable; follow the system color theme.
 
-## Product Rules
+Read only the affected UI/API/acceptance sections of `ebon-specification.md`. Use `ebon-adaptive-processing` for profile/learning review screens.
 
-- The app is a utilitarian single-user expense tool, not a marketing site.
-- First screen after load is the usable dashboard.
-- UI language is German.
-- Desktop and tablet are primary; mobile must remain usable.
-- Dark mode and light mode follow the system setting.
+## API and Secrets
 
-## API Rules
+- Keep TypeScript types aligned with backend DTOs, validation, and OpenAPI.
+- Send app Bearer auth only to protected app APIs. Prefer the Vite `/api` proxy.
+- Never hardcode backend URLs, Paperless/OpenRouter credentials, or tokens.
+- Never persist the masked value `********` as a secret update.
+- Use backend `paperlessDocumentUrl`; if absent, show the document ID rather than constructing a URL.
+- Render safe user-facing errors, never stack traces, prompts, raw model responses, or secrets.
 
-- Use the DTO contracts from specification section 8.4.
-- Include `Authorization: Bearer <APP_API_TOKEN>` on protected API calls.
-- Treat `GET /api/health` as public.
-- Never persist `"********"` as a secret value.
-- Prefer the Vite proxy for `/api` in development so the frontend does not require ad hoc backend CORS.
-- Do not hardcode backend URLs, API tokens, Paperless tokens, or OpenRouter keys in frontend source.
-- Use `paperlessDocumentUrl` from the backend for Paperless links. If absent, show the Paperless ID as text rather than building a secret-bearing URL in the browser.
-- Keep generated or handwritten TypeScript API types aligned with backend DTOs.
+## Interaction Rules
 
-## UI Rules
-
-- Use dense, scannable layouts for operational work.
-- Use tables for receipt lists, receipt items, rules, categories, and reports.
-- Use badges for parse status and category source.
-- Show a visible "per KI geparst" badge when `parseSource = AI`.
-- Use inline validation for forms.
-- Use skeletons or spinners for async states.
-- Use toast notifications for success and error feedback.
-- Do not expose raw stack traces or secrets in UI errors.
-- "Ohne Kategorie" is a UI state for items with `categoryId = null` and `categorySource = null`; do not show RULE/AI/MANUAL badges for it.
-- Keep save/cancel actions reachable while editing long receipts, for example with a sticky action bar.
-- Dashboard wording must be explicit: "Letzte Bons" is quick navigation to recent receipts; "Bonus" means newly earned points/balance for the selected period.
-- Dashboard category and bonus widgets should support month, last quarter, last year, and custom date-range filters when the phase requires final reports/settings work.
-- AI parsing logs shown in the UI must be prompt-free by default: show status, trigger, model, timestamps, duration, failure reason, warnings, and field confidence, but not full prompts or raw model responses.
-- Parser rule suggestions must show why they exist: trigger, parser problem, solution rationale, validation status, and affected receipt/store context.
-- Any manual reparse using KI text mode `FULL_TEXT` must require an explicit confirmation before sending the request.
-- Product assignment UI must distinguish product family from product variant and must not hide size/unit/package differences.
-- Receipt item rows in Phase 15 should show product family, variant, assignment source/status, and unit price compactly.
-- The product review queue must prioritize high-value/high-frequency uncertain assignments and support filters for uncertainty, store, family, category, date range, source, and status.
-- Product correction flows that affect history must show preview counts and require confirmation before applying merge, split, bulk reassignment, or product-data reset.
-- Product price views should show last known price and historical minimum by default, with average, median, trend, and source receipt rows in detail.
-- Product price comparisons must make effective paid price vs derivable regular price clear and must show excluded outliers as reversible, audit-friendly state.
-
-## Core Flows
-
-- Dashboard summary and sync status.
-- Receipt list and receipt detail/editing.
-- Receipt links to Paperless documents when `paperlessDocumentUrl` is available.
-- Uncategorized work queue via `uncategorizedOnly=true`.
-- Search with filters and pagination.
-- Reports with charts, table, and CSV export.
-- Settings for Paperless, OpenRouter, sync interval, currency.
-- Settings for Paperless public URL/document URL template and AI categorization confidence.
-- Settings for OpenRouter KI parsing fallback: enabled flag, parsing model, max tokens, temperature, minimum confidence, sync call limit, text mode, and local debug-snippet flag.
-- Data maintenance settings: re-parse all receipts and reset imported receipt data with explicit confirmation.
-- Category and rule management.
-- Parser rule suggestion management: list, filter, inspect, edit, accept, reject, choose reparse scope, and export accepted suggestions as a Flyway migration draft.
-- Product review queue: inspect uncertain assignments, accept/correct/reject, mark `NO_PRODUCT`, create product families/variants, and create rules from manual assignments with preview.
-- Product management: product families, variants, product rules, merge/split, and retroactive apply with confirmation.
-- Product price comparison: family and variant pages, store grouping by `store_name` or `store_name + store_branch`, unit prices, exports, and outlier exclusion.
-- Fixture preview/export for parser debugging must be anonymized and export outside `backend/src/test/resources/corpus/` unless manually reviewed.
-- Backup download, validate, and restore confirmation.
+- Use scannable tables for operational collections, compact badges for meaningful state, inline form validation, visible loading state, and toast feedback.
+- Represent "Ohne Kategorie" only when `categoryId = null` and `categorySource = null`; show no RULE/AI/MANUAL source badge.
+- Show `parseSource = AI` clearly and keep AI logs prompt-free.
+- Keep save/cancel reachable on long edits and preserve manual values during refresh/reparse flows.
+- Require explicit confirmation before `FULL_TEXT` AI reparse.
+- Show a preview and confirmation before merge, split, bulk reassignment, retroactive application, restore, or reset.
+- Distinguish product family from variant and expose size/unit/package differences. Make effective versus regular price and reversible outlier exclusion explicit.
+- For parser/profile suggestions, show trigger, problem, rationale, validation/evidence status, scope, and affected receipts without private raw text.
 
 ## Verification
+
+Add focused component/API tests for changed success, loading, empty, validation, and error states. Run the affected E2E flow when present, then:
 
 ```bash
 cd frontend
 npm run build
 ```
 
-When E2E tests exist, run the focused flow touched by the change.
+Use `ebon-qa` before completion.

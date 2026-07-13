@@ -28,7 +28,7 @@ Select multiple skills only when the change crosses those surfaces. `ebon-qa` is
 - Automated tests and CI must never call real Paperless-NGX or OpenRouter. Use mocks or test doubles.
 - Keep backend DTOs, validation, OpenAPI schemas, and frontend types synchronized. Never expose JPA entities directly.
 - `TAG_REMOVED` soft-deletes receipts only after every Paperless page was fetched successfully; never hard-delete imported receipts implicitly.
-- Uncategorized items are exactly `category_id = NULL` and `category_source = NULL`; never persist a fake “Ohne Kategorie” category.
+- Uncategorized items are exactly `category_id = NULL` and `category_source = NULL`; never persist a fake "Ohne Kategorie" category.
 - Reset, restore, merge, split, bulk reassign, and retroactive rule application must be explicit, previewed where applicable, confirmed, transactional, and protective of unrelated master data.
 - Product assignment allows at most one family/variant per item. Never silently merge different sizes, units, or package structures; AI-only matches do not establish trusted variant history.
 - Paperless browser links use a public URL/template and never contain API tokens.
