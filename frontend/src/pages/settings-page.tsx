@@ -118,6 +118,7 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
   const [productResetConfirmation, setProductResetConfirmation] = useState("");
   const [resetDialog, setResetDialog] = useState<"receipts" | "products" | null>(null);
   const [backupFile, setBackupFile] = useState<File | null>(null);
+  const [backupInputResetKey, setBackupInputResetKey] = useState(0);
   const [backupValidation, setBackupValidation] = useState<BackupValidationReportDTO | null>(null);
   const [restoreConfirmation, setRestoreConfirmation] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -309,8 +310,10 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
 
     try {
       const result = await apiClient.restoreBackup(backupFile);
-      setBackupValidation(result.validation);
+      setBackupFile(null);
+      setBackupValidation(null);
       setRestoreConfirmation("");
+      setBackupInputResetKey((current) => current + 1);
       setFeedback(`${result.message} Maskierte API-Schluessel muessen danach in den Einstellungen neu gesetzt werden.`);
       await loadSettings();
     } catch (restoreError) {
@@ -632,6 +635,7 @@ export function SettingsPage({ apiClient, hasApiToken, initialSection = "connect
       {!loading && section === "backup" ? (
         <BackupSettings
           backupFile={backupFile}
+          fileInputResetKey={backupInputResetKey}
           confirmation={restoreConfirmation}
           onConfirmationChange={setRestoreConfirmation}
           onDownload={downloadBackup}
@@ -786,6 +790,7 @@ function SystemSettings({ systemInfo }: { systemInfo: SystemInfoDTO | null }) {
 function BackupSettings({
   backupFile,
   confirmation,
+  fileInputResetKey,
   onConfirmationChange,
   onDownload,
   onFileChange,
@@ -796,6 +801,7 @@ function BackupSettings({
 }: {
   backupFile: File | null;
   confirmation: string;
+  fileInputResetKey: number;
   onConfirmationChange: (value: string) => void;
   onDownload: () => void;
   onFileChange: (file: File | null) => void;
@@ -846,6 +852,7 @@ function BackupSettings({
             <Input
               aria-label="Backup-ZIP"
               accept=".zip,application/zip"
+              key={fileInputResetKey}
               onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
               type="file"
             />

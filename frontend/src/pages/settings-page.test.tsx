@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ApiClient } from "@/lib/api";
 import type { SettingsDTO } from "@/lib/types";
+import { hasUnsavedChanges } from "@/lib/unsaved-changes";
 import { SettingsPage } from "@/pages/settings-page";
 
 const maskedSettings: SettingsDTO = {
@@ -126,6 +127,7 @@ describe("SettingsPage", () => {
     const cleanEvent = new Event("beforeunload", { cancelable: true });
     window.dispatchEvent(cleanEvent);
     expect(cleanEvent.defaultPrevented).toBe(false);
+    expect(hasUnsavedChanges()).toBe(false);
   });
 
   it("guards category, rule, and maintenance confirmation drafts as real unsaved input", async () => {
@@ -176,6 +178,39 @@ describe("SettingsPage", () => {
     await user.type(screen.getByLabelText("Restore-Bestätigung"), "RESTORE_BACKUP");
     await user.click(screen.getByRole("button", { name: "Backup wiederherstellen" }));
     await waitFor(() => expect(api.restoreBackup).toHaveBeenCalledWith(file));
+    expect(screen.getByLabelText("Backup-ZIP")).toHaveValue("");
+    expect(screen.getByLabelText("Restore-Bestätigung")).toHaveValue("");
+    expect(screen.queryByText("Dry-Run Ergebnis")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ausgewählt: backup\.zip/)).not.toBeInTheDocument();
+    const cleanEvent = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(cleanEvent);
+    expect(cleanEvent.defaultPrevented).toBe(false);
+    expect(hasUnsavedChanges()).toBe(false);
+  });
+
+  it("keeps the restore file, validation, confirmation, and dirty guard after a failed restore", async () => {
+    const user = userEvent.setup();
+    const api = apiClient();
+    api.restoreBackup.mockRejectedValue(new Error("Restore fehlgeschlagen"));
+    render(<SettingsPage apiClient={api as unknown as ApiClient} hasApiToken />);
+    await user.click(await screen.findByRole("tab", { name: "Backup & Restore" }));
+    const file = new File(["backup"], "retry-backup.zip", { type: "application/zip" });
+    const fileInput = screen.getByLabelText("Backup-ZIP");
+    await user.upload(fileInput, file);
+    await user.click(screen.getByRole("button", { name: "Dry-Run prüfen" }));
+    await screen.findByText("Dry-Run Ergebnis");
+    await user.type(screen.getByLabelText("Restore-Bestätigung"), "RESTORE_BACKUP");
+    await user.click(screen.getByRole("button", { name: "Backup wiederherstellen" }));
+
+    expect(await screen.findByText("Restore fehlgeschlagen")).toBeInTheDocument();
+    expect((fileInput as HTMLInputElement).files?.[0]).toBe(file);
+    expect(screen.getByLabelText("Restore-Bestätigung")).toHaveValue("RESTORE_BACKUP");
+    expect(screen.getByText("Dry-Run Ergebnis")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Backup wiederherstellen" })).toBeEnabled();
+    const dirtyEvent = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(dirtyEvent);
+    expect(dirtyEvent.defaultPrevented).toBe(true);
+    expect(hasUnsavedChanges()).toBe(true);
   });
 
   it("keeps receipt and product resets separate with their established phrases and result summaries", async () => {
