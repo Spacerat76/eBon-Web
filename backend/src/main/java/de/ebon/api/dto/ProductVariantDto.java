@@ -14,5 +14,6 @@ public record ProductVariantDto(
         BigDecimal totalQuantity,
         String totalUnit,
         String gtin,
-        boolean isActive) {
+        boolean isActive,
+        long assignedItemsCount) {
 }

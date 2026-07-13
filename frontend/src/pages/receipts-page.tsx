@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowDown,
@@ -14,17 +14,21 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
-  Save,
   Search,
-  Trash2,
-  X
+  Trash2
 } from "lucide-react";
 
 import { CategorySourceBadge, DeleteReasonBadge, ParseStatusBadge } from "@/components/receipt-badges";
+import { DataTableFrame } from "@/components/data/data-table";
+import { PageHeader } from "@/components/layout/page-header";
+import { PageTabs } from "@/components/layout/page-tabs";
+import { StickyActionBar } from "@/components/layout/sticky-action-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { ModalDialog } from "@/components/ui/modal-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import type { ApiClient } from "@/lib/api";
@@ -32,6 +36,7 @@ import { ApiClientError } from "@/lib/api";
 import { CategoryIcon } from "@/lib/category-icons";
 import { formatCurrency, formatDate, formatDateTime, formatDateTimeParts, formatNumber, formatPercent, formatTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useUnsavedChanges } from "@/lib/unsaved-changes";
 import type {
   CategoryDTO,
   AiParsingLogDTO,
@@ -41,7 +46,11 @@ import type {
   PaperlessRawTextStatus,
   ParseStatus,
   ParseRuleSuggestionDTO,
+  ParseRuleSuggestionReceiptContextDTO,
+  ParseRuleSuggestionUpdateRequest,
+  ProductAssignmentSource,
   ProductAssignmentStatus,
+  ReparseScope,
   ReceiptDTO,
   ReceiptItemDTO,
   ReceiptItemUpdateRequest,
@@ -50,6 +59,8 @@ import type {
 } from "@/lib/types";
 
 type SortKey = NonNullable<ReceiptListParams["sortBy"]>;
+
+export type ReceiptDetailTab = "items" | "data" | "raw" | "ai" | "suggestions";
 
 interface ReceiptsPageProps {
   apiClient: ApiClient;
@@ -63,6 +74,14 @@ interface ReceiptFilters {
   dateFrom: string;
   dateTo: string;
   includeDeleted: boolean;
+}
+
+interface ReceiptListState {
+  filters: ReceiptFilters;
+  page: number;
+  sortBy: SortKey;
+  sortDir: "asc" | "desc";
+  scrollY: number | null;
 }
 
 interface ReceiptDraft {
@@ -92,6 +111,14 @@ interface ReceiptItemDraft {
 }
 
 const pageSize = 20;
+const RECEIPT_LIST_STATE_KEY = "ebon.receiptListState";
+const defaultFilters: ReceiptFilters = {
+  status: "",
+  store: "",
+  dateFrom: "",
+  dateTo: "",
+  includeDeleted: false
+};
 const statusOptions: Array<{ value: ParseStatus | ""; label: string }> = [
   { value: "", label: "Alle Status" },
   { value: "PARSED", label: "Geparst" },
@@ -101,16 +128,13 @@ const statusOptions: Array<{ value: ParseStatus | ""; label: string }> = [
 ];
 
 export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: ReceiptsPageProps) {
-  const [filters, setFilters] = useState<ReceiptFilters>({
-    status: "",
-    store: "",
-    dateFrom: "",
-    dateTo: "",
-    includeDeleted: false
-  });
-  const [page, setPage] = useState(0);
-  const [sortBy, setSortBy] = useState<SortKey>("receiptDate");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [initialListState] = useState(readReceiptListState);
+  const [filters, setFilters] = useState<ReceiptFilters>(initialListState.filters);
+  const [page, setPage] = useState(initialListState.page);
+  const [sortBy, setSortBy] = useState<SortKey>(initialListState.sortBy);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">(initialListState.sortDir);
+  const pendingScrollY = useRef(initialListState.scrollY);
+  const detailLoadGeneration = useRef(0);
   const [receipts, setReceipts] = useState<PageResponse<ReceiptDTO> | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<ReceiptDTO | null>(null);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
@@ -124,9 +148,15 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
   const [reparsing, setReparsing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [applyingSuggestionId, setApplyingSuggestionId] = useState<number | null>(null);
+  const [processingRuleSuggestionId, setProcessingRuleSuggestionId] = useState<number | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [overwriteManualEdits, setOverwriteManualEdits] = useState(false);
   const [paperlessRawTextStatus, setPaperlessRawTextStatus] = useState<PaperlessRawTextStatus | null>(null);
+  const [pendingReparse, setPendingReparse] = useState<{ aiTextMode: "FULL_TEXT" | null; confirmFullText: boolean }>({ aiTextMode: null, confirmFullText: false });
+  const [fullTextConfirmOpen, setFullTextConfirmOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [rejectSuggestion, setRejectSuggestion] = useState<ParseRuleSuggestionDTO | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -134,6 +164,8 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     () => new Map(categories.map((category) => [category.id, category])),
     [categories]
   );
+  const receiptDirty = Boolean(editMode && draft && selectedReceipt && JSON.stringify(draft) !== JSON.stringify(toDraft(selectedReceipt)));
+  useUnsavedChanges(receiptDirty);
 
   const loadList = useCallback(async () => {
     if (!hasApiToken) {
@@ -178,6 +210,7 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
   }, [apiClient, hasApiToken]);
 
   const loadReceipt = useCallback(async () => {
+    const generation = ++detailLoadGeneration.current;
     if (!hasApiToken || selectedReceiptId === null) {
       setSelectedReceipt(null);
       setDraft(null);
@@ -192,21 +225,29 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
       const [response, logs, suggestions] = await Promise.all([
         apiClient.receipt(selectedReceiptId),
         apiClient.aiParsingLog(selectedReceiptId),
-        apiClient.parseRuleSuggestions({ size: 50 })
+        loadReceiptRuleSuggestions(apiClient, selectedReceiptId, () => generation === detailLoadGeneration.current)
       ]);
+      if (generation !== detailLoadGeneration.current || suggestions === null) {
+        return;
+      }
       setSelectedReceipt(response);
       setAiParsingLogs(logs);
-      setParseRuleSuggestions(suggestions.content.filter((suggestion) => suggestion.receiptId === selectedReceiptId));
+      setParseRuleSuggestions(suggestions);
       setDraft(toDraft(response));
       setOverwriteManualEdits(false);
     } catch (loadError) {
+      if (generation !== detailLoadGeneration.current) {
+        return;
+      }
       setSelectedReceipt(null);
       setAiParsingLogs([]);
       setParseRuleSuggestions([]);
       setDraft(null);
       setError(toUserMessage(loadError));
     } finally {
-      setDetailLoading(false);
+      if (generation === detailLoadGeneration.current) {
+        setDetailLoading(false);
+      }
     }
   }, [apiClient, hasApiToken, selectedReceiptId]);
 
@@ -220,7 +261,17 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
 
   useEffect(() => {
     void loadReceipt();
+    return () => {
+      detailLoadGeneration.current += 1;
+    };
   }, [loadReceipt]);
+
+  useEffect(() => {
+    if (selectedReceiptId === null && !listLoading && receipts && pendingScrollY.current !== null) {
+      window.scrollTo({ top: pendingScrollY.current });
+      pendingScrollY.current = null;
+    }
+  }, [listLoading, receipts, selectedReceiptId]);
 
   function updateFilters(nextFilters: Partial<ReceiptFilters>) {
     setFilters((current) => ({ ...current, ...nextFilters }));
@@ -235,6 +286,26 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
       setSortDir("asc");
     }
     setPage(0);
+  }
+
+  function openReceipt(id: number) {
+    sessionStorage.setItem(RECEIPT_LIST_STATE_KEY, JSON.stringify({
+      filters,
+      page,
+      sortBy,
+      sortDir,
+      scrollY: window.scrollY
+    }));
+    window.location.hash = `#/receipts/${id}`;
+  }
+
+  function returnToReceiptList() {
+    window.location.hash = "#/receipts";
+  }
+
+  function cancelReceiptEdit() {
+    setDraft(selectedReceipt ? toDraft(selectedReceipt) : null);
+    setEditMode(false);
   }
 
   async function triggerSync() {
@@ -301,6 +372,63 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     }
   }
 
+  async function updateParserSuggestion(id: number, request: ParseRuleSuggestionUpdateRequest) {
+    setProcessingRuleSuggestionId(id);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiClient.updateParseRuleSuggestion(id, request);
+      setNotice("Parser-Regelvorschlag gespeichert.");
+      await loadReceipt();
+    } catch (updateError) {
+      setError(toUserMessage(updateError));
+    } finally {
+      setProcessingRuleSuggestionId(null);
+    }
+  }
+
+  async function acceptParserSuggestion(suggestion: ParseRuleSuggestionDTO, reparseScope: ReparseScope) {
+    setProcessingRuleSuggestionId(suggestion.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiClient.acceptParseRuleSuggestion(suggestion.id, {
+        suggestion: toParseRuleSuggestionUpdateRequest(suggestion),
+        reparseScope
+      });
+      setNotice("Parser-Regelvorschlag übernommen.");
+      await loadReceipt();
+    } catch (acceptError) {
+      setError(toUserMessage(acceptError));
+    } finally {
+      setProcessingRuleSuggestionId(null);
+    }
+  }
+
+  function rejectParserSuggestion(suggestion: ParseRuleSuggestionDTO) {
+    setRejectSuggestion(suggestion);
+    setRejectReason("");
+  }
+
+  async function confirmRejectParserSuggestion() {
+    if (!rejectSuggestion || !rejectReason.trim()) return;
+    const suggestion = rejectSuggestion;
+    const reason = rejectReason.trim();
+    setRejectSuggestion(null);
+    setProcessingRuleSuggestionId(suggestion.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiClient.rejectParseRuleSuggestion(suggestion.id, reason);
+      setNotice("Parser-Regelvorschlag abgelehnt.");
+      await loadReceipt();
+    } catch (rejectError) {
+      setError(toUserMessage(rejectError));
+    } finally {
+      setProcessingRuleSuggestionId(null);
+    }
+  }
+
   async function startReparseSelectedReceipt() {
     if (!selectedReceipt) {
       return;
@@ -311,12 +439,12 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     setNotice(null);
 
     try {
-      const status = await apiClient.paperlessRawTextStatus(selectedReceipt.id);
-      if (status.status === "CHANGED" || status.status === "UNAVAILABLE") {
-        setPaperlessRawTextStatus(status.status);
+      const settings = await apiClient.settings();
+      if (settings.aiParsingTextMode === "FULL_TEXT") {
+        setFullTextConfirmOpen(true);
         return;
       }
-      await reparseSelectedReceipt("STORED");
+      await continueReparseSelectedReceipt({ aiTextMode: null, confirmFullText: false });
     } catch (reparseError) {
       setError(toUserMessage(reparseError));
     } finally {
@@ -324,7 +452,25 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
     }
   }
 
-  async function reparseSelectedReceipt(rawTextSource: "STORED" | "PAPERLESS") {
+  async function continueReparseSelectedReceipt(config: { aiTextMode: "FULL_TEXT" | null; confirmFullText: boolean }) {
+    if (!selectedReceipt) return;
+    setPendingReparse(config);
+    setReparsing(true);
+    try {
+      const status = await apiClient.paperlessRawTextStatus(selectedReceipt.id);
+      if (status.status === "CHANGED" || status.status === "UNAVAILABLE") {
+        setPaperlessRawTextStatus(status.status);
+        return;
+      }
+      await reparseSelectedReceipt("STORED", config);
+    } catch (reparseError) {
+      setError(toUserMessage(reparseError));
+    } finally {
+      setReparsing(false);
+    }
+  }
+
+  async function reparseSelectedReceipt(rawTextSource: "STORED" | "PAPERLESS", config = pendingReparse) {
     if (!selectedReceipt) {
       return;
     }
@@ -338,8 +484,8 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
         selectedReceipt.id,
         overwriteManualEdits,
         true,
-        null,
-        false,
+        config.aiTextMode,
+        config.confirmFullText,
         rawTextSource
       );
       setSelectedReceipt(updated);
@@ -357,9 +503,8 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
   }
 
   async function deleteSelectedReceipt() {
-    if (!selectedReceipt || !window.confirm("Diesen Bon wirklich löschen?")) {
-      return;
-    }
+    if (!selectedReceipt) return;
+    setDeleteDialogOpen(false);
 
     setDeleting(true);
     setError(null);
@@ -398,25 +543,23 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
       {error ? <Message tone="error" text={error} /> : null}
       {notice ? <Message tone="success" text={notice} /> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(480px,0.9fr)_minmax(0,1.1fr)]">
+      {selectedReceiptId === null ? (
         <ReceiptListPanel
           filters={filters}
           listLoading={listLoading}
           onFilterChange={updateFilters}
           onPageChange={setPage}
-          onReceiptSelect={(id) => {
-            window.location.hash = `#/receipts/${id}`;
-          }}
+          onReceiptSelect={openReceipt}
           onSortChange={changeSort}
           onSync={triggerSync}
           page={page}
           receipts={receipts}
-          selectedReceiptId={selectedReceiptId}
+          selectedReceiptId={null}
           sortBy={sortBy}
           sortDir={sortDir}
           syncing={syncing}
         />
-
+      ) : (
         <ReceiptDetailPanel
           applyingSuggestionId={applyingSuggestionId}
           categories={categories}
@@ -426,39 +569,47 @@ export function ReceiptsPage({ apiClient, hasApiToken, selectedReceiptId }: Rece
           draft={draft}
           editMode={editMode}
           onApplyAiSuggestion={applyAiSuggestion}
-          onBack={() => {
-            window.location.hash = "#/receipts";
-          }}
-          onCancelEdit={() => {
-            setDraft(selectedReceipt ? toDraft(selectedReceipt) : null);
-            setEditMode(false);
-          }}
-          onDeleteReceipt={deleteSelectedReceipt}
+          onAcceptParserSuggestion={acceptParserSuggestion}
+          onBack={returnToReceiptList}
+          onCancelEdit={cancelReceiptEdit}
+          onDeleteReceipt={() => setDeleteDialogOpen(true)}
           onDraftChange={setDraft}
           onEdit={() => setEditMode(true)}
           onReparse={startReparseSelectedReceipt}
+          onRejectParserSuggestion={rejectParserSuggestion}
           onSave={saveDraft}
           onSetOverwriteManualEdits={setOverwriteManualEdits}
+          onUpdateParserSuggestion={updateParserSuggestion}
           overwriteManualEdits={overwriteManualEdits}
           receipt={selectedReceipt}
           aiParsingLogs={aiParsingLogs}
           parseRuleSuggestions={parseRuleSuggestions}
+          processingRuleSuggestionId={processingRuleSuggestionId}
           reparsing={reparsing}
           saving={saving}
         />
-      </div>
+      )}
       <PaperlessRawTextDecisionDialog
         onCancel={() => setPaperlessRawTextStatus(null)}
         onUsePaperless={() => {
           setPaperlessRawTextStatus(null);
-          void reparseSelectedReceipt("PAPERLESS");
+          void reparseSelectedReceipt("PAPERLESS", pendingReparse);
         }}
         onUseStored={() => {
           setPaperlessRawTextStatus(null);
-          void reparseSelectedReceipt("STORED");
+          void reparseSelectedReceipt("STORED", pendingReparse);
         }}
         status={paperlessRawTextStatus}
       />
+      <ConfirmDialog confirmLabel="Volltext senden und parsen" onCancel={() => setFullTextConfirmOpen(false)} onConfirm={() => { setFullTextConfirmOpen(false); void continueReparseSelectedReceipt({ aiTextMode: "FULL_TEXT", confirmFullText: true }); }} open={fullTextConfirmOpen} title="Vollständigen Bontext an OpenRouter senden?">
+        Der vollständige Bontext wird zur KI-Analyse an OpenRouter übertragen. Fahre nur fort, wenn du diese Übertragung ausdrücklich bestätigst.
+      </ConfirmDialog>
+      <ConfirmDialog confirmLabel="Bon endgültig löschen" destructive onCancel={() => setDeleteDialogOpen(false)} onConfirm={() => void deleteSelectedReceipt()} open={deleteDialogOpen} title="Bon löschen?">
+        Der Bon wird gemäß der bestehenden Löschsemantik entfernt.
+      </ConfirmDialog>
+      <ConfirmDialog confirmDisabled={!rejectReason.trim()} confirmLabel="Vorschlag ablehnen" destructive onCancel={() => setRejectSuggestion(null)} onConfirm={() => void confirmRejectParserSuggestion()} open={rejectSuggestion !== null} title="Parser-Regelvorschlag ablehnen?">
+        <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">Ablehnungsgrund<Input className="mt-1" onChange={(event) => setRejectReason(event.target.value)} value={rejectReason} /></label>
+      </ConfirmDialog>
     </div>
   );
 }
@@ -480,12 +631,8 @@ function PaperlessRawTextDecisionDialog({
 
   const isUnavailable = status === "UNAVAILABLE";
   return (
-    <div aria-labelledby="paperless-raw-text-dialog-title" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 p-4" role="dialog">
-      <Card className="w-full max-w-lg">
-        <CardHeader>
-          <CardTitle id="paperless-raw-text-dialog-title">Paperless-Rohtext prüfen</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+    <ModalDialog onClose={onCancel} open title="Paperless-Rohtext prüfen">
+        <div className="mt-3 space-y-4">
           <p className="text-sm text-zinc-700 dark:text-zinc-300">
             {isUnavailable
               ? "Paperless ist momentan nicht erreichbar. Der Bon kann nur mit dem gespeicherten Rohtext erneut geparst werden."
@@ -496,9 +643,8 @@ function PaperlessRawTextDecisionDialog({
             <Button onClick={onUseStored} variant="secondary">Gespeicherten Rohtext verwenden</Button>
             {!isUnavailable ? <Button onClick={onUsePaperless}>Neuen Rohtext übernehmen und parsen</Button> : null}
           </div>
-        </CardContent>
-      </Card>
-    </div>
+        </div>
+    </ModalDialog>
   );
 }
 
@@ -532,60 +678,66 @@ function ReceiptListPanel({
   syncing: boolean;
 }) {
   return (
-    <Card>
-      <CardHeader className="space-y-3">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <CardTitle>Bons</CardTitle>
+    <div className="space-y-4">
+      <PageHeader
+        actions={(
           <Button disabled={syncing} onClick={onSync} size="sm">
             {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Sync starten
           </Button>
-        </div>
-        <div className="grid gap-2 md:grid-cols-[minmax(120px,0.8fr)_minmax(180px,1fr)_repeat(2,minmax(130px,0.8fr))]">
-          <select
-            className={inputClassName}
-            onChange={(event) => onFilterChange({ status: event.target.value as ParseStatus | "" })}
-            value={filters.status}
-          >
-            {statusOptions.map((option) => (
-              <option key={option.value || "all"} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+        )}
+        context="Bons / Liste"
+        description="Importierte Bons filtern, sortieren und öffnen."
+        title="Bon-Liste"
+      />
+      <Card>
+        <CardContent className="space-y-3 p-4">
+          <div className="grid gap-2 md:grid-cols-[minmax(120px,0.8fr)_minmax(180px,1fr)_repeat(2,minmax(130px,0.8fr))]">
+            <select
+              className={inputClassName}
+              onChange={(event) => onFilterChange({ status: event.target.value as ParseStatus | "" })}
+              value={filters.status}
+            >
+              {statusOptions.map((option) => (
+                <option key={option.value || "all"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+              <Input
+                className="pl-9"
+                onChange={(event) => onFilterChange({ store: event.target.value })}
+                placeholder="Geschäft"
+                value={filters.store}
+              />
+            </div>
             <Input
-              className="pl-9"
-              onChange={(event) => onFilterChange({ store: event.target.value })}
-              placeholder="Geschäft"
-              value={filters.store}
+              aria-label="Datum von"
+              onChange={(event) => onFilterChange({ dateFrom: event.target.value })}
+              type="date"
+              value={filters.dateFrom}
+            />
+            <Input
+              aria-label="Datum bis"
+              onChange={(event) => onFilterChange({ dateTo: event.target.value })}
+              type="date"
+              value={filters.dateTo}
             />
           </div>
-          <Input
-            aria-label="Datum von"
-            onChange={(event) => onFilterChange({ dateFrom: event.target.value })}
-            type="date"
-            value={filters.dateFrom}
-          />
-          <Input
-            aria-label="Datum bis"
-            onChange={(event) => onFilterChange({ dateTo: event.target.value })}
-            type="date"
-            value={filters.dateTo}
-          />
-        </div>
-        <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
-          <input
-            checked={filters.includeDeleted}
-            className="h-4 w-4 rounded border-zinc-300 text-zinc-950"
-            onChange={(event) => onFilterChange({ includeDeleted: event.target.checked })}
-            type="checkbox"
-          />
-          Gelöschte Bons anzeigen
-        </label>
-      </CardHeader>
-      <CardContent className="p-0">
+          <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-300">
+            <input
+              checked={filters.includeDeleted}
+              className="h-4 w-4 rounded border-zinc-300 text-zinc-950"
+              onChange={(event) => onFilterChange({ includeDeleted: event.target.checked })}
+              type="checkbox"
+            />
+            Gelöschte Bons anzeigen
+          </label>
+        </CardContent>
+      </Card>
+      <DataTableFrame>
         {listLoading ? (
           <div className="space-y-2 p-4">
             <Skeleton className="h-12 w-full" />
@@ -593,8 +745,7 @@ function ReceiptListPanel({
             <Skeleton className="h-12 w-full" />
           </div>
         ) : receipts?.content.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-sm">
+          <table className="w-full min-w-[760px] text-sm">
               <thead>
                 <tr className="border-b border-zinc-100 text-left text-xs uppercase text-zinc-500 dark:border-zinc-900 dark:text-zinc-400">
                   <SortableHeader active={sortBy === "receiptDate"} direction={sortDir} label="Datum" onClick={() => onSortChange("receiptDate")} />
@@ -618,7 +769,18 @@ function ReceiptListPanel({
                   >
                     <td className="px-3 py-3">{formatDate(receipt.receiptDate)}</td>
                     <td className="px-3 py-3">
-                      <div className="font-medium text-zinc-950 dark:text-zinc-50">{receipt.storeName ?? "Unbekannt"}</div>
+                      <a
+                        aria-label={`Bon ${receipt.storeName ?? "Unbekannt"} vom ${formatDate(receipt.receiptDate)} öffnen`}
+                        className="font-medium text-zinc-950 hover:underline dark:text-zinc-50"
+                        href={`#/receipts/${receipt.id}`}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onReceiptSelect(receipt.id);
+                        }}
+                      >
+                        {receipt.storeName ?? "Unbekannt"}
+                      </a>
                       <div className="text-xs text-zinc-500 dark:text-zinc-400">{receipt.storeBranch ?? "-"}</div>
                       <PaperlessLink className="mt-1" receipt={receipt} />
                     </td>
@@ -636,8 +798,7 @@ function ReceiptListPanel({
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+          </table>
         ) : (
           <EmptyState text="Keine Bons gefunden" />
         )}
@@ -661,8 +822,8 @@ function ReceiptListPanel({
             </Button>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </DataTableFrame>
+    </div>
   );
 }
 
@@ -674,6 +835,7 @@ function ReceiptDetailPanel({
   detailLoading,
   draft,
   editMode,
+  onAcceptParserSuggestion,
   onApplyAiSuggestion,
   onBack,
   onCancelEdit,
@@ -681,12 +843,15 @@ function ReceiptDetailPanel({
   onDraftChange,
   onEdit,
   onReparse,
+  onRejectParserSuggestion,
   onSave,
   onSetOverwriteManualEdits,
+  onUpdateParserSuggestion,
   overwriteManualEdits,
   receipt,
   aiParsingLogs,
   parseRuleSuggestions,
+  processingRuleSuggestionId,
   reparsing,
   saving
 }: {
@@ -697,6 +862,7 @@ function ReceiptDetailPanel({
   detailLoading: boolean;
   draft: ReceiptDraft | null;
   editMode: boolean;
+  onAcceptParserSuggestion: (suggestion: ParseRuleSuggestionDTO, scope: ReparseScope) => void;
   onApplyAiSuggestion: (item: ReceiptItemDTO) => void;
   onBack: () => void;
   onCancelEdit: () => void;
@@ -704,15 +870,20 @@ function ReceiptDetailPanel({
   onDraftChange: (draft: ReceiptDraft) => void;
   onEdit: () => void;
   onReparse: () => void;
+  onRejectParserSuggestion: (suggestion: ParseRuleSuggestionDTO) => void;
   onSave: () => void;
   onSetOverwriteManualEdits: (overwrite: boolean) => void;
+  onUpdateParserSuggestion: (id: number, request: ParseRuleSuggestionUpdateRequest) => void;
   overwriteManualEdits: boolean;
   receipt: ReceiptDTO | null;
   aiParsingLogs: AiParsingLogDTO[];
   parseRuleSuggestions: ParseRuleSuggestionDTO[];
+  processingRuleSuggestionId: number | null;
   reparsing: boolean;
   saving: boolean;
 }) {
+  const [activeTab, setActiveTab] = useState<ReceiptDetailTab>("items");
+
   if (detailLoading) {
     return (
       <Card>
@@ -742,63 +913,38 @@ function ReceiptDetailPanel({
   }
 
   const hasManualItems = receipt.items.some((item) => item.isManuallyEdited) || receipt.parseStatus === "MANUALLY_EDITED";
+  const detailTabs: Array<{ id: ReceiptDetailTab; label: string; count?: number }> = [
+    { id: "items", label: "Positionen", count: receipt.items.length },
+    { id: "data", label: "Bon-Daten" },
+    { id: "raw", label: "Rohtext" },
+    { id: "ai", label: "KI-Protokoll", count: aiParsingLogs.length },
+    { id: "suggestions", label: "Regelvorschläge", count: parseRuleSuggestions.length }
+  ];
 
   return (
     <div className="space-y-4">
       {editMode ? (
-        <div className="sticky top-[4.75rem] z-20 flex flex-col gap-3 rounded-md border border-zinc-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/95 md:flex-row md:items-center md:justify-between">
-          <div>
-            <div className="text-sm font-medium text-zinc-950 dark:text-zinc-50">Bearbeitungsmodus</div>
-            <div className="text-xs text-zinc-500 dark:text-zinc-400">Änderungen werden erst beim Speichern übernommen.</div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button disabled={saving} onClick={onSave} size="sm">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Speichern
-            </Button>
-            <Button disabled={saving} onClick={onCancelEdit} size="sm" variant="secondary">
-              <X className="h-4 w-4" />
-              Abbrechen
-            </Button>
-          </div>
-        </div>
+        <StickyActionBar
+          message={saving ? "Änderungen werden gespeichert" : "Ungespeicherte Änderungen"}
+          onCancel={onCancelEdit}
+          onSave={onSave}
+          saveDisabled={saving}
+          saving={saving}
+        />
       ) : null}
 
-      <Card>
-        <CardHeader className="space-y-3">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <button className="mb-2 text-sm text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50" onClick={onBack}>
-                Zur Bon-Liste
-              </button>
-              {editMode ? (
-                <div className="grid gap-2 md:grid-cols-2">
-                  <Input
-                    aria-label="Geschäft"
-                    onChange={(event) => onDraftChange({ ...draft, storeName: event.target.value })}
-                    placeholder="Geschäft"
-                    value={draft.storeName}
-                  />
-                  <Input
-                    aria-label="Filiale"
-                    onChange={(event) => onDraftChange({ ...draft, storeBranch: event.target.value })}
-                    placeholder="Filiale"
-                    value={draft.storeBranch}
-                  />
-                </div>
-              ) : (
-                <>
-                  <h2 className="truncate text-lg font-semibold text-zinc-950 dark:text-zinc-50">{receipt.storeName ?? "Unbekannter Bon"}</h2>
-                  <p className="text-sm text-zinc-500 dark:text-zinc-400">{receipt.storeBranch ?? "Keine Filiale"}</p>
-                </>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2">
+      <div className="space-y-3">
+        <button className="text-sm text-zinc-500 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50" onClick={onBack}>
+          Zur Bon-Liste
+        </button>
+        <PageHeader
+          actions={(
+            <>
               {editMode ? (
                 <Badge tone="blue">Bearbeitung aktiv</Badge>
               ) : (
                 <>
-                  <Button onClick={onEdit} size="sm" variant="secondary">
+                  <Button onClick={() => { setActiveTab("data"); onEdit(); }} size="sm" variant="secondary">
                     <Pencil className="h-4 w-4" />
                     Bearbeiten
                   </Button>
@@ -812,9 +958,30 @@ function ReceiptDetailPanel({
                   </Button>
                 </>
               )}
-            </div>
-          </div>
-          {hasManualItems && !editMode ? (
+            </>
+          )}
+          context="Bons / Detail"
+          description={receipt.storeBranch ?? "Keine Filiale"}
+          title={receipt.storeName ?? "Unbekannter Bon"}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <ParseStatusBadge status={receipt.parseStatus} />
+          {receipt.parseSource === "AI" ? <Badge tone="blue">per KI geparst</Badge> : null}
+          {receipt.parseSource === "RULE" ? <Badge>Regelparser</Badge> : null}
+          {receipt.deleteReason ? <DeleteReasonBadge reason={receipt.deleteReason} /> : null}
+          <PaperlessLink receipt={receipt} />
+        </div>
+        <div aria-label="Bon-Zusammenfassung" className="grid gap-3 rounded-md border border-zinc-200 bg-white p-3 text-sm sm:grid-cols-3 dark:border-zinc-800 dark:bg-zinc-950">
+          <Metric label="Datum / Uhrzeit" value={`${formatDate(receipt.receiptDate)} · ${formatTime(receipt.receiptTime)}`} />
+          <Metric label="Gesamtbetrag" value={formatCurrency(receipt.totalAmount)} />
+          <Metric label="Bonus" value={formatBonus(receipt)} />
+        </div>
+        <PageTabs active={activeTab} onChange={setActiveTab} tabs={detailTabs} />
+      </div>
+
+      {hasManualItems && !editMode ? (
+        <Card>
+          <CardContent className="p-3">
             <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
               <input
                 checked={overwriteManualEdits}
@@ -824,11 +991,22 @@ function ReceiptDetailPanel({
               />
               Manuell editierte Positionen beim Re-Parse überschreiben.
             </label>
-          ) : null}
-        </CardHeader>
-        <CardContent className="space-y-4">
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {activeTab === "data" ? (
+        <Card>
+          <CardHeader><CardTitle>Bon-Daten</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
           {editMode ? (
-            <ReceiptMetadataEditor draft={draft} onDraftChange={onDraftChange} />
+            <>
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input aria-label="Geschäft" onChange={(event) => onDraftChange({ ...draft, storeName: event.target.value })} placeholder="Geschäft" value={draft.storeName} />
+                <Input aria-label="Filiale" onChange={(event) => onDraftChange({ ...draft, storeBranch: event.target.value })} placeholder="Filiale" value={draft.storeBranch} />
+              </div>
+              <ReceiptMetadataEditor draft={draft} onDraftChange={onDraftChange} />
+            </>
           ) : (
             <ReceiptMetadata receipt={receipt} />
           )}
@@ -839,12 +1017,11 @@ function ReceiptDetailPanel({
               {receipt.parseErrorMessage}
             </div>
           ) : null}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      ) : null}
 
-      <AiParsingPanel logs={aiParsingLogs} receipt={receipt} suggestions={parseRuleSuggestions} />
-
-      <Card>
+      {activeTab === "items" ? <Card>
         <CardHeader className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <CardTitle>Positionen</CardTitle>
           {editMode ? (
@@ -866,21 +1043,29 @@ function ReceiptDetailPanel({
             />
           )}
         </CardContent>
-      </Card>
+      </Card> : null}
 
-      <Card>
+      {activeTab === "raw" ? <Card>
         <CardHeader>
           <CardTitle>Rohtext</CardTitle>
         </CardHeader>
         <CardContent>
-          <details>
-            <summary className="cursor-pointer text-sm font-medium text-zinc-700 dark:text-zinc-200">Rohtext anzeigen</summary>
-            <pre className="mt-3 max-h-96 overflow-auto rounded-md bg-zinc-950 p-3 text-xs leading-relaxed text-zinc-50">
-              {receipt.rawText || "Kein Rohtext vorhanden."}
-            </pre>
-          </details>
+          <pre className="max-h-96 overflow-auto rounded-md bg-zinc-950 p-3 text-xs leading-relaxed text-zinc-50">
+            {receipt.rawText || "Kein Rohtext vorhanden."}
+          </pre>
         </CardContent>
-      </Card>
+      </Card> : null}
+
+      {activeTab === "ai" ? <AiParsingLogPanel logs={aiParsingLogs} receipt={receipt} /> : null}
+      {activeTab === "suggestions" ? (
+        <ParseRuleSuggestionsPanel
+          onAccept={onAcceptParserSuggestion}
+          onReject={onRejectParserSuggestion}
+          onUpdate={onUpdateParserSuggestion}
+          processingId={processingRuleSuggestionId}
+          suggestions={parseRuleSuggestions}
+        />
+      ) : null}
     </div>
   );
 }
@@ -911,23 +1096,11 @@ function ReceiptMetadata({ receipt }: { receipt: ReceiptDTO }) {
   );
 }
 
-function AiParsingPanel({
-  logs,
-  receipt,
-  suggestions
-}: {
-  logs: AiParsingLogDTO[];
-  receipt: ReceiptDTO;
-  suggestions: ParseRuleSuggestionDTO[];
-}) {
-  if (!logs.length && !suggestions.length && receipt.parseSource !== "AI" && !receipt.aiParsingSummary) {
-    return null;
-  }
-
+function AiParsingLogPanel({ logs, receipt }: { logs: AiParsingLogDTO[]; receipt: ReceiptDTO }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>KI-Parsing</CardTitle>
+        <CardTitle>KI-Protokoll</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2 text-sm">
@@ -942,9 +1115,7 @@ function AiParsingPanel({
         </div>
 
         {logs.length ? (
-          <details>
-            <summary className="cursor-pointer text-sm font-medium text-zinc-700 dark:text-zinc-200">Technisches Log anzeigen</summary>
-            <div className="mt-3 space-y-2">
+            <div className="space-y-2">
               {logs.map((log) => (
                 <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800" key={log.id}>
                   <div className="flex flex-wrap gap-2">
@@ -960,27 +1131,165 @@ function AiParsingPanel({
                 </div>
               ))}
             </div>
-          </details>
-        ) : null}
-
-        {suggestions.length ? (
-          <div className="space-y-2">
-            <div className="text-sm font-medium text-zinc-700 dark:text-zinc-200">Parser-Regelvorschläge</div>
-            {suggestions.map((suggestion) => (
-              <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800" key={suggestion.id}>
-                <div className="flex flex-wrap gap-2">
-                  <Badge tone={suggestion.status === "OPEN" ? "blue" : suggestion.status === "ACCEPTED" ? "green" : "red"}>{suggestion.status}</Badge>
-                  <Badge tone={suggestion.validationStatus === "VALID" ? "green" : "yellow"}>{suggestion.validationStatus}</Badge>
-                  <span className="font-medium">{suggestion.ruleType}</span>
-                </div>
-                <div className="mt-2 text-zinc-700 dark:text-zinc-200">{suggestion.problemDescription}</div>
-                <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">{suggestion.solutionRationale}</div>
-              </div>
-            ))}
-          </div>
-        ) : null}
+        ) : <EmptyState text="Kein KI-Protokoll vorhanden" />}
       </CardContent>
     </Card>
+  );
+}
+
+function ParseRuleSuggestionsPanel({
+  onAccept,
+  onReject,
+  onUpdate,
+  processingId,
+  suggestions
+}: {
+  onAccept: (suggestion: ParseRuleSuggestionDTO, scope: ReparseScope) => void;
+  onReject: (suggestion: ParseRuleSuggestionDTO) => void;
+  onUpdate: (id: number, request: ParseRuleSuggestionUpdateRequest) => void;
+  processingId: number | null;
+  suggestions: ParseRuleSuggestionDTO[];
+}) {
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<ParseRuleSuggestionUpdateRequest | null>(null);
+  const [scopeById, setScopeById] = useState<Record<number, ReparseScope>>({});
+
+  function startEditing(suggestion: ParseRuleSuggestionDTO) {
+    setEditingId(suggestion.id);
+    setEditDraft(toParseRuleSuggestionUpdateRequest(suggestion));
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle>Regelvorschläge</CardTitle></CardHeader>
+      <CardContent>
+        {suggestions.length ? <div className="space-y-2">
+          {suggestions.map((suggestion) => {
+            const scope = scopeById[suggestion.id] ?? "NONE";
+            const contextReceiptId = suggestion.receiptContext?.receiptId ?? suggestion.receiptId;
+            const contextStore = suggestion.receiptContext?.storeName ?? suggestion.storeName;
+            const editing = editingId === suggestion.id && editDraft !== null;
+            return <div className="rounded-md border border-zinc-200 p-3 text-sm dark:border-zinc-800" key={suggestion.id}>
+              <div className="flex flex-wrap gap-2">
+                <Badge tone={suggestion.status === "OPEN" ? "blue" : suggestion.status === "ACCEPTED" ? "green" : "red"}>{suggestion.status}</Badge>
+                <Badge tone={suggestion.validationStatus === "VALID" ? "green" : "yellow"}>{suggestion.validationStatus}</Badge>
+                <span className="font-medium">{suggestion.ruleType}</span>
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-zinc-600 md:grid-cols-2 dark:text-zinc-300">
+                <div>Auslöser: {parseSuggestionTriggerLabel(suggestion.trigger)}</div>
+                <div>{contextReceiptId == null ? "Bon-Kontext nicht verfügbar" : `Bon #${contextReceiptId}`} · {contextStore ?? "Store nicht angegeben"}</div>
+                <div className="break-all">Regex: {suggestion.matchRegex || "Nicht angegeben"}</div>
+                <div>Extract-Gruppe: {suggestion.extractGroup ?? "Nicht angegeben"}</div>
+              </div>
+              <div className="mt-3 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Parser-Problem</div>
+              <div className="mt-1 text-zinc-700 dark:text-zinc-200">{suggestion.problemDescription || "Keine Problembeschreibung vorhanden."}</div>
+              <div className="mt-3 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Lösungsbegründung</div>
+              <div className="mt-1 text-zinc-700 dark:text-zinc-200">{suggestion.solutionRationale || "Keine Lösungsbegründung vorhanden."}</div>
+              {suggestion.validationMessage ? <div className="mt-2 text-xs text-amber-700 dark:text-amber-300">{suggestion.validationMessage}</div> : null}
+              {suggestion.receiptContext ? <ParserSuggestionReceiptContext context={suggestion.receiptContext} /> : (
+                <div className="mt-3 rounded-md border border-dashed border-zinc-200 p-3 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                  Vollständiger Bon-Kontext ist für diesen Vorschlag nicht verfügbar.
+                </div>
+              )}
+
+              {editing && editDraft ? (
+                <div className="mt-3 grid gap-3 rounded-md border border-zinc-200 p-3 md:grid-cols-2 dark:border-zinc-800">
+                  <Field label="Store">
+                    <Input onChange={(event) => setEditDraft({ ...editDraft, storeName: emptyToNull(event.target.value) })} value={editDraft.storeName ?? ""} />
+                  </Field>
+                  <Field label="Regeltyp">
+                    <select className={inputClassName} onChange={(event) => setEditDraft({ ...editDraft, ruleType: event.target.value as ParseRuleSuggestionDTO["ruleType"] })} value={editDraft.ruleType}>
+                      {(["DATE_PATTERN", "STORE_PATTERN", "ITEM_PATTERN", "TOTAL_PATTERN", "BONUS_PATTERN"] as const).map((type) => <option key={type} value={type}>{type}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Regex">
+                    <Input onChange={(event) => setEditDraft({ ...editDraft, matchRegex: event.target.value })} value={editDraft.matchRegex} />
+                  </Field>
+                  <Field label="Extract-Gruppe">
+                    <Input onChange={(event) => setEditDraft({ ...editDraft, extractGroup: emptyToNull(event.target.value) })} value={editDraft.extractGroup ?? ""} />
+                  </Field>
+                  <Field label="Konfidenz">
+                    <Input max="1" min="0" onChange={(event) => setEditDraft({ ...editDraft, confidence: optionalDecimal(event.target.value) })} step="0.01" type="number" value={editDraft.confidence ?? ""} />
+                  </Field>
+                  <div />
+                  <Field label="Parser-Problem">
+                    <Textarea onChange={(event) => setEditDraft({ ...editDraft, problemDescription: event.target.value })} value={editDraft.problemDescription} />
+                  </Field>
+                  <Field label="Lösungsbegründung">
+                    <Textarea onChange={(event) => setEditDraft({ ...editDraft, solutionRationale: event.target.value })} value={editDraft.solutionRationale} />
+                  </Field>
+                  <div className="flex gap-2 md:col-span-2">
+                    <Button disabled={processingId === suggestion.id} onClick={() => { onUpdate(suggestion.id, editDraft); setEditingId(null); setEditDraft(null); }} size="sm">Änderungen speichern</Button>
+                    <Button onClick={() => { setEditingId(null); setEditDraft(null); }} size="sm" variant="secondary">Bearbeitung abbrechen</Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {suggestion.status === "OPEN" ? <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button disabled={processingId === suggestion.id} onClick={() => startEditing(suggestion)} size="sm" variant="secondary">Vorschlag bearbeiten</Button>
+                <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                  <span className="sr-only">Reparse-Umfang</span>
+                  <select aria-label="Reparse-Umfang" className={inputClassName} onChange={(event) => setScopeById((current) => ({ ...current, [suggestion.id]: event.target.value as ReparseScope }))} value={scope}>
+                    <option value="NONE">Kein sofortiger Reparse</option>
+                    <option value="CURRENT_RECEIPT">Aktueller Bon</option>
+                    <option value="PARSE_ERROR_BY_STORE">Parse-Fehler gleicher Store</option>
+                    <option value="ALL_PARSE_ERROR">Alle Parse-Fehler</option>
+                  </select>
+                </label>
+                <Button disabled={processingId === suggestion.id || suggestion.validationStatus !== "VALID"} onClick={() => onAccept(suggestion, scope)} size="sm">Akzeptieren</Button>
+                <Button disabled={processingId === suggestion.id} onClick={() => onReject(suggestion)} size="sm" variant="danger">Ablehnen</Button>
+              </div> : null}
+            </div>
+          })}
+        </div> : <EmptyState text="Keine Regelvorschläge vorhanden" />}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ParserSuggestionReceiptContext({ context }: { context: ParseRuleSuggestionReceiptContextDTO }) {
+  return (
+    <div aria-label={`Bon-Kontext ${context.receiptId}`} className="mt-3 space-y-3 rounded-md border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900/30">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Bon / Paperless" value={`#${context.receiptId} · ${context.paperlessDocumentId == null ? "Keine Paperless-ID" : `Paperless #${context.paperlessDocumentId}`}`} />
+        <Metric label="Geschäft / Filiale" value={`${context.storeName ?? "Store nicht angegeben"} · ${context.storeBranch ?? "Filiale nicht angegeben"}`} />
+        <Metric label="Datum / Uhrzeit" value={`${formatDate(context.receiptDate)} · ${formatTime(context.receiptTime)}`} />
+        <Metric label="Gesamt / Währung" value={`${context.totalAmount == null ? "-" : formatCurrency(context.totalAmount)} · ${context.currency || "Währung nicht angegeben"}`} />
+      </div>
+      <div>
+        <div className="text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Parse-Status / Quelle</div>
+        <div className="mt-1 flex flex-wrap gap-1">
+          <ParseStatusBadge status={context.parseStatus} />
+          {context.parseSource === "AI" ? <Badge tone="blue">per KI geparst</Badge> : null}
+          {context.parseSource === "RULE" ? <Badge>Regelparser</Badge> : null}
+          {context.parseSource === "MANUAL_CORRECTED" ? <Badge>Manuell korrigiert</Badge> : null}
+        </div>
+      </div>
+      <div>
+        <div className="mb-1 text-xs font-medium uppercase text-zinc-500 dark:text-zinc-400">Rohtext-Kontext</div>
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-zinc-950 p-2 text-xs text-zinc-50">{context.rawText || "Kein Rohtext-Kontext vorhanden."}</pre>
+      </div>
+      {context.items.length ? (
+        <div className="overflow-x-auto rounded-md border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+          <table className="w-full min-w-[720px] text-xs">
+            <thead><tr className="border-b border-zinc-200 text-left dark:border-zinc-800">
+              <th className="px-2 py-2">#</th><th className="px-2 py-2">Beschreibung</th><th className="px-2 py-2 text-right">Menge</th><th className="px-2 py-2">Einheit</th><th className="px-2 py-2 text-right">Einzelpreis</th><th className="px-2 py-2 text-right">Gesamt</th><th className="px-2 py-2 text-right">Rabatt</th>
+            </tr></thead>
+            <tbody>{context.items.map((item) => (
+              <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-900" key={`${item.positionIndex}-${item.description}`}>
+                <td className="px-2 py-2">{item.positionIndex + 1}</td>
+                <td className="px-2 py-2 font-medium">{item.description}</td>
+                <td className="px-2 py-2 text-right">{item.quantity == null ? "-" : formatNumber(item.quantity)}</td>
+                <td className="px-2 py-2">{item.unit ?? "-"}</td>
+                <td className="px-2 py-2 text-right">{item.unitPrice == null ? "-" : formatCurrency(item.unitPrice)}</td>
+                <td className="px-2 py-2 text-right">{item.totalPrice == null ? "-" : formatCurrency(item.totalPrice)}</td>
+                <td className="px-2 py-2 text-right">{item.discountAmount == null ? "-" : formatCurrency(item.discountAmount)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      ) : <EmptyState text="Keine Beispielpositionen im Bon-Kontext" />}
+    </div>
   );
 }
 
@@ -1071,21 +1380,24 @@ function ReceiptItemsTable({
                 </div>
               </td>
               <td className="px-3 py-3">
-                {item.productAssignmentStatus === "NO_PRODUCT" ? (
-                  <Badge>Kein Produkt</Badge>
-                ) : item.productFamilyName ? (
-                  <div className="space-y-1">
-                    <div className="font-medium text-zinc-950 dark:text-zinc-50">{item.productFamilyName}</div>
-                    {item.productVariantName ? <div className="text-xs text-zinc-500 dark:text-zinc-400">{item.productVariantName}</div> : null}
-                    {item.productAssignmentStatus ? <ProductAssignmentBadge status={item.productAssignmentStatus} /> : null}
-                  </div>
-                ) : item.productAssignmentStatus === "NEEDS_REVIEW" ? (
-                  <a className="inline-flex" href="#/products" title="In der Produkt-Prüfliste korrigieren">
-                    <Badge tone="yellow">Prüfung nötig</Badge>
-                  </a>
-                ) : (
-                  <span className="text-zinc-500 dark:text-zinc-400">-</span>
-                )}
+                <div className="space-y-1">
+                  {item.productAssignmentStatus === "NO_PRODUCT" ? (
+                    <Badge>Kein Produkt</Badge>
+                  ) : item.productFamilyName ? (
+                    <div>
+                      <div className="font-medium text-zinc-950 dark:text-zinc-50">{item.productFamilyName}</div>
+                      {item.productVariantName ? <div className="text-xs text-zinc-500 dark:text-zinc-400">{item.productVariantName}</div> : null}
+                      {item.productAssignmentStatus ? <ProductAssignmentBadge status={item.productAssignmentStatus} /> : null}
+                    </div>
+                  ) : item.productAssignmentStatus === "NEEDS_REVIEW" ? (
+                    <a className="inline-flex" href="#/products" title="In der Produkt-Prüfliste korrigieren">
+                      <Badge tone="yellow">Prüfung nötig</Badge>
+                    </a>
+                  ) : (
+                    <span className="text-zinc-500 dark:text-zinc-400">-</span>
+                  )}
+                  {item.productAssignmentSource ? <ProductAssignmentSourceBadge source={item.productAssignmentSource} /> : null}
+                </div>
               </td>
               <td className="px-3 py-3 text-right">
                 {item.computedUnitPrice == null || item.computedUnitPriceUnit == null
@@ -1210,6 +1522,16 @@ function ProductAssignmentBadge({ status }: { status: ProductAssignmentStatus })
   }[status];
   const tone = status === "NEEDS_REVIEW" || status === "REJECTED" ? "yellow" : "blue";
   return <Badge tone={tone}>{label}</Badge>;
+}
+
+function ProductAssignmentSourceBadge({ source }: { source: ProductAssignmentSource }) {
+  const label = {
+    RULE: "Regel",
+    AI: "KI",
+    MANUAL: "Manuell",
+    HISTORY: "Historie"
+  }[source];
+  return <Badge>Zuordnungsquelle: {label}</Badge>;
 }
 
 function AiSuggestionHint({ applying, item, onApply }: { applying: boolean; item: ReceiptItemDTO; onApply: () => void }) {
@@ -1476,6 +1798,28 @@ function aiParsingStatusLabel(status: AiParsingLogDTO["status"]): string {
   }[status];
 }
 
+function parseSuggestionTriggerLabel(trigger: ParseRuleSuggestionDTO["trigger"]): string {
+  return {
+    SYNC_AUTO: "Automatischer Sync",
+    MANUAL_REPARSE: "Manueller Reparse",
+    MANUAL_REPARSE_FORCE_FULL_TEXT: "Manueller Volltext-Reparse",
+    BULK_REPARSE: "Sammel-Reparse",
+    SETTINGS_TEST: "Einstellungstest"
+  }[trigger];
+}
+
+function toParseRuleSuggestionUpdateRequest(suggestion: ParseRuleSuggestionDTO): ParseRuleSuggestionUpdateRequest {
+  return {
+    storeName: suggestion.storeName,
+    ruleType: suggestion.ruleType,
+    matchRegex: suggestion.matchRegex,
+    extractGroup: suggestion.extractGroup,
+    confidence: suggestion.confidence,
+    problemDescription: suggestion.problemDescription,
+    solutionRationale: suggestion.solutionRationale
+  };
+}
+
 function toUserMessage(error: unknown): string {
   if (error instanceof ApiClientError) {
     return error.message;
@@ -1486,6 +1830,109 @@ function toUserMessage(error: unknown): string {
   }
 
   return "Die Anfrage konnte nicht verarbeitet werden.";
+}
+
+async function loadReceiptRuleSuggestions(
+  apiClient: ApiClient,
+  receiptId: number,
+  isCurrent: () => boolean
+): Promise<ParseRuleSuggestionDTO[] | null> {
+  const pageSize = 100;
+  const matchingById = new Map<number, ParseRuleSuggestionDTO>();
+  let page = 0;
+  let totalPages = 1;
+
+  while (page < totalPages) {
+    const response = await apiClient.parseRuleSuggestions({ page, size: pageSize });
+    if (!isCurrent()) {
+      return null;
+    }
+    for (const suggestion of response.content) {
+      if (suggestion.receiptId === receiptId && !matchingById.has(suggestion.id)) {
+        matchingById.set(suggestion.id, suggestion);
+      }
+    }
+    totalPages = response.totalPages;
+    page += 1;
+  }
+
+  const details = await Promise.all(
+    [...matchingById.values()].map((suggestion) => apiClient.parseRuleSuggestion(suggestion.id))
+  );
+  if (!isCurrent()) {
+    return null;
+  }
+  return details.filter((suggestion) => suggestion.receiptId === receiptId);
+}
+
+function readReceiptListState(): ReceiptListState {
+  const fallback: ReceiptListState = {
+    filters: defaultFilters,
+    page: 0,
+    sortBy: "receiptDate",
+    sortDir: "desc",
+    scrollY: null
+  };
+  const stored = sessionStorage.getItem(RECEIPT_LIST_STATE_KEY);
+  if (!stored) {
+    return fallback;
+  }
+
+  try {
+    const value: unknown = JSON.parse(stored);
+    if (!isRecord(value)) {
+      sessionStorage.removeItem(RECEIPT_LIST_STATE_KEY);
+      return fallback;
+    }
+    const storedFilters = isRecord(value.filters) ? value.filters : {};
+    const status = isParseStatusFilter(storedFilters.status) ? storedFilters.status : "";
+    const state: ReceiptListState = {
+      filters: {
+        status,
+        store: validString(storedFilters.store, 255),
+        dateFrom: validDateFilter(storedFilters.dateFrom),
+        dateTo: validDateFilter(storedFilters.dateTo),
+        includeDeleted: storedFilters.includeDeleted === true
+      },
+      page: validNonNegativeInteger(value.page),
+      sortBy: isSortKey(value.sortBy) ? value.sortBy : "receiptDate",
+      sortDir: value.sortDir === "asc" ? "asc" : "desc",
+      scrollY: validScrollY(value.scrollY)
+    };
+    sessionStorage.setItem(RECEIPT_LIST_STATE_KEY, JSON.stringify(state));
+    return state;
+  } catch {
+    sessionStorage.removeItem(RECEIPT_LIST_STATE_KEY);
+    return fallback;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isParseStatusFilter(value: unknown): value is ReceiptFilters["status"] {
+  return value === "" || value === "PENDING" || value === "PARSED" || value === "PARSE_ERROR" || value === "MANUALLY_EDITED";
+}
+
+function isSortKey(value: unknown): value is SortKey {
+  return value === "receiptDate" || value === "importedAt" || value === "storeName" || value === "totalAmount" || value === "parseStatus";
+}
+
+function validString(value: unknown, maxLength: number): string {
+  return typeof value === "string" && value.length <= maxLength ? value : "";
+}
+
+function validDateFilter(value: unknown): string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+}
+
+function validNonNegativeInteger(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+
+function validScrollY(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 const inputClassName = cn(

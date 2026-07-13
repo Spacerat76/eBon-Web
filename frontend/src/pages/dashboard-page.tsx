@@ -1,6 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowDownRight, ArrowUpRight, Loader2, RefreshCw, Tags, WalletCards } from "lucide-react";
 
+import { DataTableFrame } from "@/components/data/data-table";
+import { StatusBanner } from "@/components/feedback/status-banner";
+import { PageHeader } from "@/components/layout/page-header";
 import { ParseStatusBadge } from "@/components/receipt-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +30,8 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
   const [bonusData, setBonusData] = useState<BonusReportDTO[]>([]);
   const [syncLog, setSyncLog] = useState<SyncLogDTO[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(hasApiToken);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [syncTriggering, setSyncTriggering] = useState(false);
   const [range, setRange] = useState<DashboardRange>("currentMonth");
   const [customDateFrom, setCustomDateFrom] = useState("");
@@ -40,6 +44,7 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
       setBonusData([]);
       setSyncLog([]);
       setError(null);
+      setHasLoaded(false);
       return;
     }
 
@@ -60,6 +65,7 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
       setCategoryData(categoryResponse);
       setBonusData(bonusResponse);
       setSyncLog(syncLogResponse.content);
+      setHasLoaded(true);
     } catch (loadError) {
       setError(toUserMessage(loadError));
     } finally {
@@ -111,21 +117,33 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        actions={(
+          <DashboardActions
+            customDateFrom={customDateFrom}
+            customDateTo={customDateTo}
+            loading={loading}
+            onCustomDateFromChange={setCustomDateFrom}
+            onCustomDateToChange={setCustomDateTo}
+            onRangeChange={setRange}
+            onSync={triggerSync}
+            range={range}
+            syncTriggering={syncTriggering}
+          />
+        )}
+        context="Übersicht / Finanzen"
+        title="Finanzübersicht"
+      />
+
+      <SyncStatusBanner status={dashboard?.lastSyncStatus ?? null} loading={loading} />
+
       {error ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
           {error}
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <SyncStatusBanner status={dashboard?.lastSyncStatus ?? null} loading={loading} />
-        <Button disabled={loading || syncTriggering} onClick={triggerSync}>
-          {syncTriggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Sync starten
-        </Button>
-      </div>
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <KpiCard
           icon={WalletCards}
           loading={loading}
@@ -152,11 +170,9 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
           value={formatPercent(monthDelta)}
         />
         <KpiCard
+          href="#/search?uncategorizedOnly=true"
           icon={Tags}
           loading={loading}
-          onClick={() => {
-            window.location.hash = "#/search?uncategorizedOnly=true";
-          }}
           title="Ohne Kategorie"
           value={formatNumber(dashboard?.uncategorizedItemsCount)}
         />
@@ -168,20 +184,10 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
         />
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.95fr)]">
-        <Card>
-          <CardHeader className="space-y-3">
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <CardTitle>Ausgaben nach Kategorie</CardTitle>
-              <RangeControls
-                customDateFrom={customDateFrom}
-                customDateTo={customDateTo}
-                onCustomDateFromChange={setCustomDateFrom}
-                onCustomDateToChange={setCustomDateTo}
-                onRangeChange={setRange}
-                range={range}
-              />
-            </div>
+      <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(24rem,0.88fr)]">
+        <Card className="min-w-0">
+          <CardHeader>
+            <CardTitle>Ausgaben nach Kategorie</CardTitle>
           </CardHeader>
           <CardContent className="min-h-80">
             {loading ? (
@@ -193,7 +199,7 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
                     <CategoryChart colors={chartColors} data={categoryData} />
                   </Suspense>
                 </div>
-                <div className="overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-800">
+                <DataTableFrame className="shadow-none">
                   <table className="w-full text-sm">
                     <tbody>
                       {categoryData.slice(0, 8).map((entry, index) => (
@@ -209,19 +215,21 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </DataTableFrame>
               </div>
-            ) : (
+            ) : hasLoaded ? (
               <EmptyState text="Keine Monatsdaten" />
+            ) : (
+              <UnavailableState text="Kategoriedaten nicht verfügbar" />
             )}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Letzte Bons</CardTitle>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          <CardContent>
             {loading ? (
               <div className="space-y-2">
                 <Skeleton className="h-9 w-full" />
@@ -229,51 +237,60 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
                 <Skeleton className="h-9 w-full" />
               </div>
             ) : dashboard?.recentReceipts.length ? (
-              <table className="w-full min-w-[520px] text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-100 text-left text-xs uppercase text-zinc-500 dark:border-zinc-900 dark:text-zinc-400">
-                    <th className="px-3 py-2 font-medium">Datum</th>
-                    <th className="px-3 py-2 font-medium">Geschäft</th>
-                    <th className="px-3 py-2 text-right font-medium">Betrag</th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {dashboard.recentReceipts.map((receipt) => (
-                    <tr
-                      className="cursor-pointer border-b border-zinc-100 last:border-0 hover:bg-zinc-50 dark:border-zinc-900 dark:hover:bg-zinc-900/60"
-                      key={receipt.id}
-                      onClick={() => {
-                        window.location.hash = `#/receipts/${receipt.id}`;
-                      }}
-                    >
-                      <td className="px-3 py-2">{formatDate(receipt.receiptDate)}</td>
-                      <td className="px-3 py-2">
-                        <div className="font-medium text-zinc-900 dark:text-zinc-100">{receipt.storeName ?? "Unbekannt"}</div>
-                        <div className="text-xs text-zinc-500 dark:text-zinc-400">{receipt.storeBranch ?? "-"}</div>
-                      </td>
-                      <td className="px-3 py-2 text-right font-medium">{formatCurrency(receipt.totalAmount)}</td>
-                      <td className="px-3 py-2">
-                        <ParseStatusBadge status={receipt.parseStatus} />
-                      </td>
+              <DataTableFrame className="shadow-none">
+                <table className="w-full min-w-[520px] text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-100 text-left text-xs uppercase text-zinc-500 dark:border-zinc-900 dark:text-zinc-400">
+                      <th className="px-3 py-2 font-medium">Datum</th>
+                      <th className="px-3 py-2 font-medium">Geschäft</th>
+                      <th className="px-3 py-2 text-right font-medium">Betrag</th>
+                      <th className="px-3 py-2 font-medium">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
+                  </thead>
+                  <tbody>
+                    {dashboard.recentReceipts.map((receipt) => (
+                      <tr className="border-b border-zinc-100 last:border-0" key={receipt.id}>
+                        <td className="px-3 py-2">{formatDate(receipt.receiptDate)}</td>
+                        <td className="px-3 py-2">
+                          <a
+                            aria-label={`Bon ${receipt.storeName ?? "Unbekannt"} vom ${formatDate(receipt.receiptDate)} öffnen`}
+                            className="block rounded-sm hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2"
+                            href={`#/receipts/${receipt.id}`}
+                          >
+                            <div className="font-medium text-zinc-900 dark:text-zinc-100">{receipt.storeName ?? "Unbekannt"}</div>
+                            <div className="text-xs text-zinc-500 dark:text-zinc-400">{receipt.storeBranch ?? "-"}</div>
+                          </a>
+                        </td>
+                        <td className="px-3 py-2 text-right font-medium">{formatCurrency(receipt.totalAmount)}</td>
+                        <td className="px-3 py-2">
+                          <ParseStatusBadge status={receipt.parseStatus} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </DataTableFrame>
+            ) : hasLoaded ? (
               <EmptyState text="Keine Bons" />
+            ) : (
+              <UnavailableState text="Bon-Daten nicht verfügbar" />
             )}
           </CardContent>
         </Card>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
-        <Card>
+      <section className="grid min-w-0 gap-4 xl:grid-cols-2">
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Bonus neu im Zeitraum</CardTitle>
           </CardHeader>
           <CardContent>
-            {bonusData.length ? (
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : bonusData.length ? (
               <div className="space-y-2">
                 {bonusData.map((bonus) => (
                   <div className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800" key={bonus.bonusType}>
@@ -284,19 +301,27 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
                   </div>
                 ))}
               </div>
-            ) : (
+            ) : hasLoaded ? (
               <EmptyState text="Keine Bonusdaten" />
+            ) : (
+              <UnavailableState text="Bonusdaten nicht verfügbar" />
             )}
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>Sync-Log</CardTitle>
           </CardHeader>
           <CardContent>
-            {syncLog.length ? (
-              <div className="overflow-x-auto">
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+              </div>
+            ) : syncLog.length ? (
+              <DataTableFrame className="shadow-none">
                 <table className="w-full min-w-[480px] text-sm">
                   <tbody>
                     {syncLog.map((log) => (
@@ -312,9 +337,11 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            ) : (
+              </DataTableFrame>
+            ) : hasLoaded ? (
               <EmptyState text="Kein Sync-Log" />
+            ) : (
+              <UnavailableState text="Sync-Log nicht verfügbar" />
             )}
           </CardContent>
         </Card>
@@ -324,24 +351,23 @@ export function DashboardPage({ apiClient, hasApiToken }: DashboardPageProps) {
 }
 
 function KpiCard({
+  href,
   icon: Icon,
   loading,
-  onClick,
   title,
   value,
   tone = "neutral"
 }: {
+  href?: string;
   icon: typeof WalletCards;
   loading: boolean;
-  onClick?: () => void;
   title: string;
   value: string;
   tone?: "neutral" | "green" | "red";
 }) {
-  return (
+  const card = (
     <Card
-      className={onClick ? "cursor-pointer hover:border-zinc-300 dark:hover:border-zinc-700" : undefined}
-      onClick={onClick}
+      className={href ? "h-full transition hover:border-zinc-300 dark:hover:border-zinc-700" : undefined}
     >
       <CardContent className="flex items-center gap-3">
         <span
@@ -362,26 +388,39 @@ function KpiCard({
       </CardContent>
     </Card>
   );
+
+  return href ? (
+    <a className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2" href={href}>
+      {card}
+    </a>
+  ) : card;
 }
 
-function RangeControls({
+function DashboardActions({
   customDateFrom,
   customDateTo,
+  loading,
   onCustomDateFromChange,
   onCustomDateToChange,
   onRangeChange,
-  range
+  onSync,
+  range,
+  syncTriggering
 }: {
   customDateFrom: string;
   customDateTo: string;
+  loading: boolean;
   onCustomDateFromChange: (value: string) => void;
   onCustomDateToChange: (value: string) => void;
   onRangeChange: (value: DashboardRange) => void;
+  onSync: () => void;
   range: DashboardRange;
+  syncTriggering: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <select
+        aria-label="Zeitraum"
         className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
         onChange={(event) => onRangeChange(event.target.value as DashboardRange)}
         value={range}
@@ -395,12 +434,14 @@ function RangeControls({
       {range === "custom" ? (
         <>
           <input
+            aria-label="Zeitraum von"
             className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
             onChange={(event) => onCustomDateFromChange(event.target.value)}
             type="date"
             value={customDateFrom}
           />
           <input
+            aria-label="Zeitraum bis"
             className="h-9 rounded-md border border-zinc-200 bg-white px-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
             onChange={(event) => onCustomDateToChange(event.target.value)}
             type="date"
@@ -408,6 +449,10 @@ function RangeControls({
           />
         </>
       ) : null}
+      <Button disabled={loading || syncTriggering} onClick={onSync}>
+        {syncTriggering ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+        Sync starten
+      </Button>
     </div>
   );
 }
@@ -415,30 +460,40 @@ function RangeControls({
 function SyncStatusBanner({ loading, status }: { loading: boolean; status: SyncStatusDTO | null }) {
   if (loading) {
     return (
-      <div className="flex min-h-12 flex-1 items-center gap-3 rounded-md border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
-        Dashboard wird geladen
-      </div>
+      <StatusBanner title="Dashboard wird geladen">
+        <span className="inline-flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Finanzdaten und Sync-Status werden abgerufen.
+        </span>
+      </StatusBanner>
     );
   }
 
-  const tone = status?.isSyncing ? "yellow" : status?.lastSyncStatus === "FAILED" ? "red" : "green";
-  const text = status?.isSyncing
+  if (!status) {
+    return (
+      <StatusBanner title="Sync-Status nicht verfügbar">
+        Der letzte Sync-Status konnte nicht geladen werden.
+      </StatusBanner>
+    );
+  }
+
+  const tone = status.isSyncing ? "warning" : status.lastSyncStatus === "FAILED" ? "error" : "success";
+  const text = status.isSyncing
     ? "Sync läuft"
-    : status?.lastSyncStatus === "FAILED"
+    : status.lastSyncStatus === "FAILED"
       ? "Letzter Sync fehlgeschlagen"
       : "Sync bereit";
 
   return (
-    <div className="flex min-h-12 flex-1 flex-wrap items-center gap-3 rounded-md border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-950">
-      <SyncBadge status={status?.lastSyncStatus ?? null} syncing={status?.isSyncing ?? false} />
-      <span className="font-medium">{text}</span>
-      <span className="text-zinc-500 dark:text-zinc-400">Entfernt: {status?.removedDocumentsCount ?? 0}</span>
-      <span className="text-zinc-500 dark:text-zinc-400">Fehler: {status?.errorCount ?? 0}</span>
-      <span className={tone === "red" ? "text-red-600 dark:text-red-300" : tone === "yellow" ? "text-amber-600 dark:text-amber-300" : "text-zinc-500 dark:text-zinc-400"}>
-        {formatDateTime(status?.lastSyncAt)}
-      </span>
-    </div>
+    <StatusBanner title={text} tone={tone}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <SyncBadge status={status.lastSyncStatus} syncing={status.isSyncing} />
+        <span>Neu: {status.newDocumentsCount}</span>
+        <span>Entfernt: {status.removedDocumentsCount}</span>
+        <span>Fehler: {status.errorCount}</span>
+        <span>{formatDateTime(status.lastSyncAt)}</span>
+      </div>
+    </StatusBanner>
   );
 }
 
@@ -460,6 +515,10 @@ function SyncBadge({ status, syncing = false }: { status: SyncStatusDTO["lastSyn
 
 function EmptyState({ text }: { text: string }) {
   return <div className="rounded-md border border-dashed border-zinc-200 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">{text}</div>;
+}
+
+function UnavailableState({ text }: { text: string }) {
+  return <div className="rounded-md bg-zinc-50 px-4 py-8 text-center text-sm text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">{text}</div>;
 }
 
 function formatBonusSummary(bonusSummary: BonusReportDTO[]): string {

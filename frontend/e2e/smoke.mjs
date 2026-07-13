@@ -17,47 +17,53 @@ export async function runSmoke({
   try {
     await driver.get(baseUrl);
     await waitForText(driver, "API-Token erforderlich");
-    await waitForText(driver, "Dashboard");
-    await waitForText(driver, "Einstellungen");
-
-    const tokenInput = await driver.findElement(By.id("api-token"));
+    await clickButton(driver, "API-Zugriff einrichten");
+    const tokenInput = await driver.findElement(By.id("session-api-token"));
     await tokenInput.sendKeys("mock-token");
+    await clickButton(driver, "Für diese Sitzung verwenden");
+
+    for (const metric of ["Aktueller Monat", "Vormonat", "Aktuelles Jahr", "Delta zum Vormonat", "Ohne Kategorie", "Bonus neu"]) {
+      await waitForText(driver, metric);
+    }
     await waitForText(driver, "Sync starten");
     await waitForText(driver, "Letzte Bons");
 
-    await clickNav(driver, "#/settings");
-    await waitForText(driver, "Allgemein");
-    await waitForText(driver, "Software-Version");
-
-    await clickButton(driver, "Backup");
-    await waitForText(driver, "Backup herunterladen");
-    await waitForText(driver, "Dry-Run prüfen");
-    await waitForText(driver, "Restore-Bestätigung");
+    await clickNav(driver, "#/receipts");
+    await waitForText(driver, "Bon-Liste");
+    await typeIntoPlaceholder(driver, "Geschäft", "REWE");
+    await clickLinkByAccessibleName(driver, "Bon REWE");
+    await clickTab(driver, "Rohtext");
+    await waitForText(driver, "REWE Mock Bon");
+    await clickButton(driver, "Bearbeiten");
+    await waitForText(driver, "Ungespeicherte Änderungen");
+    await clickButton(driver, "Abbrechen");
 
     await clickNav(driver, "#/search");
     await waitForText(driver, "Suchergebnisse");
     await waitForText(driver, "Bio Milch");
+    await clickCheckbox(driver, "Ohne Kategorie");
 
     await clickNav(driver, "#/products");
     await waitForText(driver, "Produktzuordnung prüfen");
     await waitForText(driver, "Haferdrink Barista");
-    await clickButton(driver, "Preisvergleich");
+    await clickTab(driver, "Offen");
+    await clickTab(driver, "Preisvergleich");
     await waitForText(driver, "Produktpreisvergleich");
     await waitForText(driver, "Historisches Minimum");
 
-    await clickNav(driver, "#/receipts");
-    await waitForText(driver, "Bons");
-    await waitForText(driver, "REWE");
+    await clickNav(driver, "#/reports");
+    await waitForText(driver, "Reports");
+    await clickTab(driver, "Zeitraum");
+    await clickTab(driver, "Geschäft");
 
-    // The mock receipt id is stable, so navigate directly to the detail route.
-    // Clicking a table row is unreliable in headless Edge because the row itself
-    // is not the interactive element that receives the application navigation.
-    await driver.get(`${baseUrl}/#/receipts/1`);
-    await waitForText(driver, "Erneut parsen");
-    await clickButton(driver, "Erneut parsen");
-    await waitForText(driver, "Paperless-Rohtext wurde seit dem Import geändert.");
-    await clickButton(driver, "Gespeicherten Rohtext verwenden");
-    await waitForText(driver, "Bon wurde erneut geparst.");
+    await clickNav(driver, "#/settings");
+    await clickTab(driver, "Verbindungen");
+    await waitForText(driver, "Paperless-NGX");
+    await clickTab(driver, "Backup & Restore");
+    await waitForText(driver, "Backup erstellen");
+    await clickTab(driver, "Datenwartung");
+    await waitForText(driver, "Importierte Bon-Daten zurücksetzen");
+    await waitForText(driver, "Produktdaten zurücksetzen");
 
     if (coverageOutputFile) {
       await writeBrowserCoverage(driver, coverageOutputFile);
@@ -75,6 +81,37 @@ async function clickNav(driver, href) {
 async function clickButton(driver, text) {
   const element = await driver.wait(until.elementLocated(By.xpath(`//button[normalize-space(.)='${text}']`)), 10_000);
   await element.click();
+}
+
+async function clickTab(driver, name) {
+  const element = await driver.wait(
+    until.elementLocated(By.xpath(`//*[@role='tab' and starts-with(normalize-space(.), ${xpathLiteral(name)})]`)),
+    10_000
+  );
+  await element.click();
+}
+
+async function clickLinkByAccessibleName(driver, namePrefix) {
+  const element = await driver.wait(
+    until.elementLocated(By.xpath(`//a[starts-with(@aria-label, ${xpathLiteral(namePrefix)})]`)),
+    10_000
+  );
+  await element.click();
+}
+
+async function clickCheckbox(driver, label) {
+  const element = await driver.wait(
+    until.elementLocated(By.xpath(`//label[contains(normalize-space(.), ${xpathLiteral(label)})]//input[@type='checkbox']`)),
+    10_000
+  );
+  await element.click();
+  await driver.wait(until.elementIsSelected(element), 10_000);
+}
+
+async function typeIntoPlaceholder(driver, placeholder, value) {
+  const element = await driver.wait(until.elementLocated(By.css(`input[placeholder="${placeholder}"]`)), 10_000);
+  await element.clear();
+  await element.sendKeys(value);
 }
 
 async function waitForText(driver, text) {

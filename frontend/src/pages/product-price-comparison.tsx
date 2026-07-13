@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { ModalDialog } from "@/components/ui/modal-dialog";
+import { StatusBanner } from "@/components/feedback/status-banner";
 import type { ApiClient } from "@/lib/api";
 import type {
   PageResponse,
@@ -38,6 +40,7 @@ export function ProductPriceComparison({
   const [observations, setObservations] = useState<PageResponse<ProductPriceObservationDTO> | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
   const [excludeItem, setExcludeItem] = useState<ProductPriceObservationDTO | null>(null);
   const [exclusionReason, setExclusionReason] = useState("");
 
@@ -73,6 +76,7 @@ export function ProductPriceComparison({
       setReport(nextReport);
       setObservations(nextObservations);
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Preisvergleich konnte nicht geladen werden.");
     } finally {
       setLoading(false);
@@ -92,9 +96,11 @@ export function ProductPriceComparison({
       await apiClient.excludeProductPriceObservation(excludeItem.receiptItemId, exclusionReason.trim());
       setExcludeItem(null);
       setExclusionReason("");
+      setMessageTone("success");
       setMessage("Preisbeobachtung wurde aus dem Vergleich ausgeschlossen.");
       await load();
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Ausschluss konnte nicht gespeichert werden.");
     } finally {
       setLoading(false);
@@ -105,9 +111,11 @@ export function ProductPriceComparison({
     setLoading(true);
     try {
       await apiClient.includeProductPriceObservation(observation.receiptItemId);
+      setMessageTone("success");
       setMessage("Preisbeobachtung wird wieder berücksichtigt.");
       await load();
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Wiederaufnahme konnte nicht gespeichert werden.");
     } finally {
       setLoading(false);
@@ -128,7 +136,10 @@ export function ProductPriceComparison({
       link.download = scope === "family" ? "product-family-price-comparison.csv" : "product-variant-price-comparison.csv";
       link.click();
       URL.revokeObjectURL(url);
+      setMessageTone("success");
+      setMessage("CSV-Export wurde erstellt.");
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "CSV-Export konnte nicht erstellt werden.");
     }
   }
@@ -143,7 +154,7 @@ export function ProductPriceComparison({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>Produktpreisvergleich</CardTitle>
-              <p className="mt-1 text-sm text-zinc-500">Effektiv gezahlte Preise, getrennt nach vergleichbaren Einheiten.</p>
+              <p className="mt-1 text-sm text-zinc-500">Effektiv gezahlte Preise sind der Standard. Reguläre Preise erscheinen nur, wenn sie sicher ableitbar sind.</p>
             </div>
             <div className="flex gap-2">
               <Button disabled={selectedId == null} onClick={() => void downloadCsv()} size="sm" variant="secondary">
@@ -185,7 +196,8 @@ export function ProductPriceComparison({
         </CardHeader>
       </Card>
 
-      {message ? <div className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">{message}</div> : null}
+      {loading ? <StatusBanner ariaLabel="Preisaktion wird ausgeführt" busy title="Preisaktion wird ausgeführt" /> : null}
+      {message ? <StatusBanner title={messageTone === "error" ? "Preisaktion fehlgeschlagen" : "Preisaktion abgeschlossen"} tone={messageTone}>{message}</StatusBanner> : null}
 
       {report ? <>
         <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -209,7 +221,7 @@ export function ProductPriceComparison({
 
         <Card>
           <CardHeader><CardTitle>Vergleich nach {filters.grouping === "STORE_BRANCH" ? "Geschäft und Filiale" : "Geschäft"}</CardTitle></CardHeader>
-          <CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[700px] w-full text-left text-sm"><thead className="border-y border-zinc-200 text-xs uppercase text-zinc-500 dark:border-zinc-800"><tr><th className="px-4 py-3">Geschäft</th><th className="px-4 py-3">Einheit</th><th className="px-4 py-3 text-right">Letzter Preis</th><th className="px-4 py-3 text-right">Minimum</th><th className="px-4 py-3 text-right">Durchschnitt</th><th className="px-4 py-3 text-right">Median</th><th className="px-4 py-3 text-right">Anzahl</th></tr></thead><tbody>{report.stores.map((store) => <tr className="border-b border-zinc-100 dark:border-zinc-900" key={`${store.label}-${store.priceUnit}`}><td className="px-4 py-3 font-medium">{store.label}</td><td className="px-4 py-3">{displayUnit(store.priceUnit)}</td><td className="px-4 py-3 text-right">{formatPrice(store.latestPrice, store.priceUnit)}</td><td className="px-4 py-3 text-right">{formatPrice(store.minimumPrice, store.priceUnit)}</td><td className="px-4 py-3 text-right">{formatPrice(store.averagePrice, store.priceUnit)}</td><td className="px-4 py-3 text-right">{formatPrice(store.medianPrice, store.priceUnit)}</td><td className="px-4 py-3 text-right">{store.observationCount}</td></tr>)}</tbody></table></div>{report.stores.length === 0 ? <EmptyState text="Keine geeigneten Beobachtungen für diesen Vergleich." /> : null}</CardContent>
+          <CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[700px] w-full text-left text-sm"><caption className="sr-only">Preisvergleich nach Store mit letztem Preis, Minimum, Durchschnitt, Median und Beobachtungsanzahl</caption><thead className="border-y border-zinc-200 text-xs uppercase text-zinc-500 dark:border-zinc-800"><tr><th className="px-4 py-3">Geschäft</th><th className="px-4 py-3">Einheit</th><th className="px-4 py-3 text-right">Letzter Preis</th><th className="px-4 py-3 text-right">Minimum</th><th className="px-4 py-3 text-right">Durchschnitt</th><th className="px-4 py-3 text-right">Median</th><th className="px-4 py-3 text-right">Anzahl</th></tr></thead><tbody>{report.stores.map((store) => <tr className="border-b border-zinc-100 dark:border-zinc-900" key={`${store.label}-${store.priceUnit}`}><td className="px-4 py-3 font-medium">{store.label}</td><td className="px-4 py-3">{displayUnit(store.priceUnit)}</td><td className="px-4 py-3 text-right tabular-nums">{formatPrice(store.latestPrice, store.priceUnit)}</td><td className="px-4 py-3 text-right tabular-nums">{formatPrice(store.minimumPrice, store.priceUnit)}</td><td className="px-4 py-3 text-right tabular-nums">{formatPrice(store.averagePrice, store.priceUnit)}</td><td className="px-4 py-3 text-right tabular-nums">{formatPrice(store.medianPrice, store.priceUnit)}</td><td className="px-4 py-3 text-right tabular-nums">{store.observationCount}</td></tr>)}</tbody></table></div>{report.stores.length === 0 ? <EmptyState text="Keine geeigneten Beobachtungen für diesen Vergleich." /> : null}</CardContent>
         </Card>
 
         <ObservationsTable loading={loading} observations={observations?.content ?? []} onExclude={setExcludeItem} onInclude={(observation) => void include(observation)} />
@@ -245,11 +257,11 @@ function ObservationsTable({
   onExclude: (observation: ProductPriceObservationDTO) => void;
   onInclude: (observation: ProductPriceObservationDTO) => void;
 }) {
-  return <Card><CardHeader><CardTitle>Preisbeobachtungen</CardTitle></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1080px] w-full text-left text-sm"><thead className="border-y border-zinc-200 text-xs uppercase text-zinc-500 dark:border-zinc-800"><tr><th className="px-4 py-3">Bon</th><th className="px-4 py-3">Position</th><th className="px-4 py-3 text-right">Effektiv</th><th className="px-4 py-3 text-right">Regulär</th><th className="px-4 py-3 text-right">Einheitenpreis</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Aktion</th></tr></thead><tbody>{observations.map((observation) => <tr className="border-b border-zinc-100 align-top dark:border-zinc-900" key={observation.receiptItemId}><td className="px-4 py-3"><button className="text-left text-blue-700 hover:underline dark:text-blue-300" onClick={() => { window.location.hash = `#/receipts/${observation.receiptId}`; }}>{formatDate(observation.receiptDate)}<span className="block text-xs text-zinc-500">{observation.storeName}{observation.storeBranch ? ` · ${observation.storeBranch}` : ""}</span></button></td><td className="px-4 py-3"><div className="max-w-80 font-medium">{observation.description}</div><div className="text-xs text-zinc-500">{observation.productVariantName ?? observation.productFamilyName ?? "Ohne Produkt"}</div></td><td className="px-4 py-3 text-right">{formatEuro(observation.effectivePrice)}</td><td className="px-4 py-3 text-right">{formatEuro(observation.regularPrice)}</td><td className="px-4 py-3 text-right">{observation.normalizedUnitPrice == null ? "-" : formatPrice(observation.normalizedUnitPrice, observation.normalizedUnit)}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1">{observation.outlier ? <Badge tone="yellow"><TriangleAlert className="mr-1 h-3 w-3" />Ausreißer</Badge> : null}{observation.excluded ? <Badge tone="red">Ausgeschlossen</Badge> : <Badge tone={observation.includedInComparison ? "green" : "neutral"}>{observation.includedInComparison ? "Im Vergleich" : "Nicht geeignet"}</Badge>}</div>{observation.exclusionReason ? <p className="mt-1 max-w-44 text-xs text-zinc-500">{observation.exclusionReason}</p> : null}</td><td className="px-4 py-3 text-right">{observation.excluded ? <Button disabled={loading} onClick={() => onInclude(observation)} size="sm" variant="secondary">Wieder aufnehmen</Button> : observation.includedInComparison ? <Button disabled={loading} onClick={() => onExclude(observation)} size="sm" variant="secondary">Ausschließen</Button> : null}</td></tr>)}</tbody></table></div>{observations.length === 0 ? <EmptyState text="Keine Preisbeobachtungen für diese Auswahl." /> : null}</CardContent></Card>;
+  return <Card><CardHeader><CardTitle>Preisbeobachtungen</CardTitle><p className="text-sm text-zinc-500">Ausreißer und manuelle Ausschlüsse bleiben sichtbar und können jederzeit wieder aufgenommen werden.</p></CardHeader><CardContent className="p-0"><div className="overflow-x-auto"><table className="min-w-[1080px] w-full text-left text-sm"><caption className="sr-only">Auditierbare Preisbeobachtungen mit effektivem, regulärem und normalisiertem Einheitenpreis</caption><thead className="border-y border-zinc-200 text-xs uppercase text-zinc-500 dark:border-zinc-800"><tr><th className="px-4 py-3">Bon</th><th className="px-4 py-3">Position</th><th className="px-4 py-3 text-right">Effektiv</th><th className="px-4 py-3 text-right">Regulär</th><th className="px-4 py-3 text-right">Einheitenpreis</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Aktion</th></tr></thead><tbody>{observations.map((observation) => { const actionContext = `Preisbeobachtung ${observation.description} vom ${formatDate(observation.receiptDate)} bei ${observation.storeName ?? "unbekannt"} (Position ${observation.receiptItemId})`; return <tr className="border-b border-zinc-100 align-top dark:border-zinc-900" key={observation.receiptItemId}><td className="px-4 py-3"><button aria-label={`${actionContext} Bon öffnen`} className="text-left text-blue-700 hover:underline dark:text-blue-300" onClick={() => { window.location.hash = `#/receipts/${observation.receiptId}`; }}>{formatDate(observation.receiptDate)}<span className="block text-xs text-zinc-500">{observation.storeName}{observation.storeBranch ? ` · ${observation.storeBranch}` : ""}</span></button></td><td className="px-4 py-3"><div className="max-w-80 font-medium">{observation.description}</div><div className="text-xs text-zinc-500">{observation.productVariantName ?? observation.productFamilyName ?? "Ohne Produkt"}</div></td><td className="px-4 py-3 text-right tabular-nums">{formatEuro(observation.effectivePrice)}</td><td className="px-4 py-3 text-right tabular-nums">{formatEuro(observation.regularPrice)}</td><td className="px-4 py-3 text-right tabular-nums">{observation.normalizedUnitPrice == null ? "-" : formatPrice(observation.normalizedUnitPrice, observation.normalizedUnit)}</td><td className="px-4 py-3"><div className="flex flex-wrap gap-1">{observation.outlier ? <Badge tone="yellow"><TriangleAlert className="mr-1 h-3 w-3" />Ausreißer</Badge> : null}{observation.excluded ? <Badge tone="red">Ausgeschlossen</Badge> : <Badge tone={observation.includedInComparison ? "green" : "neutral"}>{observation.includedInComparison ? "Im Vergleich" : "Nicht geeignet"}</Badge>}</div>{observation.exclusionReason ? <p className="mt-1 max-w-44 text-xs text-zinc-500">{observation.exclusionReason}</p> : null}</td><td className="px-4 py-3 text-right">{observation.excluded ? <Button aria-label={`${actionContext} wieder aufnehmen`} disabled={loading} onClick={() => onInclude(observation)} size="sm" variant="secondary">Wieder aufnehmen</Button> : observation.includedInComparison ? <Button aria-label={`${actionContext} ausschließen`} disabled={loading} onClick={() => onExclude(observation)} size="sm" variant="secondary">Ausschließen</Button> : null}</td></tr>; })}</tbody></table></div>{observations.length === 0 ? <EmptyState text="Keine Preisbeobachtungen für diese Auswahl." /> : null}</CardContent></Card>;
 }
 
 function ExcludeDialog({ loading, onCancel, onConfirm, onReasonChange, reason }: { loading: boolean; onCancel: () => void; onConfirm: () => void; onReasonChange: (value: string) => void; reason: string }) {
-  return <div aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog"><Card className="w-full max-w-md"><CardHeader><CardTitle>Preisbeobachtung ausschließen</CardTitle><p className="text-sm text-zinc-500">Der Ausschluss ändert keine Bon-Daten und kann später rückgängig gemacht werden.</p></CardHeader><CardContent className="space-y-4"><Input aria-label="Ausschlussgrund" maxLength={200} onChange={(event) => onReasonChange(event.target.value)} placeholder="Grund für den Ausschluss" value={reason} /><div className="flex justify-end gap-2"><Button onClick={onCancel} size="sm" variant="ghost">Abbrechen</Button><Button disabled={loading || !reason.trim()} onClick={onConfirm} size="sm" variant="danger">Ausschließen</Button></div></CardContent></Card></div>;
+  return <ModalDialog onClose={onCancel} open title="Preisbeobachtung ausschließen"><div className="mt-2 space-y-4"><p className="text-sm text-zinc-500">Der Ausschluss ändert keine Bon-Daten und kann später rückgängig gemacht werden.</p><Input aria-label="Ausschlussgrund" maxLength={200} onChange={(event) => onReasonChange(event.target.value)} placeholder="Grund für den Ausschluss" value={reason} /><div className="flex justify-end gap-2"><Button onClick={onCancel} size="sm" variant="ghost">Abbrechen</Button><Button disabled={loading || !reason.trim()} onClick={onConfirm} size="sm" variant="danger">Ausschließen</Button></div></div></ModalDialog>;
 }
 
 function EmptyState({ text }: { text: string }) {

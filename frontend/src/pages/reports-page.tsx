@@ -2,6 +2,11 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Download, Loader2 } from "lucide-react";
 
+import { DataTableFrame } from "@/components/data/data-table";
+import { FilterBar } from "@/components/data/filter-bar";
+import { StatusBanner } from "@/components/feedback/status-banner";
+import { PageHeader } from "@/components/layout/page-header";
+import { PageTabs } from "@/components/layout/page-tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -45,7 +50,8 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const loadReport = useCallback(async () => {
     if (!hasApiToken) {
@@ -57,7 +63,8 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
     }
 
     setLoading(true);
-    setError(null);
+    setLoadError(null);
+    setExportError(null);
 
     try {
       const [categoryResponse, familyResponse, variantResponse, reportResponse] = await Promise.all([
@@ -71,7 +78,7 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
       setVariants(variantResponse);
       setRows(reportResponse);
     } catch (loadError) {
-      setError(toUserMessage(loadError));
+      setLoadError(toUserMessage(loadError));
     } finally {
       setLoading(false);
     }
@@ -93,16 +100,25 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
     }
   }
 
+  function resetFilters() {
+    setPreset("currentMonth");
+    setFilters({
+      ...rangeFor("currentMonth"),
+      categoryIds: [],
+      groupBy: "month"
+    });
+  }
+
   async function exportCsv() {
     setExporting(true);
-    setError(null);
+    setExportError(null);
 
     try {
       const type = reportExportType(tab);
       const blob = await apiClient.downloadReportCsv(type, filters);
       downloadBlob(blob, `ebon-report-${type}.csv`);
     } catch (exportError) {
-      setError(toUserMessage(exportError));
+      setExportError(toUserMessage(exportError));
     } finally {
       setExporting(false);
     }
@@ -121,22 +137,34 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
 
   return (
     <div className="space-y-4">
-      {error ? <ErrorBox message={error} /> : null}
+      <PageHeader
+        actions={(
+          <Button disabled={exporting} onClick={exportCsv} size="sm" variant="secondary">
+            {exporting ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Download aria-hidden="true" className="h-4 w-4" />}
+            CSV exportieren
+          </Button>
+        )}
+        context="Analyse"
+        description="Ausgaben, Käufe und Bonuswerte mit einem gemeinsamen Filtersatz auswerten."
+        title="Reports"
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Reports</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            {tabs.map((entry) => (
-              <Button key={entry.id} onClick={() => setTab(entry.id)} size="sm" variant={tab === entry.id ? "primary" : "secondary"}>
-                {entry.label}
-              </Button>
-            ))}
-          </div>
+      {loadError ? (
+        <StatusBanner title="Report konnte nicht geladen werden" tone="error">
+          {loadError}
+        </StatusBanner>
+      ) : null}
 
-          <div className="grid gap-3 xl:grid-cols-[190px_150px_150px_minmax(220px,1fr)_180px_120px]">
+      {exportError ? (
+        <StatusBanner title="CSV-Export fehlgeschlagen" tone="error">
+          {exportError}
+        </StatusBanner>
+      ) : null}
+
+      <PageTabs active={tab} onChange={setTab} tabs={tabs} />
+
+      <FilterBar>
+          <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[190px_150px_150px_minmax(180px,1fr)_180px_120px]">
             <Field label="Zeitraum">
               <select className={selectClassName} onChange={(event) => updatePreset(event.target.value as RangePreset)} value={preset}>
                 <option value="currentMonth">Aktueller Monat</option>
@@ -195,8 +223,8 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
               </select>
             </Field>
           </div>
-          {tab === "topProducts" ? <div className="max-w-xs"><Field label="Top-Produkte sortieren nach"><select className={selectClassName} onChange={(event) => setFilters((current) => ({ ...current, topProductSort: event.target.value as "total" | "count" }))} value={filters.topProductSort ?? "total"}><option value="total">Ausgaben</option><option value="count">Kaufhäufigkeit</option></select></Field></div> : null}
-          <div className="grid gap-3 md:grid-cols-2">
+          {tab === "topProducts" ? <div className="w-full sm:w-64"><Field label="Top-Produkte sortieren nach"><select className={selectClassName} onChange={(event) => setFilters((current) => ({ ...current, topProductSort: event.target.value as "total" | "count" }))} value={filters.topProductSort ?? "total"}><option value="total">Ausgaben</option><option value="count">Kaufhäufigkeit</option></select></Field></div> : null}
+          <div className="grid w-full gap-3 sm:grid-cols-2 xl:w-auto xl:min-w-[420px]">
             <Field label="Produktfamilie">
               <select
                 className={selectClassName}
@@ -222,31 +250,43 @@ export function ReportsPage({ apiClient, hasApiToken }: ReportsPageProps) {
               </select>
             </Field>
           </div>
-        </CardContent>
-      </Card>
+          <p aria-live="polite" className="w-full text-xs text-zinc-500 dark:text-zinc-400">
+            Aktive Auswertung: {title} · {filters.dateFrom ?? "offen"} bis {filters.dateTo ?? "offen"}
+          </p>
+      </FilterBar>
+
+      {loading ? (
+        <StatusBanner ariaLabel="Report wird geladen" busy title="Report wird geladen">
+          Reportdaten werden aktualisiert.
+        </StatusBanner>
+      ) : !loadError && rows.length === 0 ? (
+        <StatusBanner
+          action={<Button onClick={resetFilters} size="sm" variant="secondary">Filter zurücksetzen</Button>}
+          ariaLabel="Keine Reportdaten"
+          title="Keine Reportdaten"
+        >
+          Filter anpassen oder zurücksetzen, um andere Ergebnisse anzuzeigen.
+        </StatusBanner>
+      ) : null}
 
       <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(420px,0.9fr)]">
-        <Card>
-          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <Card aria-label="Diagramm" role="region">
+          <CardHeader>
             <CardTitle>{title}</CardTitle>
-            <Button disabled={exporting} onClick={exportCsv} size="sm" variant="secondary">
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              CSV
-            </Button>
           </CardHeader>
           <CardContent className="h-80">
-            {loading ? <Skeleton className="h-full w-full" /> : rows.length ? <ReportChart rows={rows} tab={tab} /> : <EmptyState text="Keine Reportdaten" />}
+            {loading ? <Skeleton aria-hidden="true" className="h-full w-full" /> : !loadError && rows.length ? <ReportChart rows={rows} tab={tab} /> : null}
           </CardContent>
         </Card>
 
-        <Card>
+        <section aria-labelledby="report-table-title" className="min-w-0">
           <CardHeader>
-            <CardTitle>Tabelle</CardTitle>
+            <CardTitle id="report-table-title">Tabelle</CardTitle>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
-            {loading ? <Skeleton className="h-48 w-full" /> : rows.length ? <ReportTable rows={rows} tab={tab} /> : <EmptyState text="Keine Daten" />}
-          </CardContent>
-        </Card>
+          {loading ? <Card><CardContent><Skeleton aria-hidden="true" className="h-48 w-full" /></CardContent></Card> : !loadError && rows.length ? (
+            <DataTableFrame><ReportTable rows={rows} tab={tab} /></DataTableFrame>
+          ) : <Card><CardContent className="min-h-48">{null}</CardContent></Card>}
+        </section>
       </section>
     </div>
   );
@@ -317,22 +357,40 @@ function ReportChart({ rows, tab }: { rows: ReportRow[]; tab: ReportTab }) {
 }
 
 function ReportTable({ rows, tab }: { rows: ReportRow[]; tab: ReportTab }) {
+  const headings = tableHeadings(tab);
   return (
-    <table className="w-full min-w-[420px] text-sm">
+    <table aria-label="Reportdaten" className="w-full min-w-[520px] text-sm">
+      <caption className="sr-only">Daten der aktiven Auswertung {tabs.find((entry) => entry.id === tab)?.label}</caption>
+      <thead className="border-b border-zinc-200 bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-400">
+        <tr>
+          <th className="px-4 py-3" scope="col">{headings[0]}</th>
+          <th className="px-4 py-3 text-right" scope="col">{headings[1]}</th>
+          {headings[2] ? <th className="px-4 py-3 text-right" scope="col">{headings[2]}</th> : null}
+        </tr>
+      </thead>
       <tbody>
         {rows.map((row, index) => {
           const cells = tableCells(row, tab);
           return (
             <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-900" key={index}>
-              <td className="px-3 py-2 font-medium">{cells[0]}</td>
-              <td className="px-3 py-2 text-right">{cells[1]}</td>
-              {cells[2] ? <td className="px-3 py-2 text-right text-zinc-500 dark:text-zinc-400">{cells[2]}</td> : null}
+              <td className="px-4 py-3 font-medium">{cells[0]}</td>
+              <td className="px-4 py-3 text-right tabular-nums">{cells[1]}</td>
+              {headings[2] ? <td className="px-4 py-3 text-right tabular-nums text-zinc-500 dark:text-zinc-400">{cells[2] ?? "–"}</td> : null}
             </tr>
           );
         })}
       </tbody>
     </table>
   );
+}
+
+function tableHeadings(tab: ReportTab): string[] {
+  if (tab === "category") return ["Kategorie", "Ausgaben"];
+  if (tab === "period") return ["Zeitraum", "Ausgaben"];
+  if (tab === "store") return ["Geschäft", "Ausgaben", "Bons"];
+  if (tab === "topItems") return ["Artikel", "Ausgaben", "Käufe"];
+  if (tab === "topProducts") return ["Produktfamilie", "Ausgaben", "Käufe"];
+  return ["Bonustyp", "Punkte", "Guthaben"];
 }
 
 function chartData(rows: ReportRow[], tab: ReportTab): Array<{ label: string; value: number }> {
@@ -430,14 +488,6 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
       {children}
     </label>
   );
-}
-
-function EmptyState({ text }: { text: string }) {
-  return <div className="flex h-full min-h-48 items-center justify-center rounded-md border border-dashed border-zinc-200 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">{text}</div>;
-}
-
-function ErrorBox({ message }: { message: string }) {
-  return <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-200">{message}</div>;
 }
 
 function toUserMessage(error: unknown): string {

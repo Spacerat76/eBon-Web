@@ -267,13 +267,13 @@ const categoryIcons: CategoryIconDTO[] = [
 ];
 
 const productFamilies: ProductFamilyDTO[] = [
-  { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, createdAt: "2026-06-01T10:00:00Z", updatedAt: "2026-06-01T10:00:00Z" },
-  { id: 11, name: "Coca-Cola Zero", defaultCategoryId: null, defaultCategoryName: null, isActive: true, createdAt: "2026-06-01T10:00:00Z", updatedAt: "2026-06-01T10:00:00Z" }
+  { id: 10, name: "Haferdrink", defaultCategoryId: 2, defaultCategoryName: "Milchprodukte und Eier", isActive: true, variantCount: 1, assignedItemsCount: 1, createdAt: "2026-06-01T10:00:00Z", updatedAt: "2026-06-01T10:00:00Z" },
+  { id: 11, name: "Coca-Cola Zero", defaultCategoryId: null, defaultCategoryName: null, isActive: true, variantCount: 1, assignedItemsCount: 0, createdAt: "2026-06-01T10:00:00Z", updatedAt: "2026-06-01T10:00:00Z" }
 ];
 
 const productVariants: ProductVariantDTO[] = [
-  { id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true },
-  { id: 21, productFamilyId: 11, productFamilyName: "Coca-Cola Zero", name: "Coca-Cola Zero 0.5 l", unitQuantity: 0.5, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 0.5, totalUnit: "l", gtin: null, isActive: true }
+  { id: 20, productFamilyId: 10, productFamilyName: "Haferdrink", name: "Haferdrink 1 l", unitQuantity: 1, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 1, totalUnit: "l", gtin: null, isActive: true, assignedItemsCount: 1 },
+  { id: 21, productFamilyId: 11, productFamilyName: "Coca-Cola Zero", name: "Coca-Cola Zero 0.5 l", unitQuantity: 0.5, unit: "l", packageQuantity: 1, packageDescription: null, totalQuantity: 0.5, totalUnit: "l", gtin: null, isActive: true, assignedItemsCount: 0 }
 ];
 
 const productRules: ProductRuleDTO[] = [

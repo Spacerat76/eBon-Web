@@ -8,6 +8,8 @@ public record ProductFamilyDto(
         Long defaultCategoryId,
         String defaultCategoryName,
         boolean isActive,
+        long variantCount,
+        long assignedItemsCount,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt) {
 }

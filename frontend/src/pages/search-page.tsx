@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, Loader2, Search } from "lucide-react";
 
+import { ActiveFilterChip, FilterBar } from "@/components/data/filter-bar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +20,18 @@ interface SearchPageProps {
 
 const pageSize = 20;
 
+type SearchFilterKey =
+  | "q"
+  | "store"
+  | "dateFrom"
+  | "dateTo"
+  | "categoryIds"
+  | "productFamilyId"
+  | "productVariantId"
+  | "amountMin"
+  | "amountMax"
+  | "uncategorizedOnly";
+
 export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = false }: SearchPageProps) {
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [families, setFamilies] = useState<ProductFamilyDTO[]>([]);
@@ -33,9 +46,15 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
 
   useEffect(() => {
-    setFilters((current) => ({ ...current, page: 0, uncategorizedOnly: initialUncategorizedOnly }));
+    setFilters((current) => ({
+      ...current,
+      page: 0,
+      uncategorizedOnly: initialUncategorizedOnly,
+      categoryIds: initialUncategorizedOnly ? [] : current.categoryIds
+    }));
   }, [initialUncategorizedOnly]);
 
   const loadSearch = useCallback(async () => {
@@ -85,9 +104,31 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
     }));
   }
 
+  function clearFilter(key: SearchFilterKey) {
+    switch (key) {
+      case "q":
+      case "store":
+      case "dateFrom":
+      case "dateTo":
+      case "categoryIds":
+        updateFilter({ [key]: undefined });
+        break;
+      case "productFamilyId":
+      case "productVariantId":
+      case "amountMin":
+      case "amountMax":
+        updateFilter({ [key]: null });
+        break;
+      case "uncategorizedOnly":
+        updateFilter({ uncategorizedOnly: false });
+        break;
+    }
+  }
+
   const visibleVariants = filters.productFamilyId == null
     ? variants
     : variants.filter((variant) => variant.productFamilyId === filters.productFamilyId);
+  const activeFilters = getActiveFilters(filters, categories, families, variants);
 
   if (!hasApiToken) {
     return <AuthRequired />;
@@ -102,37 +143,54 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
           <CardTitle>Suche</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_150px_150px]">
-            <Field label="Suchtext">
-              <Input
-                onChange={(event) => updateFilter({ q: event.target.value || undefined })}
-                placeholder="Artikel oder Geschäft"
-                value={filters.q ?? ""}
-              />
-            </Field>
-            <Field label="Geschäft">
-              <Input
-                onChange={(event) => updateFilter({ store: event.target.value || undefined })}
-                placeholder="REWE, dm..."
-                value={filters.store ?? ""}
-              />
-            </Field>
-            <Field label="Von">
-              <Input onChange={(event) => updateFilter({ dateFrom: event.target.value || undefined })} type="date" value={filters.dateFrom ?? ""} />
-            </Field>
-            <Field label="Bis">
-              <Input onChange={(event) => updateFilter({ dateTo: event.target.value || undefined })} type="date" value={filters.dateTo ?? ""} />
-            </Field>
-          </div>
+          <FilterBar>
+            <div className="grid min-w-0 flex-1 gap-3 lg:grid-cols-[minmax(260px,1fr)_180px_150px_150px_190px_auto]">
+              <Field label="Suchtext">
+                <Input
+                  onChange={(event) => updateFilter({ q: event.target.value || undefined })}
+                  placeholder="Artikel oder Geschäft"
+                  value={filters.q ?? ""}
+                />
+              </Field>
+              <Field label="Geschäft">
+                <Input
+                  onChange={(event) => updateFilter({ store: event.target.value || undefined })}
+                  placeholder="REWE, dm..."
+                  value={filters.store ?? ""}
+                />
+              </Field>
+              <Field label="Von">
+                <Input onChange={(event) => updateFilter({ dateFrom: event.target.value || undefined })} type="date" value={filters.dateFrom ?? ""} />
+              </Field>
+              <Field label="Bis">
+                <Input onChange={(event) => updateFilter({ dateTo: event.target.value || undefined })} type="date" value={filters.dateTo ?? ""} />
+              </Field>
+              <label className="mt-6 flex h-10 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm dark:border-zinc-800">
+                <input
+                  checked={Boolean(filters.uncategorizedOnly)}
+                  onChange={(event) => updateFilter({
+                    uncategorizedOnly: event.target.checked,
+                    categoryIds: event.target.checked ? [] : filters.categoryIds
+                  })}
+                  type="checkbox"
+                />
+                Ohne Kategorie
+              </label>
+              <Button aria-expanded={advancedFiltersOpen} onClick={() => setAdvancedFiltersOpen((open) => !open)} variant="secondary">
+                Weitere Filter
+              </Button>
+            </div>
+          </FilterBar>
 
-          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_140px_140px_190px]">
+          {advancedFiltersOpen ? <div className="grid gap-3 rounded-xl border border-zinc-200 p-3 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,1fr)_minmax(220px,1fr)_140px_140px] dark:border-zinc-800">
             <Field label="Kategorien">
               <select
                 className={selectClassName}
                 disabled={filters.uncategorizedOnly}
                 multiple
                 onChange={(event) => updateFilter({
-                  categoryIds: Array.from(event.target.selectedOptions).map((option) => Number(option.value))
+                  categoryIds: Array.from(event.target.selectedOptions).map((option) => Number(option.value)),
+                  uncategorizedOnly: false
                 })}
                 value={(filters.categoryIds ?? []).map(String)}
               >
@@ -172,18 +230,15 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
             <Field label="Betrag bis">
               <Input onChange={(event) => updateFilter({ amountMax: numberOrNull(event.target.value) })} step="0.01" type="number" value={filters.amountMax ?? ""} />
             </Field>
-            <label className="mt-6 flex h-10 items-center gap-2 rounded-md border border-zinc-200 px-3 text-sm dark:border-zinc-800">
-              <input
-                checked={Boolean(filters.uncategorizedOnly)}
-                onChange={(event) => updateFilter({
-                  uncategorizedOnly: event.target.checked,
-                  categoryIds: event.target.checked ? [] : filters.categoryIds
-                })}
-                type="checkbox"
-              />
-              Ohne Kategorie
-            </label>
-          </div>
+          </div> : null}
+
+          {activeFilters.length ? (
+            <div aria-label="Aktive Filter" className="flex flex-wrap gap-2">
+              {activeFilters.map((filter) => (
+                <ActiveFilterChip key={filter.key} label={filter.label} onRemove={() => clearFilter(filter.key)} />
+              ))}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -222,7 +277,7 @@ export function SearchPage({ apiClient, hasApiToken, initialUncategorizedOnly = 
                       window.location.hash = `#/receipts/${result.receiptId}`;
                     }}
                   >
-                    <td className="px-3 py-2">{formatDate(result.receiptDate)}</td>
+                    <td className="px-3 py-2"><a aria-label={`Bon vom ${formatDate(result.receiptDate)} bei ${result.storeName ?? "Unbekannt"} öffnen`} className="text-blue-700 hover:underline dark:text-blue-300" href={`#/receipts/${result.receiptId}`} onClick={(event) => event.stopPropagation()}>{formatDate(result.receiptDate)}</a></td>
                     <td className="px-3 py-2">{result.storeName ?? "Unbekannt"}</td>
                     <td className="px-3 py-2">
                       <Highlighted text={result.description} terms={result.highlights} />
@@ -324,6 +379,35 @@ function ErrorBox({ message }: { message: string }) {
 
 function numberOrNull(value: string): number | null {
   return value === "" ? null : Number(value);
+}
+
+function getActiveFilters(
+  filters: SearchParams,
+  categories: CategoryDTO[],
+  families: ProductFamilyDTO[],
+  variants: ProductVariantDTO[]
+): Array<{ key: SearchFilterKey; label: string }> {
+  const active: Array<{ key: SearchFilterKey; label: string }> = [];
+  if (filters.q) active.push({ key: "q", label: `Suchtext: ${filters.q}` });
+  if (filters.store) active.push({ key: "store", label: `Geschäft: ${filters.store}` });
+  if (filters.dateFrom) active.push({ key: "dateFrom", label: `Von: ${filters.dateFrom}` });
+  if (filters.dateTo) active.push({ key: "dateTo", label: `Bis: ${filters.dateTo}` });
+  if (filters.categoryIds?.length) {
+    const names = filters.categoryIds.map((id) => categories.find((category) => category.id === id)?.name ?? `#${id}`);
+    active.push({ key: "categoryIds", label: `Kategorie: ${names.join(", ")}` });
+  }
+  if (filters.productFamilyId != null) {
+    const name = families.find((family) => family.id === filters.productFamilyId)?.name ?? `#${filters.productFamilyId}`;
+    active.push({ key: "productFamilyId", label: `Produktfamilie: ${name}` });
+  }
+  if (filters.productVariantId != null) {
+    const name = variants.find((variant) => variant.id === filters.productVariantId)?.name ?? `#${filters.productVariantId}`;
+    active.push({ key: "productVariantId", label: `Produktvariante: ${name}` });
+  }
+  if (filters.amountMin != null) active.push({ key: "amountMin", label: `Betrag von: ${filters.amountMin}` });
+  if (filters.amountMax != null) active.push({ key: "amountMax", label: `Betrag bis: ${filters.amountMax}` });
+  if (filters.uncategorizedOnly) active.push({ key: "uncategorizedOnly", label: "Ohne Kategorie" });
+  return active;
 }
 
 function toUserMessage(error: unknown): string {
