@@ -1,86 +1,49 @@
-# eBon QA Skill
+---
+name: ebon-qa
+description: Use when reviewing eBon changes, selecting verification, defining acceptance tests, or preparing a completion claim, especially for parser, sync, data-loss, secret, backup, restore, product, and external-integration risks.
+---
 
-Use this skill before finishing work, when reviewing changes, or when adding tests and acceptance criteria.
+# eBon QA
 
-## Read First
+## Principle
 
-- `ebon-specification.md` sections F-19, 12, 13, 14, 16, 17.
-- `AGENTS.md`.
+Require fresh evidence before every quality or completion claim. Run focused checks during implementation, then accumulate the full completion gate for every changed surface.
 
-## Quality Priorities
+## Verification Ladder
 
-- Correctness beats feature breadth.
-- Parser and sync behavior must be deterministic.
-- External services must be mocked in tests.
-- Data-loss risks must be tested before UI polish.
-- Secrets must never leak through logs, API responses, backups, screenshots, fixtures, or errors.
-- OpenRouter KI parsing must be tested only with mocks/test doubles; no real KI calls in automated tests or CI.
-- Prompt and raw response data must be absent by default from logs, backups, API responses, screenshots, and fixtures.
-- Product price comparison quality depends on conservative product matching. False merges between distinct sizes or package structures are higher risk than leaving items in review.
-- Product assignment must preserve auditability: source, status, confidence, review decisions, and reversible price exclusions should be testable.
+| Changed surface | During work | Before completion |
+|---|---|---|
+| Markdown, specification, skills | targeted scans | `git diff --check` and skill validation |
+| Backend | focused Maven test/class | `cd backend && mvn verify` |
+| Frontend | focused Vitest/E2E flow | `cd frontend && npm run build` |
+| Compose/devcontainer | affected config check | `docker compose config` |
+| Runtime/integration | focused mocked test | rebuild Compose and run affected smoke/E2E flow |
 
-## Required Checks by Change Type
+When surfaces overlap, run every applicable completion gate. Treat unavailable, skipped, stale, or partial checks as unverified, never passing.
 
-Spec/docs only:
+## Risk Priorities
 
-```bash
-git diff --check
-```
+Test behavior and failure paths, with highest priority for:
 
-Backend:
+- manual-edit preservation and bounded reprocessing;
+- transactional restore/reset and previewed destructive actions;
+- Paperless pagination safety before `TAG_REMOVED`;
+- mocked Paperless/OpenRouter calls and exhausted-call budgets;
+- secret, prompt, raw-response, and private-receipt absence from all outputs;
+- parser schema, required fields, contiguous indexes, sum tolerance, and corpus regressions;
+- uncategorized NULL semantics and conservative product family/variant matching;
+- backup/restore coverage for every new persistent table.
 
-```bash
-cd backend
-mvn verify
-```
+Prefer real behavior over mock verification. Add a regression test before fixing a defect. Do not weaken assertions to make an implementation pass.
 
-Frontend:
+## Completion Evidence
 
-```bash
-cd frontend
-npm run build
-```
+Before handoff:
 
-Docker/devcontainer:
+1. Re-read the relevant specification acceptance criteria.
+2. Inspect the complete diff and unrelated user changes.
+3. Run all applicable gates above and read their full output.
+4. Run `git status --short` and `git diff --check`.
+5. Report commands, outcomes, and anything not verified.
 
-```bash
-docker compose config
-```
-
-Full app, when scaffolded:
-
-```bash
-docker compose up --build
-```
-
-## Review Checklist
-
-- Does the change match `ebon-specification.md`?
-- Are DTOs and OpenAPI updated together?
-- Are migrations included for schema changes?
-- Are manually edited receipt items protected from unintended overwrite?
-- Is `TAG_REMOVED` safe against partial Paperless failures?
-- Are category deactivate/delete semantics correct?
-- Are uncategorized items represented as `category_id = NULL` and `category_source = NULL`, without a fake category or source badge?
-- Are Paperless document links built from a public URL/template and free of tokens or secrets?
-- Do dashboard labels and filters make "Letzte Bons", "Bonus", and "Ohne Kategorie" unambiguous?
-- Are data-maintenance reset operations transactional, explicitly confirmed, and limited to imported receipt data while keeping categories, rules, settings, backups, and Flyway history?
-- Are backup/restore paths transactional and lock writes?
-- Are all new secrets masked?
-- Does KI parsing adoption require valid schema, required fields, contiguous item indexes, sum tolerance, and minimum confidence?
-- Are `receipt.parse_source`, `ai_parsing_log`, and `parse_rule_suggestion` updated consistently?
-- Is automatic `parse_rule` creation blocked until a user accepts a parser rule suggestion?
-- Does automatic sync respect `ai_parsing_sync_call_limit` and leave clear `PARSE_ERROR` reasons when skipped?
-- Does `FULL_TEXT` KI parsing require explicit confirmation in manual reparse flows?
-- Are parser rule suggestions validated, editable, acceptable, rejectable, and exportable as migration drafts?
-- Do backup/restore include `ai_parsing_log` and `parse_rule_suggestion` without full prompts/raw responses?
-- Do UI tests cover the "per KI geparst" badge, KI parsing log display, parser suggestion workflow, and FULL_TEXT confirmation?
-- Do product assignment tests prevent merging distinct sizes, units, and package structures?
-- Does trusted-history assignment ignore KI-only matches as the sole evidence for future automatic variant assignment?
-- Does product-family default category fill only empty categories and preserve existing/manual categories?
-- Do product review flows cover accept, correct, reject, `NO_PRODUCT`, rule proposal, preview, and retroactive apply?
-- Do merge/split and bulk product corrections require preview and confirmation?
-- Do product price reports cover effective paid price, derivable regular price, unit conversion, multi-packs, last price, historical minimum, average, median, and outlier exclusion?
-- Do backup/restore and data-maintenance tests preserve product master data on imported-receipts reset and require a separate explicit product-data reset?
-- Does product KI assignment avoid full raw receipt text and avoid storing full prompts/raw responses by default?
-- Are tests focused on behavior rather than implementation trivia?
+Use the domain skill for detailed invariants; do not reconstruct backend, parser, frontend, or adaptive-processing rules here.
