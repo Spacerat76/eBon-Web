@@ -482,6 +482,11 @@ describe("ProductsPage", () => {
 
     await waitFor(() => expect(api.previewProductFamilyMerge).toHaveBeenCalledTimes(1));
     expect(within(card).queryByRole("button", { name: "Zusammenführen bestätigen" })).not.toBeInTheDocument();
+    const previewAgain = within(card).getByRole("button", { name: "Vorschau berechnen" });
+    expect(previewAgain).toBeEnabled();
+    await user.click(previewAgain);
+    await waitFor(() => expect(api.previewProductFamilyMerge).toHaveBeenCalledTimes(2));
+    expect(await within(card).findByRole("button", { name: "Zusammenführen bestätigen" })).toBeEnabled();
   });
 
   it("invalidates a split preview when the new product changes", async () => {
@@ -542,6 +547,26 @@ describe("ProductsPage", () => {
     expect(create).toBeDisabled();
     await user.click(create);
     expect(api.createProductFamily).toHaveBeenCalledTimes(1);
+    pending.resolve((await api.productFamilies())[0]);
+  });
+
+  it("uses the global mutation lock while a product family edit is pending", async () => {
+    const user = userEvent.setup();
+    const pending = deferred<Awaited<ReturnType<ApiClient["updateProductFamily"]>>>();
+    const api = apiClient();
+    vi.mocked(api.updateProductFamily).mockReturnValueOnce(pending.promise);
+    render(<ProductsPage apiClient={api} hasApiToken />);
+    await screen.findByText("Haferdrink Barista");
+    await user.click(screen.getByRole("tab", { name: "Familien" }));
+    await user.click(screen.getByRole("button", { name: "Familie Haferdrink bearbeiten" }));
+    const save = screen.getByRole("button", { name: "Familie aktualisieren" });
+    await user.click(save);
+
+    expect(save).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Anlegen" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Familie Haferdrink deaktivieren" })).toBeDisabled();
+    await user.click(save);
+    expect(api.updateProductFamily).toHaveBeenCalledTimes(1);
     pending.resolve((await api.productFamilies())[0]);
   });
 
