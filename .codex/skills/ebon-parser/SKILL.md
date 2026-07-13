@@ -1,81 +1,45 @@
-# eBon Parser Skill
+---
+name: ebon-parser
+description: Use when changing eBon receipt parsing, OCR normalization, parser rules, parse validation, parser corpus fixtures, AI parsing fallback, parse traces, or parser reparse behavior.
+---
 
-Use this skill for receipt parsing, parser rules, parser tests, AI parsing fallback, and parser corpus fixtures.
+# eBon Parser
 
-## Read First
+## Contract
 
-- `ebon-specification.md` sections F-02, F-13, F-19, 17.2, 17.3 when parser output affects product assignment.
-- `AGENTS.md`.
+Read `ebon-specification.md` F-02, F-13, and relevant acceptance criteria. A receipt is `PARSED` only with `total_amount`, `receipt_date`, `store_name`, and at least one item with valid `total_price`; optional time/branch may be absent. Item totals must match the receipt within `0.02`.
 
-## Parser Contract
+Use `ebon-adaptive-processing` additionally for merchant/branch profiles, fingerprints, quarantine, shadow checks, rollback, or Paperless bootstrap.
 
-A receipt is `PARSED` only if all are true:
+## Deterministic Parsing
 
-- `total_amount` exists.
-- `receipt_date` exists.
-- `store_name` exists.
-- At least one `receipt_item` exists with valid `total_price`.
+- Normalize German numbers (`1,99`, `1.234,56`) without losing negative amounts.
+- Merge multiline descriptions and keep `position_index` contiguous and unique.
+- Preserve quantity, unit, unit/total price, discount, deposit, and package text faithfully.
+- Keep positional discounts, coupons, deposits, bags, and other valid receipt positions. Do not infer product families or variants inside the parser.
+- Store only bonus points/balance newly earned on this receipt, never the loyalty account balance.
+- Preserve useful partial output with a clear non-success status and error reason.
 
-Optional fields such as `receipt_time` and `store_branch` may be missing.
+## AI Fallback Boundary
 
-Bonus fields must describe only what was newly earned in this receipt:
+- Invoke adoption fallback only after deterministic parsing fails. Shadow comparison of a valid profile result is evidence, not replacement.
+- Require the fixed F-02 JSON schema, required fields, numeric/date validity, contiguous indexes, `0.02` sum tolerance, and `ai_parsing_min_confidence`.
+- Set `parse_source = AI` only for adopted AI output and `RULE` for valid deterministic output.
+- Respect `ai_parsing_sync_call_limit`; leave an explicit error when exhausted.
+- Require explicit confirmation for manual `FULL_TEXT`; otherwise minimize text.
+- Log attempts in `ai_parsing_log` without full prompts/raw responses by default; mock AI in tests.
+- Store generated parser rules as `parse_rule_suggestion`, never active `parse_rule`. Validate regex, example extraction, and tax/TSE/payment collisions before user acceptance. Never create categorization rules here.
 
-- `bonus_balance`: newly earned monetary loyalty balance for this purchase, not the current account balance.
-- `bonus_points`: newly earned loyalty points for this purchase, not the current points balance.
-- `bonus_type`: loyalty program name such as Payback, DeutschlandCard, or Bonusclub.
+## Corpus and Verification
 
-## Normalization Rules
+Keep anonymized fixtures in `backend/src/test/resources/corpus/`; every receipt `.txt` has a matching `.expected.json`. Add a regression fixture/test before parser fixes.
 
-- Parse German numbers: `1,99` -> `1.99`, `1.234,56` -> `1234.56`.
-- Keep negative amounts, coupons, discounts, and deposits when they appear as receipt positions.
-- Merge multi-line item descriptions into one `description`.
-- Keep `position_index` contiguous and unique per receipt.
-- Sum of item totals may differ from receipt total by at most `0.02`.
-- Preserve parsed quantity, unit, unit price, total price, discounts, deposits, and package-like text as faithfully as possible because product assignment and unit-price reports depend on them.
-- Do not infer product families or variants inside the receipt parser. Product assignment is a later workflow after parsing and categorization.
-- Keep pure discounts, coupons, payment lines, deposits, and bags as receipt items when they appear as positions; Phase 15 decides whether they are products or `NO_PRODUCT`.
-
-## AI Fallback Rules
-
-- AI parsing is fallback only after rule-based parsing fails.
-- AI output must match the JSON schema in F-02.
-- Invalid AI JSON must not be trusted or persisted as parsed data.
-- Valid AI JSON may be adopted only when required fields, contiguous `position_index`, numeric/date parsing, sum tolerance `0.02`, and `ai_parsing_min_confidence` all pass.
-- Adopted AI parses must set `receipt.parse_source = AI`; valid rule-based parses must set `receipt.parse_source = RULE`.
-- The OpenRouter prompt should include minimized or explicitly confirmed full text, rule-parser partial output, and the rule-parser failure reason.
-- Automatic sync must respect `ai_parsing_sync_call_limit`; when the limit is reached the receipt remains `PARSE_ERROR` with a clear reason.
-- `FULL_TEXT` manual reparse requires explicit user confirmation.
-- AI parsing attempts must be logged in `ai_parsing_log` without storing full prompts or raw responses by default.
-- Tests must mock AI responses.
-- AI may propose parser rules as `parse_rule_suggestion` entries, never as active `parse_rule` entries directly.
-- Parser rule suggestions must include trigger, problem description, solution rationale, validation status, and may become active `parse_rule` entries only after user acceptance.
-- AI parsing and parser rule suggestions must never create `categorization_rule` entries.
-- Parser rule suggestion validation must reject invalid regexes, no-match regexes, wrong extractions, and obvious tax/TSE/payment-line collisions.
-
-## Corpus Rules
-
-Store fixtures under:
-
-```text
-backend/src/test/resources/corpus/
-```
-
-Each receipt text must have a matching `.expected.json`.
-
-Minimum fixture set:
-
-- `rewe_simple`
-- `aldi_discount`
-- `dm_bonus`
-- `lidl_multiline_items`
-- `parse_error_missing_total`
-
-## Verification
-
-Run parser-focused tests first, then full backend verification:
+Run the narrow parser test first, then:
 
 ```bash
 cd backend
 mvn test
 mvn verify
 ```
+
+Use `ebon-qa` before completion.
