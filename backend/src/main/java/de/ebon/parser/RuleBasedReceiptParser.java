@@ -1150,7 +1150,9 @@ public class RuleBasedReceiptParser {
 
     private ParsedReceiptItem parseDynamicItem(String line, List<ParseRule> rules, int positionIndex) {
         if (isMetadataLine(line) || isTotalLine(line) || isPaymentDetailLine(line)
-                || isProtectedAmountPrefix(line)) {
+                || isProtectedAmountPrefix(line)
+                // Contextual loyalty labels are metadata; words inside merchandise names are not.
+                || line.matches("(?iuU)^\\s*(?:ihr\\s+(?:guthaben|punktestand|vorteil)|gesammelte\\s+punkte)\\b.*")) {
             return null;
         }
         for (ParseRule rule : rules) {

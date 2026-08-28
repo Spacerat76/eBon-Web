@@ -68,6 +68,34 @@ class RuleBasedReceiptParserEdgeTests {
         assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"Ihr Guthaben 0,00", "Ihr Guthaben 12,34", "Gesammelte Punkte 0,00",
+            "Gesammelte Punkte 12,34", "Ihr Vorteil 0,00", "Ihr Vorteil 0,25",
+            "Ihr Punktestand 0,00", "Ihr Punktestand 12,34", "Ihr Guthaben: 0,00"})
+    void acceptedBroadRuleCannotPromoteContextualLoyaltyMetadataToItems(String metadata) {
+        String regex = "^(?<description>.+) (?<total>[0-9]+,[0-9]{2})$";
+        String text = "REWE\n18.06.2026\nGeneric item 1,99\nSUMME EUR 1,99\n" + metadata;
+        assertThat(new ParseRuleSuggestionValidator().validate(text, ParseRuleType.ITEM_PATTERN, regex, null).status())
+                .isEqualTo(ParseRuleValidationStatus.VALID);
+        ReceiptParseResult result = parserWithItemRule(regex).parse(text);
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::description).containsExactly("Generic item");
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().items().getFirst().totalPrice()).isEqualByComparingTo("1.99");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Protein Bar", "Vorteilspack Seife", "Punkteraster Heft", "Guthabenkarte Huelle",
+            "Kleid Punkte", "Gläser Punkte"})
+    void loyaltyGuardPreservesMerchandiseDescriptionsAndRepeatedSourceOrder(String description) {
+        String regex = "^(?<description>.+) (?<total>[0-9]+,[0-9]{2})$";
+        ReceiptParseResult result = parserWithItemRule(regex).parse("REWE\n18.06.2026\n" + description
+                + " 1,99\nGeneric item 1,00\n" + description + " 1,99\nSUMME EUR 4,98\n");
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::description)
+                .containsExactly(description, "Generic item", description);
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::positionIndex).containsExactly(0, 1, 2);
+    }
+
     @Test
     void protectedTaxPrefixDoesNotDiscardDescribedPercentageDiscounts() {
         ReceiptParseResult result = parserWithItemRule("^(?<description>Protein Bar) (?<total>[0-9]+,[0-9]{2})$")
