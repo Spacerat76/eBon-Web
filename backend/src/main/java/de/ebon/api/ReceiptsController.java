@@ -2,6 +2,7 @@ package de.ebon.api;
 
 import de.ebon.api.dto.PageResponse;
 import de.ebon.api.dto.PaperlessRawTextStatusDto;
+import de.ebon.api.dto.ParseTraceLineDto;
 import de.ebon.api.dto.RawTextSource;
 import de.ebon.api.dto.ReceiptDto;
 import de.ebon.api.dto.ReceiptItemCreateRequest;
@@ -18,6 +19,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
 import java.time.LocalDate;
+import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
@@ -62,6 +64,12 @@ public class ReceiptsController {
     @Operation(summary = "Bon-Details inklusive Positionen abrufen")
     public ReceiptDto getReceipt(@PathVariable Long id) {
         return receiptApiService.getReceipt(id);
+    }
+
+    @GetMapping("/api/receipts/{id}/parse-trace")
+    @Operation(summary = "Sichere Parser-Zeilenspur eines Bons abrufen")
+    public List<ParseTraceLineDto> parseTrace(@PathVariable Long id) {
+        return receiptApiService.parseTrace(id);
     }
 
     @GetMapping("/api/receipts/{id}/paperless-raw-text-status")

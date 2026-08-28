@@ -10,6 +10,10 @@ export function ParseStatusBadge({ status }: { status: ParseStatus }) {
     return <Badge tone="red">Parse-Fehler</Badge>;
   }
 
+  if (status === "PARSE_REVIEW") {
+    return <Badge tone="yellow">Prüfung erforderlich</Badge>;
+  }
+
   if (status === "MANUALLY_EDITED") {
     return <Badge tone="blue">Bearbeitet</Badge>;
   }

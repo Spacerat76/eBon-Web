@@ -5,14 +5,22 @@ import de.ebon.persistence.model.AiCategorizationRejectionReason;
 import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.CategorySource;
 import de.ebon.persistence.model.DeleteReason;
+import de.ebon.persistence.model.ExtractionStatus;
+import de.ebon.persistence.model.FormatProfileScope;
+import de.ebon.persistence.model.FormatProfileSource;
+import de.ebon.persistence.model.ParseLineType;
 import de.ebon.persistence.model.ParseStatus;
 import de.ebon.persistence.model.Receipt;
+import de.ebon.persistence.model.ReceiptFormatProfile;
 import de.ebon.persistence.model.ReceiptItem;
+import de.ebon.persistence.model.ReceiptParseTrace;
 import de.ebon.paperless.PaperlessClient;
 import de.ebon.paperless.PaperlessDocument;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
 import de.ebon.persistence.repository.CategoryRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
+import de.ebon.persistence.repository.ReceiptFormatProfileRepository;
+import de.ebon.persistence.repository.ReceiptParseTraceRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
 import de.ebon.support.PostgresIntegrationTestSupport;
 import java.math.BigDecimal;
@@ -61,6 +69,12 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
 
     @Autowired
     private ReceiptItemRepository receiptItemRepository;
+
+    @Autowired
+    private ReceiptFormatProfileRepository receiptFormatProfileRepository;
+
+    @Autowired
+    private ReceiptParseTraceRepository receiptParseTraceRepository;
 
     @Autowired
     private CategoryRepository categoryRepository;
@@ -250,6 +264,94 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(body.get("totalElements").asInt()).isEqualTo(1);
         assertThat(body.get("content").size()).isEqualTo(1);
         assertThat(body.get("content").get(0).get("storeName").asString()).isEqualTo("REWE Mitte");
+    }
+
+    // Verifies review metadata is safe to expose without serializing parser internals or AI payloads.
+    @Test
+    void parseTraceExposesReviewMetadataAndStoredLineExcerptOnly() throws Exception {
+        ReceiptFormatProfile profile = receiptFormatProfileRepository.saveAndFlush(new ReceiptFormatProfile(
+                FormatProfileScope.STORE,
+                "rewe",
+                "",
+                "profile-fingerprint-api-contract",
+                1,
+                1,
+                "{\"schemaVersion\":1}",
+                FormatProfileSource.AI_GENERATED,
+                null));
+        Receipt receipt = new Receipt(600001, "REWE\nPruefposition 1,00\nUngeklaerte Zeile");
+        receipt.applyParseResult(
+                ParseStatus.PARSE_REVIEW,
+                "UNRESOLVED_LINES",
+                LocalDate.of(2026, 7, 13),
+                null,
+                "REWE",
+                null,
+                new BigDecimal("1.00"),
+                "EUR",
+                null,
+                null,
+                null);
+        receipt.useFormatProfile(profile);
+        ReceiptItem item = new ReceiptItem(0, "Pruefposition", new BigDecimal("1.00"));
+        item.setExtractionStatus(ExtractionStatus.NEEDS_REVIEW);
+        receipt.addItem(item);
+        receipt = receiptRepository.saveAndFlush(receipt);
+        receiptParseTraceRepository.saveAndFlush(new ReceiptParseTrace(
+                receipt,
+                profile,
+                3,
+                ParseLineType.UNRESOLVED,
+                null,
+                "{\"internal\":\"not-for-api\"}",
+                "NO_MATCHING_RULE",
+                true));
+
+        HttpResponse<String> receiptResponse = sendGet("/api/receipts/" + receipt.getId());
+        HttpResponse<String> traceResponse = sendGet("/api/receipts/" + receipt.getId() + "/parse-trace");
+        JsonNode receiptBody = objectMapper.readTree(receiptResponse.body());
+        JsonNode traceBody = objectMapper.readTree(traceResponse.body());
+
+        assertThat(receiptResponse.statusCode()).isEqualTo(200);
+        assertThat(receiptBody.get("parseStatus").asString()).isEqualTo("PARSE_REVIEW");
+        assertThat(receiptBody.get("formatProfileId").asLong()).isEqualTo(profile.getId());
+        assertThat(receiptBody.get("formatProfileVersion").asInt()).isEqualTo(1);
+        assertThat(receiptBody.get("unresolvedLineCount").asInt()).isEqualTo(1);
+        assertThat(receiptBody.get("items").get(0).get("extractionStatus").asString()).isEqualTo("NEEDS_REVIEW");
+
+        assertThat(traceResponse.statusCode()).isEqualTo(200);
+        assertThat(traceBody).hasSize(1);
+        assertThat(traceBody.get(0).get("lineNumber").asInt()).isEqualTo(3);
+        assertThat(traceBody.get(0).get("lineText").asString()).isEqualTo("Ungeklaerte Zeile");
+        assertThat(traceBody.get(0).get("lineType").asString()).isEqualTo("UNRESOLVED");
+        assertThat(traceBody.get(0).get("formatProfileId").asLong()).isEqualTo(profile.getId());
+        assertThat(traceBody.get(0).get("formatProfileVersion").asInt()).isEqualTo(1);
+        assertThat(traceResponse.body()).doesNotContain("internal", "prompt", "response", "openrouter");
+    }
+
+    // Verifies the trace endpoint follows the same bearer and active-receipt boundary as receipt details.
+    @Test
+    void parseTraceRejectsMissingDeletedAndUnauthenticatedReceipts() throws Exception {
+        Receipt active = receipt("REWE", "Aktive Position");
+        Receipt deleted = receipt("REWE", "Geloeschte Position");
+        deleted.markDeleted(DeleteReason.USER_DELETED);
+        receiptRepository.saveAndFlush(deleted);
+
+        HttpResponse<String> unauthorized = httpClient.send(
+                HttpRequest.newBuilder()
+                        .uri(URI.create("http://localhost:" + port + "/api/receipts/" + active.getId() + "/parse-trace"))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> missing = sendGet("/api/receipts/999999/parse-trace");
+        HttpResponse<String> deletedResponse = sendGet("/api/receipts/" + deleted.getId() + "/parse-trace");
+        HttpResponse<String> legacy = sendGet("/api/receipts/" + active.getId() + "/parse-trace");
+
+        assertThat(unauthorized.statusCode()).isEqualTo(401);
+        assertThat(missing.statusCode()).isEqualTo(404);
+        assertThat(deletedResponse.statusCode()).isEqualTo(404);
+        assertThat(legacy.statusCode()).isEqualTo(200);
+        assertThat(objectMapper.readTree(legacy.body())).isEmpty();
     }
 
     // Verifies reparsing replaces old items safely without position-index conflicts in the database.

@@ -583,7 +583,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
   - `bonus_type`: Art des Bonusprogramms (z.B. „Payback", „DeutschlandCard", „Bonusclub")
 - **F-02.5:** Sind Pflichtfelder, Schema, Positionsindizes, Summenprüfung oder grundlegende Konsistenz nicht erfüllt, wird `parse_status = PARSE_ERROR` gesetzt und `parse_error_message` befüllt. Teilweise geparste Daten werden dennoch gespeichert. Ausnahme für unvollständige Zeilenabdeckung: Sind Pflichtfelder und bekannte Positionen verwendbar, hat `PARSE_REVIEW` nach F-02.6a Vorrang vor einer noch nicht auflösbaren Summenabweichung.
 - **F-02.6:** Ein erfolgreich und vollständig abgedeckt geparstes Dokument erhält `parse_status = PARSED`. **Definition „PARSED":** Mindestens `total_amount`, `receipt_date` und `store_name` wurden extrahiert, mindestens eine `receipt_item` besitzt einen gültigen `total_price`, die Summentoleranz `0.02` ist erfüllt und keine plausible relevante Zeile bleibt `UNRESOLVED`. Fehlen einzelne optionale Felder (z.B. `receipt_time`, `store_branch`), gilt der Bon dennoch als `PARSED`.
-- **F-02.6a:** Sind die Pflichtfelder und erkannten Positionen verwendbar, aber mindestens eine plausible relevante Zeile bleibt `UNRESOLVED`, erhält der Bon `parse_status = PARSE_REVIEW`. Jede plausible Zeile wird als Position, Metadaten/Zahlung/Summe/Steuer, explizit sicher ignoriert oder ungeklärt klassifiziert und in `receipt_parse_trace` gespeichert. Automatische Kategorisierung, Produktzuordnung und Lernprozesse dürfen nur `receipt_item` mit `extraction_status = CONFIRMED` verarbeiten; `NEEDS_REVIEW` erzeugt kein Lernwissen.
+- **F-02.6a:** Sind die Pflichtfelder und erkannten Positionen verwendbar, aber mindestens eine plausible relevante Zeile bleibt `UNRESOLVED`, erhält der Bon `parse_status = PARSE_REVIEW`. Jede plausible Zeile wird als Position, Metadaten/Zahlung/Summe/Steuer, explizit sicher ignoriert oder ungeklärt klassifiziert und in `receipt_parse_trace` gespeichert. Automatische Kategorisierung, Produktzuordnung und Lernprozesse dürfen nur `receipt_item` mit `extraction_status = CONFIRMED` verarbeiten; `NEEDS_REVIEW` erzeugt kein Lernwissen. Die geschützte Trace-API liefert ausschließlich die gespeicherte Zeilenreferenz, den daraus abgeleiteten Zeilenauszug, Klassifikation und Profilprovenienz; sie liefert keine JPA-Objekte, Prompts oder KI-Rohantworten.
 - **F-02.7:** Der Nutzer kann den Re-Parse eines einzelnen Bons über die UI triggern (UC-09).
 - **F-02.7a:** Vor einem Einzel-Reparse prüft die Anwendung den aktuellen Paperless-Text des zugehörigen Dokuments gegen den gespeicherten `receipt.raw_text`. Der Vergleich normalisiert ausschließlich Zeilenenden (`CRLF`/`LF`); sonstige Textunterschiede gelten als Änderung.
 - **F-02.7b:** Bei geändertem Paperless-Text fragt die Detailansicht ausdrücklich, ob der neue Text übernommen und für den Reparse verwendet werden soll. Der Nutzer kann alternativ den gespeicherten Rohtext verwenden oder abbrechen. Die Statusprüfung überträgt weder Rohtext noch Hashes an die UI.
@@ -1291,6 +1291,7 @@ Fehlerresponse-Format:
 |---|---|---|
 | GET | `/api/receipts` | Liste aller Bons (paginiert, filterbar nach `status`, `dateFrom`, `dateTo`, `store`) |
 | GET | `/api/receipts/{id}` | Bon-Details inkl. Positionen |
+| GET | `/api/receipts/{id}/parse-trace` | Sichere Parser-Zeilenspur mit Zeilenauszügen, Klassifikation und Profilprovenienz |
 | GET | `/api/receipts/{id}/paperless-raw-text-status` | Statusvergleich zwischen gespeichertem und aktuellem Paperless-Rohtext für einen Einzel-Reparse |
 | PUT | `/api/receipts/{id}` | Bon-Metadaten und Positionen aktualisieren |
 | POST | `/api/receipts/{id}/reparse` | Bon erneut parsen; optional `rawTextSource=STORED|PAPERLESS`, Default `STORED` |
@@ -1306,6 +1307,8 @@ Query-Parameter für `GET /api/receipts`:
 - `uncategorizedOnly` (default `false`; zeigt nur Bons mit mindestens einer Position, bei der `category_id = NULL` und `category_source = NULL`)
 
 `GET /api/receipts/{id}/paperless-raw-text-status` antwortet mit `status = UNCHANGED`, `CHANGED` oder `UNAVAILABLE`. Die Antwort enthält keinen Rohtext, keine Prüfsumme, keine Zugangsdaten und keine Details eines Paperless-Fehlers.
+
+`GET /api/receipts/{id}/parse-trace` liefert eine nach `lineNumber` aufsteigende Liste von `ParseTraceLineDTO`. Der Endpoint folgt der aktiven-Bon-Sicht: fehlende oder soft-gelöschte Bons ergeben `404`; ohne App-Bearer-Token ergibt er `401`.
 
 #### Receipt Items
 
@@ -1535,6 +1538,9 @@ Die Implementierung muss explizite Request-/Response-DTOs verwenden. JPA-Entitie
   "parseStatus": "PARSED",
   "parseSource": "AI",
   "parseErrorMessage": null,
+  "formatProfileId": 12,
+  "formatProfileVersion": 3,
+  "unresolvedLineCount": 1,
   "aiParsingSummary": {
     "lastStatus": "SUCCESS",
     "lastTrigger": "MANUAL_REPARSE",
@@ -1560,6 +1566,9 @@ Validierung:
 - `bonusBalance`: neu in diesem Einkauf gesammeltes Bonusguthaben oder `null`, nicht aktueller Bonuskonto-/Punktestand
 - `bonusPoints`: neu in diesem Einkauf gesammelte Punkte oder `null`
 - `parseSource`: `RULE`, `AI`, `MANUAL_CORRECTED` oder `null`; `AI` bedeutet, dass das aktuell gespeicherte Parsergebnis vom OpenRouter-KI-Fallback übernommen wurde
+- `parseStatus`: `PENDING`, `PARSED`, `PARSE_REVIEW`, `PARSE_ERROR` oder `MANUALLY_EDITED`; `PARSE_REVIEW` zeigt verwendbare, aber noch ungeklärte relevante Zeilen an
+- `formatProfileId`, `formatProfileVersion`: optionale, gemeinsam gesetzte Referenz auf die verwendete unveränderliche Formatprofilversion; bei Legacy-/KI-Ergebnissen ohne Profil beide `null`
+- `unresolvedLineCount`: Anzahl persistierter Trace-Zeilen mit `lineType = UNRESOLVED`
 - `aiParsingSummary`: optionaler letzter KI-Parsing-Status für UI-Badge und Detailanzeige; enthält keine Prompt- oder Rohantwortdaten
 - `rawText`: roher Paperless-Text; nur in Detail- und Mutationsantworten (`GET/PUT/POST /api/receipts/{id}`) befüllt, in Listen- und Dashboard-Antworten `null`
 
@@ -1576,6 +1585,7 @@ Validierung:
   "normalizedUnitPrice": 1.49,
   "totalPrice": 1.49,
   "discountAmount": 0.0,
+  "extractionStatus": "CONFIRMED",
   "categoryId": 2,
   "categoryName": "Lebensmittel",
   "categorySource": "RULE",
@@ -1603,6 +1613,7 @@ Validierung:
 Validierung:
 
 - `description`: Pflichtfeld, 1-512 Zeichen
+- `extractionStatus`: `CONFIRMED` oder `NEEDS_REVIEW`; nur bestätigte Positionen dürfen automatisch kategorisiert, Produkten zugeordnet oder als Lernwissen verwendet werden
 - `totalPrice`: Pflichtfeld, maximal 2 Nachkommastellen
 - `quantity`: optional, `> 0`
 - `categorySource`: `RULE`, `AI`, `MANUAL` oder `null`; `AI` nur zusammen mit gesetzter `categoryId`, `null` bedeutet „Ohne Kategorie"
@@ -1611,6 +1622,23 @@ Validierung:
 - `productAssignmentStatus`: `CONFIRMED`, `AUTO_ASSIGNED`, `NEEDS_REVIEW`, `REJECTED`, `NO_PRODUCT` oder `null`.
 - `computedUnitPrice`: aus effektiv gezahltem Preis und normalisierter Menge berechneter Einheitenpreis; `null`, wenn Einheit unbekannt oder nicht vergleichbar ist.
 - `excludeFromProductPriceComparison`: ausgeschlossene Beobachtungen bleiben sichtbar, fließen aber nicht in Produktpreisvergleichszahlen ein.
+
+### ParseTraceLineDTO
+
+```json
+{
+  "lineNumber": 14,
+  "lineText": "Ungeklaerte Position 1,99",
+  "lineType": "UNRESOLVED",
+  "positionIndex": null,
+  "reason": "NO_MATCHING_RULE",
+  "needsReview": true,
+  "formatProfileId": 12,
+  "formatProfileVersion": 3
+}
+```
+
+`lineText` wird ausschließlich aus der referenzierten 1-basierten Zeile von `receipt.raw_text` abgeleitet und ist `null`, wenn diese Quellreferenz nicht mehr auflösbar ist. `GET /api/receipts/{id}/parse-trace` ist Bearer-geschützt, akzeptiert keine gelöschten Bons und liefert für Legacy-Bons ohne Trace eine leere Liste. Die Antwort enthält weder `extracted_fields`, Prompts noch KI-Rohantworten.
 
 ### SearchResultDTO
 
@@ -2486,6 +2514,8 @@ Jede `expected.json` folgt dem KI-Parsing-JSON-Schema aus F-02. Bei negativen Te
 - Given ein gültiger Corpus-Bon, when der Parser läuft, then erfüllt das Ergebnis die Definition `PARSED`.
 - Given Pflichtfelder und erkannte Positionen sind verwendbar, aber eine plausible relevante Zeile bleibt ungeklärt, then wird `PARSE_REVIEW` gesetzt und jede relevante Zeile in `receipt_parse_trace` klassifiziert.
 - Given eine Position hat `extraction_status = NEEDS_REVIEW`, then erzeugt sie keine automatische Kategorie-/Produktzuordnung und kein Lernwissen.
+- Given ein Bon hat Profilprovenienz, ungeklärte Trace-Zeilen und `NEEDS_REVIEW`-Positionen, when seine Detail- und Trace-APIs abgerufen werden, then enthalten die DTOs `PARSE_REVIEW`, Profil-ID/-Version, die korrekte Anzahl `UNRESOLVED`, den Extraktionsstatus und nur den referenzierten Zeilenauszug ohne Prompts oder KI-Rohantworten.
+- Given ein Trace wird ohne App-Bearer-Token, für einen fehlenden oder für einen soft-gelöschten Bon abgefragt, then antwortet der Endpoint mit `401` beziehungsweise `404`; für Legacy-Bons ohne Trace ist die Antwort eine leere Liste.
 - Given eine ungeprüfte Extraktion würde zu einer Regel, KI-Antwort oder Produkthistorie passen, then bleibt sie auch bei Bulk-Regelanwendung und Reparse-Produkttransfer unberücksichtigt; ungeprüfte historische Positionen sind keine vertrauenswürdigen Produktbeispiele.
 - Given ein Profil-Parse wird wiederholt angewendet und danach durch Legacy, KI oder ein leeres Ergebnis ersetzt, then bleiben weder alte Trace-Zeilen noch eine veraltete Profilreferenz/-version erhalten.
 - Given die Item-Summe weicht bei vollständiger Zeilenabdeckung um mehr als `0.02` vom Gesamtbetrag ab, then wird `PARSE_ERROR` gesetzt und der Teilparse gespeichert. Bei ungeklärten relevanten Zeilen und verwendbaren Pflichtfeldern/Positionen gilt stattdessen `PARSE_REVIEW`; fehlende oder ungültige Pflichtdaten bleiben `PARSE_ERROR`.

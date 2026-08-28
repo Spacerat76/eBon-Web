@@ -23,6 +23,9 @@ const receipt: ReceiptDTO = {
   parseStatus: "PARSED",
   parseSource: "AI",
   parseErrorMessage: null,
+  formatProfileId: null,
+  formatProfileVersion: null,
+  unresolvedLineCount: 0,
   aiParsingSummary: {
     lastStatus: "SUCCESS",
     lastTrigger: "MANUAL_REPARSE",
@@ -44,6 +47,7 @@ const receipt: ReceiptDTO = {
       unitPrice: 3.49,
       totalPrice: 3.49,
       discountAmount: null,
+      extractionStatus: "CONFIRMED",
       categoryId: 4,
       categoryName: "Getränke",
       categorySource: "RULE",

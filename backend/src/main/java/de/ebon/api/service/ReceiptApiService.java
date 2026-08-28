@@ -6,6 +6,7 @@ import de.ebon.api.dto.PageResponse;
 import de.ebon.api.dto.DataMaintenanceResultDto;
 import de.ebon.api.dto.PaperlessRawTextStatus;
 import de.ebon.api.dto.PaperlessRawTextStatusDto;
+import de.ebon.api.dto.ParseTraceLineDto;
 import de.ebon.api.dto.RawTextSource;
 import de.ebon.api.dto.ReceiptDto;
 import de.ebon.api.dto.ReceiptItemCreateRequest;
@@ -31,14 +32,17 @@ import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.DeleteReason;
 import de.ebon.persistence.model.ParseRuleSuggestionStatus;
 import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.ParseLineType;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
+import de.ebon.persistence.model.ReceiptParseTrace;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
 import de.ebon.persistence.repository.AiParsingLogRepository;
 import de.ebon.persistence.repository.AppSettingRepository;
 import de.ebon.persistence.repository.CategoryRepository;
 import de.ebon.persistence.repository.ParseRuleSuggestionRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
+import de.ebon.persistence.repository.ReceiptParseTraceRepository;
 import de.ebon.persistence.repository.ReceiptRepository;
 import jakarta.persistence.EntityNotFoundException;
 import jakarta.persistence.criteria.Predicate;
@@ -66,6 +70,7 @@ public class ReceiptApiService {
 
     private final ReceiptRepository receiptRepository;
     private final ReceiptItemRepository receiptItemRepository;
+    private final ReceiptParseTraceRepository receiptParseTraceRepository;
     private final CategoryRepository categoryRepository;
     private final AiCategorizationLogRepository aiCategorizationLogRepository;
     private final AiParsingLogRepository aiParsingLogRepository;
@@ -92,6 +97,7 @@ public class ReceiptApiService {
         this(
                 receiptRepository,
                 receiptItemRepository,
+                null,
                 categoryRepository,
                 aiCategorizationLogRepository,
                 null,
@@ -120,6 +126,7 @@ public class ReceiptApiService {
         this(
                 receiptRepository,
                 receiptItemRepository,
+                null,
                 categoryRepository,
                 aiCategorizationLogRepository,
                 null,
@@ -151,6 +158,7 @@ public class ReceiptApiService {
         this(
                 receiptRepository,
                 receiptItemRepository,
+                null,
                 categoryRepository,
                 aiCategorizationLogRepository,
                 aiParsingLogRepository,
@@ -169,6 +177,7 @@ public class ReceiptApiService {
     public ReceiptApiService(
             ReceiptRepository receiptRepository,
             ReceiptItemRepository receiptItemRepository,
+            ReceiptParseTraceRepository receiptParseTraceRepository,
             CategoryRepository categoryRepository,
             AiCategorizationLogRepository aiCategorizationLogRepository,
             AiParsingLogRepository aiParsingLogRepository,
@@ -183,6 +192,7 @@ public class ReceiptApiService {
             PaperlessClient paperlessClient) {
         this.receiptRepository = receiptRepository;
         this.receiptItemRepository = receiptItemRepository;
+        this.receiptParseTraceRepository = receiptParseTraceRepository;
         this.categoryRepository = categoryRepository;
         this.aiCategorizationLogRepository = aiCategorizationLogRepository;
         this.aiParsingLogRepository = aiParsingLogRepository;
@@ -226,6 +236,14 @@ public class ReceiptApiService {
     public ReceiptDto getReceipt(Long id) {
         Receipt receipt = activeReceipt(id);
         return toReceiptDto(receipt, receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(id), true);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ParseTraceLineDto> parseTrace(Long id) {
+        Receipt receipt = activeReceipt(id);
+        return receiptParseTraceRepository.findByReceipt_IdOrderByLineNumberAsc(receipt.getId()).stream()
+                .map(trace -> toParseTraceLineDto(receipt, trace))
+                .toList();
     }
 
     @Transactional
@@ -553,6 +571,9 @@ public class ReceiptApiService {
                 receipt.getParseStatus(),
                 receipt.getParseSource(),
                 receipt.getParseErrorMessage(),
+                receipt.getReceiptFormatProfile() == null ? null : receipt.getReceiptFormatProfile().getId(),
+                receipt.getFormatProfileVersion(),
+                unresolvedLineCount(receipt.getId()),
                 aiParsingSummary(receipt.getId()),
                 receipt.getDeletedAt(),
                 receipt.getDeleteReason(),
@@ -574,6 +595,7 @@ public class ReceiptApiService {
                 item.getUnitPrice(),
                 item.getTotalPrice(),
                 item.getDiscountAmount(),
+                item.getExtractionStatus(),
                 category == null ? null : category.getId(),
                 category == null ? null : category.getName(),
                 category == null ? null : item.getCategorySource(),
@@ -590,6 +612,31 @@ public class ReceiptApiService {
                 priceQuote.normalizedUnit(),
                 item.isExcludedFromProductPriceComparison(),
                 item.getProductPriceExclusionReason());
+    }
+
+    private long unresolvedLineCount(Long receiptId) {
+        return receiptParseTraceRepository == null ? 0
+                : receiptParseTraceRepository.countByReceipt_IdAndLineType(receiptId, ParseLineType.UNRESOLVED);
+    }
+
+    private ParseTraceLineDto toParseTraceLineDto(Receipt receipt, ReceiptParseTrace trace) {
+        return new ParseTraceLineDto(
+                trace.getLineNumber(),
+                receiptLine(receipt.getRawText(), trace.getLineNumber()),
+                trace.getLineType(),
+                trace.getPositionIndex(),
+                trace.getReason(),
+                trace.isNeedsReview(),
+                trace.getFormatProfile() == null ? null : trace.getFormatProfile().getId(),
+                trace.getFormatProfileVersion());
+    }
+
+    private String receiptLine(String rawText, int lineNumber) {
+        if (rawText == null || lineNumber < 1) {
+            return null;
+        }
+        String[] lines = rawText.split("\\R", -1);
+        return lineNumber <= lines.length ? lines[lineNumber - 1] : null;
     }
 
     private AiSuggestionDto latestAiSuggestion(Long receiptItemId) {

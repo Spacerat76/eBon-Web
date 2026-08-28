@@ -1,4 +1,8 @@
-export type ParseStatus = "PENDING" | "PARSED" | "PARSE_ERROR" | "MANUALLY_EDITED";
+export type ParseStatus = "PENDING" | "PARSED" | "PARSE_REVIEW" | "PARSE_ERROR" | "MANUALLY_EDITED";
+
+export type ExtractionStatus = "CONFIRMED" | "NEEDS_REVIEW";
+
+export type ParseLineType = "POSITION" | "METADATA" | "PAYMENT" | "TOTAL" | "TAX" | "IGNORED_SAFE" | "UNRESOLVED";
 
 export type ParseSource = "RULE" | "AI" | "MANUAL_CORRECTED";
 
@@ -203,6 +207,7 @@ export interface ReceiptItemDTO {
   unitPrice: number | null;
   totalPrice: number;
   discountAmount: number | null;
+  extractionStatus: ExtractionStatus;
   categoryId: number | null;
   categoryName: string | null;
   categorySource: CategorySource | null;
@@ -238,11 +243,25 @@ export interface ReceiptDTO {
   parseStatus: ParseStatus;
   parseSource: ParseSource | null;
   parseErrorMessage: string | null;
+  formatProfileId: number | null;
+  formatProfileVersion: number | null;
+  unresolvedLineCount: number;
   aiParsingSummary: AiParsingSummaryDTO | null;
   deletedAt: string | null;
   deleteReason: DeleteReason | null;
   rawText: string | null;
   items: ReceiptItemDTO[];
+}
+
+export interface ParseTraceLineDTO {
+  lineNumber: number;
+  lineText: string | null;
+  lineType: ParseLineType;
+  positionIndex: number | null;
+  reason: string | null;
+  needsReview: boolean;
+  formatProfileId: number | null;
+  formatProfileVersion: number | null;
 }
 
 export interface PaperlessRawTextStatusDTO {

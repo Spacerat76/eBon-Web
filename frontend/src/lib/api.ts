@@ -53,6 +53,7 @@ import type {
   ParseRuleSuggestionDTO,
   ParseRuleSuggestionStatus,
   ParseRuleSuggestionUpdateRequest,
+  ParseTraceLineDTO,
   ReceiptDTO,
   ReceiptItemCreateRequest,
   ReceiptItemDTO,
@@ -140,6 +141,10 @@ export class ApiClient {
 
   receipt(id: number): Promise<ReceiptDTO> {
     return this.request(`/receipts/${id}`);
+  }
+
+  parseTrace(id: number): Promise<ParseTraceLineDTO[]> {
+    return this.request(`/receipts/${id}/parse-trace`);
   }
 
   paperlessRawTextStatus(id: number): Promise<PaperlessRawTextStatusDTO> {

@@ -8,6 +8,7 @@ describe("receipt badges", () => {
     render(
       <>
         <ParseStatusBadge status="PARSED" />
+        <ParseStatusBadge status="PARSE_REVIEW" />
         <ParseStatusBadge status="PARSE_ERROR" />
         <ParseStatusBadge status="MANUALLY_EDITED" />
         <ParseStatusBadge status="PENDING" />
@@ -15,6 +16,7 @@ describe("receipt badges", () => {
     );
 
     expect(screen.getByText("Geparst")).toBeInTheDocument();
+    expect(screen.getByText("Prüfung erforderlich")).toBeInTheDocument();
     expect(screen.getByText("Parse-Fehler")).toBeInTheDocument();
     expect(screen.getByText("Bearbeitet")).toBeInTheDocument();
     expect(screen.getByText("Ausstehend")).toBeInTheDocument();

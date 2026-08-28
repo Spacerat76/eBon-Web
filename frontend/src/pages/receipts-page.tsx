@@ -122,6 +122,7 @@ const defaultFilters: ReceiptFilters = {
 const statusOptions: Array<{ value: ParseStatus | ""; label: string }> = [
   { value: "", label: "Alle Status" },
   { value: "PARSED", label: "Geparst" },
+  { value: "PARSE_REVIEW", label: "Prüfung erforderlich" },
   { value: "PARSE_ERROR", label: "Parse-Fehler" },
   { value: "MANUALLY_EDITED", label: "Bearbeitet" },
   { value: "PENDING", label: "Ausstehend" }
@@ -1912,7 +1913,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isParseStatusFilter(value: unknown): value is ReceiptFilters["status"] {
-  return value === "" || value === "PENDING" || value === "PARSED" || value === "PARSE_ERROR" || value === "MANUALLY_EDITED";
+  return value === "" || value === "PENDING" || value === "PARSED" || value === "PARSE_REVIEW" || value === "PARSE_ERROR" || value === "MANUALLY_EDITED";
 }
 
 function isSortKey(value: unknown): value is SortKey {

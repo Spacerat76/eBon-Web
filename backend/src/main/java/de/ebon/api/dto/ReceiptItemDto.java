@@ -1,6 +1,7 @@
 package de.ebon.api.dto;
 
 import de.ebon.persistence.model.CategorySource;
+import de.ebon.persistence.model.ExtractionStatus;
 import de.ebon.persistence.model.ProductAssignmentSource;
 import de.ebon.persistence.model.ProductAssignmentStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -17,6 +18,7 @@ public record ReceiptItemDto(
         BigDecimal unitPrice,
         BigDecimal totalPrice,
         BigDecimal discountAmount,
+        ExtractionStatus extractionStatus,
         @Schema(nullable = true)
         Long categoryId,
         @Schema(nullable = true, example = "Lebensmittel")
