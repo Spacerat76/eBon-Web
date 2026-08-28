@@ -1,0 +1,6 @@
+{
+  "parseStatus":"PARSE_REVIEW", "receiptDate":"2026-07-13", "storeName":"TESTMARKT", "totalAmount":2.49,
+  "items":[{"positionIndex":0,"description":"Bio Apfel","totalPrice":1.99}],
+  "lineTypes":["METADATA","METADATA","METADATA","POSITION","UNRESOLVED","TOTAL","PAYMENT"],
+  "positionIndices":[null,null,null,0,null,null,null]
+}

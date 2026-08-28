@@ -580,7 +580,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
   - `bonus_balance`: In diesem Einkauf neu gesammeltes Bonusguthaben, nicht das aktuelle Bonuskonto-/Punkteguthaben
   - `bonus_points`: In diesem Einkauf neu gesammelte Payback-Punkte oder ähnliche Punktesysteme (mit Typ-Angabe)
   - `bonus_type`: Art des Bonusprogramms (z.B. „Payback", „DeutschlandCard", „Bonusclub")
-- **F-02.5:** Sind Pflichtfelder, Schema, Positionsindizes, Summenprüfung oder grundlegende Konsistenz nicht erfüllt, wird `parse_status = PARSE_ERROR` gesetzt und `parse_error_message` befüllt. Teilweise geparste Daten werden dennoch gespeichert.
+- **F-02.5:** Sind Pflichtfelder, Schema, Positionsindizes, Summenprüfung oder grundlegende Konsistenz nicht erfüllt, wird `parse_status = PARSE_ERROR` gesetzt und `parse_error_message` befüllt. Teilweise geparste Daten werden dennoch gespeichert. Ausnahme für unvollständige Zeilenabdeckung: Sind Pflichtfelder und bekannte Positionen verwendbar, hat `PARSE_REVIEW` nach F-02.6a Vorrang vor einer noch nicht auflösbaren Summenabweichung.
 - **F-02.6:** Ein erfolgreich und vollständig abgedeckt geparstes Dokument erhält `parse_status = PARSED`. **Definition „PARSED":** Mindestens `total_amount`, `receipt_date` und `store_name` wurden extrahiert, mindestens eine `receipt_item` besitzt einen gültigen `total_price`, die Summentoleranz `0.02` ist erfüllt und keine plausible relevante Zeile bleibt `UNRESOLVED`. Fehlen einzelne optionale Felder (z.B. `receipt_time`, `store_branch`), gilt der Bon dennoch als `PARSED`.
 - **F-02.6a:** Sind die Pflichtfelder und erkannten Positionen verwendbar, aber mindestens eine plausible relevante Zeile bleibt `UNRESOLVED`, erhält der Bon `parse_status = PARSE_REVIEW`. Jede plausible Zeile wird als Position, Metadaten/Zahlung/Summe/Steuer, explizit sicher ignoriert oder ungeklärt klassifiziert und in `receipt_parse_trace` gespeichert. Automatische Kategorisierung, Produktzuordnung und Lernprozesse dürfen nur `receipt_item` mit `extraction_status = CONFIRMED` verarbeiten; `NEEDS_REVIEW` erzeugt kein Lernwissen.
 - **F-02.7:** Der Nutzer kann den Re-Parse eines einzelnen Bons über die UI triggern (UC-09).
@@ -597,7 +597,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 - Deutsche Zahlenformate werden normalisiert: `1,99` → `1.99`, `1.234,56` → `1234.56`.
 - Negative Beträge, Rabatte, Coupons und Pfandpositionen werden als eigene Positionen gespeichert, sofern sie im Bon als Position erscheinen.
 - Mehrzeilige Artikelbezeichnungen werden zu einer `description` zusammengeführt.
-- Die Summe aller `receipt_item.total_price` darf vom `receipt.total_amount` maximal um `0.02` abweichen. Die Toleranz gilt unverändert auch für Profile; größere Abweichungen setzen `parse_status = PARSE_ERROR`, speichern aber den Teilparse.
+- Die Summe aller `receipt_item.total_price` darf vom `receipt.total_amount` maximal um `0.02` abweichen. Die `PARSED`-Toleranz gilt unverändert auch für Profile; größere Abweichungen setzen bei vollständiger Zeilenabdeckung `parse_status = PARSE_ERROR`, speichern aber den Teilparse. Bei verwendbaren Pflichtfeldern und bekannten Positionen sowie ungeklärten relevanten Zeilen gilt stattdessen `PARSE_REVIEW` (F-02.6a), auch wenn die bekannte Positionssumme noch abweicht.
 - `receipt_item.position_index` ist pro Bon fortlaufend und eindeutig.
 
 **JSON-Schema für KI-Parsing-Fallback (semantisch):**
@@ -2482,7 +2482,7 @@ Jede `expected.json` folgt dem KI-Parsing-JSON-Schema aus F-02. Bei negativen Te
 - Given ein gültiger Corpus-Bon, when der Parser läuft, then erfüllt das Ergebnis die Definition `PARSED`.
 - Given Pflichtfelder und erkannte Positionen sind verwendbar, aber eine plausible relevante Zeile bleibt ungeklärt, then wird `PARSE_REVIEW` gesetzt und jede relevante Zeile in `receipt_parse_trace` klassifiziert.
 - Given eine Position hat `extraction_status = NEEDS_REVIEW`, then erzeugt sie keine automatische Kategorie-/Produktzuordnung und kein Lernwissen.
-- Given die Item-Summe weicht um mehr als `0.02` vom Gesamtbetrag ab, then wird `PARSE_ERROR` gesetzt und der Teilparse gespeichert.
+- Given die Item-Summe weicht bei vollständiger Zeilenabdeckung um mehr als `0.02` vom Gesamtbetrag ab, then wird `PARSE_ERROR` gesetzt und der Teilparse gespeichert. Bei ungeklärten relevanten Zeilen und verwendbaren Pflichtfeldern/Positionen gilt stattdessen `PARSE_REVIEW`; fehlende oder ungültige Pflichtdaten bleiben `PARSE_ERROR`.
 - Given zwei Fingerprint-Algorithmusversionen erzeugen denselben Fingerprint-Text, then werden ihre aktiven Profile getrennt ausgewählt.
 - Given Profildefinition, Vorgängerkette oder gespeicherte Profil-ID/Version widersprechen der unveränderlichen Profilidentität, then lehnt die Datenbank die Änderung ab.
 - Given regelbasiertes Parsing scheitert und KI liefert valides JSON, then wird der Bon aus dem KI-JSON gespeichert.

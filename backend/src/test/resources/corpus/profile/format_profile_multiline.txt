@@ -1,0 +1,12 @@
+TESTMARKT
+13.07.2026
+ARTIKEL PREIS
+Bio Apfel 1,99
+aus der Region
+Pfand 0,25
+Rabatt -0,10
+SUMME 2,14
+MWST 0,14
+GIROCARD 2,14
+TSE 123456
+Danke

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "anchors": [
+    {"id":"merchant","regex":"^TESTMARKT$","required":true},
+    {"id":"start","regex":"^ARTIKEL PREIS$","required":true},
+    {"id":"end","regex":"^SUMME .+$","required":true}
+  ],
+  "fields": [
+    {"field":"STORE_NAME","regex":"^(TESTMARKT)$","captureGroup":1,"required":true},
+    {"field":"RECEIPT_DATE","regex":"^([0-9]{2}\\.[0-9]{2}\\.[0-9]{4})$","captureGroup":1,"required":true},
+    {"field":"TOTAL_AMOUNT","regex":"^SUMME (.+)$","captureGroup":1,"required":true}
+  ],
+  "itemRules": [
+    {"regex":"^(Bio Apfel) (.+)$","captures":{"DESCRIPTION":1,"TOTAL_PRICE":2},"region":{"startAnchor":"start","endAnchor":"end"},"multiline":{"regex":"^(aus der Region)$","descriptionGroup":1,"maxLines":2,"placement":"AFTER"},"type":"ITEM"},
+    {"regex":"^(Pfand) (.+)$","captures":{"DESCRIPTION":1,"TOTAL_PRICE":2},"region":{"startAnchor":"start","endAnchor":"end"},"type":"DEPOSIT"},
+    {"regex":"^(Rabatt) (.+)$","captures":{"DESCRIPTION":1,"TOTAL_PRICE":2},"region":{"startAnchor":"start","endAnchor":"end"},"type":"DISCOUNT"}
+  ],
+  "lineRules": [
+    {"regex":"^MWST .+$","type":"TAX"},
+    {"regex":"^GIROCARD .+$","type":"PAYMENT"},
+    {"regex":"^TSE .+$","type":"TSE"},
+    {"regex":"^Danke$","type":"IGNORED_SAFE"}
+  ]
+}

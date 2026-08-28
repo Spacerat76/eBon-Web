@@ -1,0 +1,10 @@
+{
+  "parseStatus":"PARSED", "receiptDate":"2026-07-13", "storeName":"TESTMARKT", "totalAmount":2.14,
+  "items":[
+    {"positionIndex":0,"description":"Bio Apfel aus der Region","totalPrice":1.99},
+    {"positionIndex":1,"description":"Pfand","totalPrice":0.25},
+    {"positionIndex":2,"description":"Rabatt","totalPrice":-0.10}
+  ],
+  "lineTypes":["METADATA","METADATA","METADATA","POSITION","POSITION","POSITION","POSITION","TOTAL","TAX","PAYMENT","METADATA","IGNORED_SAFE"],
+  "positionIndices":[null,null,null,0,0,1,2,null,null,null,null,null]
+}

@@ -3,22 +3,14 @@ package de.ebon.parser;
 import de.ebon.persistence.model.ParseStatus;
 import java.math.BigDecimal;
 
-class ReceiptParseValidator {
+public class ReceiptParseValidator {
 
     private static final BigDecimal SUM_TOLERANCE = new BigDecimal("0.02");
 
-    ReceiptParseResult validate(ParsedReceipt receipt) {
-        if (receipt.totalAmount() == null) {
-            return error(receipt, "total_amount fehlt.");
-        }
-        if (receipt.receiptDate() == null) {
-            return error(receipt, "receipt_date fehlt.");
-        }
-        if (receipt.storeName() == null || receipt.storeName().isBlank()) {
-            return error(receipt, "store_name fehlt.");
-        }
-        if (receipt.items().isEmpty() || receipt.items().stream().anyMatch(item -> item.totalPrice() == null)) {
-            return error(receipt, "receipt_items fehlen oder enthalten ungueltige total_price-Werte.");
+    public ReceiptParseResult validate(ParsedReceipt receipt) {
+        String requiredDataError = requiredDataError(receipt);
+        if (requiredDataError != null) {
+            return error(receipt, requiredDataError);
         }
 
         BigDecimal itemSum = receipt.items().stream()
@@ -30,6 +22,23 @@ class ReceiptParseValidator {
         }
 
         return new ReceiptParseResult(ParseStatus.PARSED, receipt, null);
+    }
+
+    /** Shared required-data check, independent of a possibly incomplete item subtotal. */
+    public String requiredDataError(ParsedReceipt receipt) {
+        if (receipt.totalAmount() == null) {
+            return "total_amount fehlt.";
+        }
+        if (receipt.receiptDate() == null) {
+            return "receipt_date fehlt.";
+        }
+        if (receipt.storeName() == null || receipt.storeName().isBlank()) {
+            return "store_name fehlt.";
+        }
+        if (receipt.items().isEmpty() || receipt.items().stream().anyMatch(item -> item.totalPrice() == null)) {
+            return "receipt_items fehlen oder enthalten ungueltige total_price-Werte.";
+        }
+        return null;
     }
 
     ReceiptParseResult error(ParsedReceipt receipt, String message) {
