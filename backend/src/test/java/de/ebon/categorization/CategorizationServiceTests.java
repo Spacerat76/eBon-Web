@@ -36,6 +36,33 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestPropertySource(properties = "app.sync.scheduler.enabled=false")
 class CategorizationServiceTests extends PostgresIntegrationTestSupport {
 
+    @Test
+    void uncertainExtractionIsExcludedFromRulesAndBulkRules() {
+        CategorizationRule rule = ruleRepository.save(new CategorizationRule(category("Lebensmittel"),
+                RuleMatchField.DESCRIPTION, RuleMatchType.CONTAINS, "Milch", 1));
+        Receipt uncertain = receipt("REWE", "Bio Milch");
+        firstItem(uncertain).setExtractionStatus(de.ebon.persistence.model.ExtractionStatus.NEEDS_REVIEW);
+        Receipt confirmed = receipt("Lidl", "Frische Milch");
+
+        categorizationService.categorizeReceipt(uncertain.getId());
+        assertThat(firstItem(uncertain).getCategory()).isNull();
+        assertThat(categorizationService.applyRuleToExistingItems(rule.getId())).isEqualTo(1);
+        assertThat(firstItem(uncertain).getCategory()).isNull();
+        assertThat(firstItem(confirmed).getCategorySource()).isEqualTo(CategorySource.RULE);
+    }
+
+    @Test
+    void uncertainExtractionIsNeverSentToAiOrLoggedAsLearningEvidence() {
+        aiClient.available = true;
+        Receipt uncertain = receipt("dm", "Shampoo");
+        firstItem(uncertain).setExtractionStatus(de.ebon.persistence.model.ExtractionStatus.NEEDS_REVIEW);
+        aiClient.suggest(firstItem(uncertain).getId(), "Drogerie", new BigDecimal("0.990"));
+        categorizationService.categorizeReceipt(uncertain.getId());
+        assertThat(firstItem(uncertain).getCategory()).isNull();
+        assertThat(aiClient.callCount).isZero();
+        assertThat(aiLogRepository.count()).isZero();
+    }
+
     @Autowired
     private CategorizationService categorizationService;
 

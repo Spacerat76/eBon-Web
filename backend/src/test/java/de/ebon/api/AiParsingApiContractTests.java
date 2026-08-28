@@ -41,6 +41,29 @@ import static org.assertj.core.api.Assertions.assertThat;
 })
 class AiParsingApiContractTests extends PostgresIntegrationTestSupport {
 
+    @Autowired
+    private de.ebon.api.service.AiParsingApiService aiParsingApiService;
+
+    @Test
+    void acceptingParserRuleCannotSilentlyOverwriteManualReceiptItems() {
+        ParseRuleSuggestion suggestion = parserSuggestion();
+        Long receiptId = suggestion.getReceipt().getId();
+        jdbcTemplate.update("update receipt_item set description = 'Manuell geschützt', is_manually_edited = true where receipt_id = ?",
+                receiptId);
+        aiParsingApiService.acceptSuggestion(suggestion.getId(),
+                new de.ebon.api.dto.ParseRuleSuggestionAcceptRequest(null,
+                        de.ebon.api.dto.ParseRuleSuggestionAcceptRequest.ReparseScope.CURRENT_RECEIPT));
+        assertThat(jdbcTemplate.queryForObject("select description from receipt_item where receipt_id = ?",
+                String.class, receiptId)).isEqualTo("Manuell geschützt");
+        assertThat(jdbcTemplate.queryForObject("select parse_source from receipt where id = ?",
+                String.class, receiptId)).isEqualTo("AI");
+        assertThat(suggestionRepository.findById(suggestion.getId()).orElseThrow().getStatus())
+                .isEqualTo(de.ebon.persistence.model.ParseRuleSuggestionStatus.ACCEPTED);
+        Long ruleId = suggestionRepository.findById(suggestion.getId()).orElseThrow().getAcceptedParseRule().getId();
+        jdbcTemplate.update("delete from parse_rule_suggestion where id = ?", suggestion.getId());
+        jdbcTemplate.update("delete from parse_rule where id = ?", ruleId);
+    }
+
     private final HttpClient httpClient = HttpClient.newHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
 

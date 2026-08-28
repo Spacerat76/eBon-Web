@@ -4,6 +4,7 @@ import de.ebon.persistence.model.ProductAssignmentLog;
 import de.ebon.persistence.model.ProductAssignmentSource;
 import de.ebon.persistence.model.ProductAssignmentStatus;
 import de.ebon.persistence.model.ReceiptItem;
+import de.ebon.persistence.model.ExtractionStatus;
 import de.ebon.persistence.repository.ProductAssignmentLogRepository;
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -27,7 +28,8 @@ public class ProductAssignmentTransferService {
     }
 
     public void transferConfirmedAssignments(List<ReceiptItem> previousItems, List<ReceiptItem> reparsedItems) {
-        List<ReceiptItem> availableItems = new ArrayList<>(reparsedItems);
+        List<ReceiptItem> availableItems = new ArrayList<>(reparsedItems.stream()
+                .filter(item -> item.getExtractionStatus() == ExtractionStatus.CONFIRMED).toList());
         for (ReceiptItem previous : previousItems) {
             if (!isConfirmedManualAssignment(previous)) {
                 continue;

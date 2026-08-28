@@ -760,6 +760,7 @@ public class RuleBasedReceiptParser {
         List<String> pendingDescriptionLines = new ArrayList<>();
         boolean quantityArticleTable = hasQuantityArticleTable(lines);
         List<ParseRule> dynamicTotalRules = activeRules(ParseRuleType.TOTAL_PATTERN, storeName);
+        List<ParseRule> dynamicItemRules = activeRules(ParseRuleType.ITEM_PATTERN, storeName);
         QuantityDetails leadingQuantityDetails = null;
         String pendingStornoDescription = null;
         StarFuelDetails pendingStarFuelDetails = null;
@@ -959,12 +960,19 @@ public class RuleBasedReceiptParser {
                 continue;
             }
 
-            if (!isMetadataLine(line)) {
+            ParsedReceiptItem dynamicItem = parseDynamicItem(line, dynamicItemRules, items.size());
+            if (dynamicItem != null) {
+                // Compose at the original source line, once. This also makes quantity/details/storno
+                // operate on the same sequence and keeps this line out of a later generic description.
+                pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
+                items.add(dynamicItem);
+            } else if (!isMetadataLine(line)) {
                 pendingDescriptionLines.add(line);
             }
         }
 
-        return items.isEmpty() ? parseDynamicItems(lines, storeName) : items;
+        return items;
     }
 
     private StarFuelDetails parseStarFuelQuantityLine(String line) {
@@ -1136,22 +1144,17 @@ public class RuleBasedReceiptParser {
         return itemTotal.subtract(totalAmount).abs().compareTo(new BigDecimal("0.02")) <= 0;
     }
 
-    private List<ParsedReceiptItem> parseDynamicItems(List<String> lines, String storeName) {
-        List<ParsedReceiptItem> items = new ArrayList<>();
-        List<ParseRule> rules = activeRules(ParseRuleType.ITEM_PATTERN, storeName);
-        for (String line : lines) {
-            if (isMetadataLine(line) || isTotalLine(line) || isPaymentDetailLine(line)) {
-                continue;
-            }
-            for (ParseRule rule : rules) {
-                ParsedReceiptItem item = parseDynamicItemLine(line, rule, items.size());
-                if (item != null) {
-                    items.add(item);
-                    break;
-                }
+    private ParsedReceiptItem parseDynamicItem(String line, List<ParseRule> rules, int positionIndex) {
+        if (isMetadataLine(line) || isTotalLine(line) || isPaymentDetailLine(line)) {
+            return null;
+        }
+        for (ParseRule rule : rules) {
+            ParsedReceiptItem item = parseDynamicItemLine(line, rule, positionIndex);
+            if (item != null) {
+                return item;
             }
         }
-        return items;
+        return null;
     }
 
     private ParsedReceiptItem parseDynamicItemLine(String line, ParseRule rule, int positionIndex) {

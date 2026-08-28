@@ -21,6 +21,20 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class ProductAssignmentTransferServiceTests {
 
+    @Test
+    void uncertainReparseCannotInheritConfirmedProductAssignment() {
+        ProductFamily family = new ProductFamily("Milch", null);
+        ReceiptItem previous = item("Milch", BigDecimal.ONE, "l", BigDecimal.ONE);
+        previous.assignProduct(family, null, ProductAssignmentSource.MANUAL, ProductAssignmentStatus.CONFIRMED, null);
+        ReceiptItem uncertain = item("Milch", BigDecimal.ONE, "l", BigDecimal.ONE);
+        uncertain.setExtractionStatus(de.ebon.persistence.model.ExtractionStatus.NEEDS_REVIEW);
+        new ProductAssignmentTransferService(assignmentLogRepository)
+                .transferConfirmedAssignments(List.of(previous), List.of(uncertain));
+        assertThat(uncertain.getProductFamily()).isNull();
+        assertThat(uncertain.getProductAssignmentSource()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(assignmentLogRepository);
+    }
+
     @Mock
     private ProductAssignmentLogRepository assignmentLogRepository;
 

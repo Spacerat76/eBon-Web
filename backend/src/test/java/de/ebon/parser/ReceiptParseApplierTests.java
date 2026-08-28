@@ -13,6 +13,19 @@ class ReceiptParseApplierTests {
 
     private final ReceiptParseApplier applier = new ReceiptParseApplier();
 
+    @Test
+    void noOutputClearsOldProfileAndItems() {
+        Receipt receipt = new Receipt(124, "raw");
+        receipt.useFormatProfile(new de.ebon.persistence.model.ReceiptFormatProfile(
+                de.ebon.persistence.model.FormatProfileScope.STORE, "rewe", "", "fp", 1, 2, "{}",
+                de.ebon.persistence.model.FormatProfileSource.AI_GENERATED, null));
+        receipt.addItem(new de.ebon.persistence.model.ReceiptItem(0, "old", BigDecimal.ONE));
+        applier.apply(receipt, new ReceiptParseResult(ParseStatus.PARSE_ERROR, null, "missing"));
+        assertThat(receipt.getReceiptFormatProfile()).isNull();
+        assertThat(receipt.getFormatProfileVersion()).isNull();
+        assertThat(receipt.getItems()).isEmpty();
+    }
+
     // Verifies parsed values are truncated before persistence so long OCR text cannot violate column limits.
     @Test
     void limitsParsedTextFieldsToDatabaseColumnLengths() {

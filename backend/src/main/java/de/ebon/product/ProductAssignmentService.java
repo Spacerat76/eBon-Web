@@ -11,6 +11,7 @@ import de.ebon.persistence.model.ProductRule;
 import de.ebon.persistence.model.ProductVariant;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
+import de.ebon.persistence.model.ExtractionStatus;
 import de.ebon.persistence.repository.AppSettingRepository;
 import de.ebon.persistence.repository.ProductAssignmentLogRepository;
 import de.ebon.persistence.repository.ProductFamilyRepository;
@@ -169,7 +170,8 @@ public class ProductAssignmentService {
     }
 
     private boolean isProtected(ReceiptItem item) {
-        return item.getProductAssignmentStatus() == ProductAssignmentStatus.NO_PRODUCT
+        return item.getExtractionStatus() != ExtractionStatus.CONFIRMED
+                || item.getProductAssignmentStatus() == ProductAssignmentStatus.NO_PRODUCT
                 || item.getProductAssignmentSource() == ProductAssignmentSource.MANUAL
                 || item.getProductAssignmentStatus() == ProductAssignmentStatus.CONFIRMED
                 || item.getProductAssignmentStatus() == ProductAssignmentStatus.REJECTED;
@@ -218,7 +220,7 @@ public class ProductAssignmentService {
     }
 
     private boolean isTrustedHistory(ReceiptItem item) {
-        return item.getProductVariant() != null
+        return item.getExtractionStatus() == ExtractionStatus.CONFIRMED && item.getProductVariant() != null
                 && (item.getProductAssignmentSource() == ProductAssignmentSource.MANUAL
                         || item.getProductAssignmentSource() == ProductAssignmentSource.RULE)
                 && (item.getProductAssignmentStatus() == ProductAssignmentStatus.CONFIRMED

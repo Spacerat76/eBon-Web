@@ -28,6 +28,16 @@ public final class ReceiptFormatDefinitionValidator {
             ProfileFieldRule.Field.TOTAL_AMOUNT);
 
     public ProfileValidationResult validate(ReceiptFormatDefinition definition, NormalizedReceiptDocument example) {
+        return validate(definition, example, true);
+    }
+
+    /** A stored profile may contain item templates absent from a particular basket. */
+    public ProfileValidationResult validateForParsing(ReceiptFormatDefinition definition, NormalizedReceiptDocument document) {
+        return validate(definition, document, false);
+    }
+
+    private ProfileValidationResult validate(ReceiptFormatDefinition definition, NormalizedReceiptDocument example,
+            boolean requireItemExample) {
         Checks checks = new Checks();
         if (definition == null || example == null) {
             checks.error("$", MISSING_VALUE);
@@ -55,7 +65,7 @@ public final class ReceiptFormatDefinitionValidator {
             }
             for (int i = 0; i < definition.itemRules().size(); i++) {
                 validateItem(definition.itemRules().get(i), "itemRules[" + i + "]", anchors,
-                        example, protectedLines, checks);
+                        example, protectedLines, checks, requireItemExample);
             }
         } catch (ProfileDefinitionException exception) {
             // Budget/zero failure is fatal for the entire example, never a partial success.
@@ -176,7 +186,7 @@ public final class ReceiptFormatDefinitionValidator {
     }
 
     private void validateItem(ProfileItemRule rule, String path, Map<String, AnchorMatch> anchors,
-            NormalizedReceiptDocument document, Set<Integer> protectedLines, Checks checks) {
+            NormalizedReceiptDocument document, Set<Integer> protectedLines, Checks checks, boolean requireItemExample) {
         if (rule.type() == null) {
             checks.error(path + ".type", MISSING_VALUE);
         }
@@ -207,7 +217,7 @@ public final class ReceiptFormatDefinitionValidator {
                     }
                 }
             }
-            if (!exampleMatched) {
+            if (requireItemExample && !exampleMatched) {
                 checks.error(path, NO_EXAMPLE_MATCH);
             }
         }

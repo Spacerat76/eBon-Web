@@ -2,6 +2,7 @@ package de.ebon.parser;
 
 import de.ebon.persistence.model.ParseSource;
 import de.ebon.persistence.model.Receipt;
+import de.ebon.parser.profile.ProfileAwareReceiptParser;
 import java.util.Optional;
 import java.util.function.Function;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,14 +11,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class ReceiptParserService {
 
-    private final RuleBasedReceiptParser ruleBasedReceiptParser;
+    private final Function<String, ReceiptParseResult> deterministicParser;
     private final AiParsingFallbackService aiParsingFallbackService;
 
     @Autowired
     public ReceiptParserService(
-            RuleBasedReceiptParser ruleBasedReceiptParser,
+            ProfileAwareReceiptParser profileAwareReceiptParser,
             AiParsingFallbackService aiParsingFallbackService) {
-        this.ruleBasedReceiptParser = ruleBasedReceiptParser;
+        this.deterministicParser = profileAwareReceiptParser::parse;
         this.aiParsingFallbackService = aiParsingFallbackService;
     }
 
@@ -25,12 +26,12 @@ public class ReceiptParserService {
             RuleBasedReceiptParser ruleBasedReceiptParser,
             Function<String, Optional<String>> ignoredAiClient,
             AiReceiptJsonParser ignoredAiReceiptJsonParser) {
-        this.ruleBasedReceiptParser = ruleBasedReceiptParser;
+        this.deterministicParser = ruleBasedReceiptParser::parse;
         this.aiParsingFallbackService = null;
     }
 
     public ReceiptParseResult parse(String rawText) {
-        ReceiptParseResult ruleResult = ruleBasedReceiptParser.parse(rawText);
+        ReceiptParseResult ruleResult = deterministicParser.apply(rawText);
         return ruleResult.parsed() ? ruleResult.withParseSource(ParseSource.RULE) : ruleResult;
     }
 

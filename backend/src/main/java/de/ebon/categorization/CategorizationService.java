@@ -8,6 +8,7 @@ import de.ebon.persistence.model.CategorySource;
 import de.ebon.persistence.model.CategorizationRule;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
+import de.ebon.persistence.model.ExtractionStatus;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
 import de.ebon.persistence.repository.AppSettingRepository;
 import de.ebon.persistence.repository.CategorizationRuleRepository;
@@ -109,7 +110,7 @@ public class CategorizationService {
     private void categorizeItems(Receipt receipt, List<ReceiptItem> items) {
         List<CategorizationRule> activeRules = categorizationRuleRepository.findByActiveTrueOrderByPriorityAscIdAsc();
         for (ReceiptItem item : items) {
-            if (item.isManuallyEdited()) {
+            if (item.getExtractionStatus() != ExtractionStatus.CONFIRMED || item.isManuallyEdited()) {
                 continue;
             }
             findMatchingRule(activeRules, item)
@@ -117,6 +118,7 @@ public class CategorizationService {
         }
 
         List<ReceiptItem> uncategorizedItems = items.stream()
+                .filter(item -> item.getExtractionStatus() == ExtractionStatus.CONFIRMED)
                 .filter(item -> !item.isManuallyEdited())
                 .filter(item -> item.getCategory() == null)
                 .toList();
@@ -201,7 +203,7 @@ public class CategorizationService {
     }
 
     private boolean canBulkApplyRule(ReceiptItem item) {
-        return !item.isManuallyEdited()
+        return item.getExtractionStatus() == ExtractionStatus.CONFIRMED && !item.isManuallyEdited()
                 && (item.getCategory() == null || item.getCategorySource() == CategorySource.AI);
     }
 

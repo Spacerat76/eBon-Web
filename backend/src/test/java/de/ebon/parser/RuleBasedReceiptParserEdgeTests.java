@@ -19,6 +19,66 @@ class RuleBasedReceiptParserEdgeTests {
 
     private final RuleBasedReceiptParser parser = new RuleBasedReceiptParser();
 
+    @Test
+    void composesPartialDynamicItemsInSourceOrderWithoutContaminatingDescriptions() {
+        ReceiptParseResult result = parserWithItemRules().parse("""
+                REWE
+                18.06.2026
+                # Dynamic item :: 2,00 ::
+                Generic item 1,00
+                # Dynamic item :: 2,00 ::
+                SUMME EUR 5,00
+                """);
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::description)
+                .containsExactly("Dynamic item", "Generic item", "Dynamic item");
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::positionIndex)
+                .containsExactly(0, 1, 2);
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+    }
+
+    @Test
+    void sameSourceGenericAndDynamicMatchesAreNotDuplicatedButRepeatedPurchasesRemain() {
+        ReceiptParseResult result = parserWithItemRules().parse("""
+                REWE
+                18.06.2026
+                Generic item 1,00
+                Generic item 1,00
+                # Dynamic item :: 2,00 ::
+                SUMME EUR 4,00
+                """);
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::description)
+                .containsExactly("Generic item", "Generic item", "Dynamic item");
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+    }
+
+    @Test
+    void dynamicItemsParticipateInStornoWithoutReappearingFromASecondPass() {
+        ReceiptParseResult result = parserWithItemRules().parse("""
+                REWE
+                18.06.2026
+                # Dynamic item :: 2,00 ::
+                ZEILENSTORNO
+                Generic item 1,00
+                SUMME EUR 1,00
+                """);
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::description)
+                .containsExactly("Generic item");
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+    }
+
+    private RuleBasedReceiptParser parserWithItemRules() {
+        ParseRuleRepository repository = mock(ParseRuleRepository.class);
+        when(repository.findByActiveTrueAndRuleTypeOrderByStoreNameAsc(ParseRuleType.ITEM_PATTERN))
+                .thenReturn(List.of(
+                        new ParseRule("REWE", ParseRuleType.ITEM_PATTERN,
+                                "^#\\s*(?<description>.+?)\\s*::\\s*(?<total>\\d+,\\d{2})\\s*::$",
+                                null, RuleSource.AI_ADAPTED),
+                        new ParseRule("REWE", ParseRuleType.ITEM_PATTERN,
+                                "^(?<description>Generic item) (?<total>\\d+,\\d{2})$",
+                                null, RuleSource.AI_ADAPTED)));
+        return new RuleBasedReceiptParser(new ReceiptParserProperties(), repository);
+    }
+
     // Verifies REWE markdown-table OCR output is parsed into real items, including quantity rows.
     @Test
     void parsesMarkdownTableItemsFromReweReceipts() {

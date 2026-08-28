@@ -36,6 +36,58 @@ import org.springframework.test.util.ReflectionTestUtils;
 @ExtendWith(MockitoExtension.class)
 class ProductAssignmentServiceTests {
 
+    @Test
+    void uncertainExtractionIsExcludedFromProductRulesAndBulkAssignment() {
+        ProductFamily family = new ProductFamily("Milch", null);
+        ProductRule rule = new ProductRule(family, null, null, RuleMatchType.EXACT, "Milch", 1);
+        Receipt receipt = new Receipt(990001, "raw");
+        ReceiptItem uncertain = new ReceiptItem(0, "Milch", BigDecimal.ONE);
+        uncertain.setExtractionStatus(de.ebon.persistence.model.ExtractionStatus.NEEDS_REVIEW);
+        ReceiptItem confirmed = new ReceiptItem(1, "Milch", BigDecimal.ONE);
+        receipt.addItem(uncertain);
+        receipt.addItem(confirmed);
+        when(productRuleRepository.findByActiveTrueOrderByPriorityAscIdAsc()).thenReturn(List.of(rule));
+        when(receiptItemRepository.findAll()).thenReturn(List.of(uncertain, confirmed));
+
+        assertThat(productAssignmentService().assignItems(receipt, List.of(uncertain))).isZero();
+        assertThat(productAssignmentService().applyRuleToExistingItems(rule)).isEqualTo(1);
+        assertThat(uncertain.getProductFamily()).isNull();
+        assertThat(confirmed.getProductFamily()).isSameAs(family);
+    }
+
+    @Test
+    void uncertainExtractionNeverEntersHistoryAiOrNonProductAutomation() {
+        Receipt receipt = new Receipt(990002, "raw");
+        ReceiptItem uncertain = new ReceiptItem(0, "Milch", BigDecimal.ONE);
+        ReceiptItem coupon = new ReceiptItem(1, "Coupon", BigDecimal.ONE.negate());
+        for (ReceiptItem item : List.of(uncertain, coupon)) {
+            item.setExtractionStatus(de.ebon.persistence.model.ExtractionStatus.NEEDS_REVIEW);
+            receipt.addItem(item);
+        }
+        assertThat(productAssignmentService().assignItems(receipt, receipt.getItems())).isZero();
+        assertThat(uncertain.getProductAssignmentStatus()).isNull();
+        assertThat(coupon.getProductAssignmentStatus()).isNull();
+        org.mockito.Mockito.verifyNoInteractions(receiptItemRepository, aiProductAssignmentClient,
+                productAssignmentLogRepository);
+    }
+
+    @Test
+    void uncertainHistoricExtractionCannotTeachAConfirmedItem() {
+        ProductFamily family = new ProductFamily("Milch", null);
+        ProductVariant variant = variant(family, "Milch 1 l", BigDecimal.ONE, "l");
+        List<ReceiptItem> history = java.util.stream.IntStream.range(0, 3)
+                .mapToObj(i -> trustedItem("Milch", "REWE", variant, BigDecimal.ONE, "l")).toList();
+        history.forEach(item -> item.setExtractionStatus(de.ebon.persistence.model.ExtractionStatus.NEEDS_REVIEW));
+        Receipt receipt = new Receipt(990003, "raw");
+        receipt.setStoreName("REWE");
+        ReceiptItem target = new ReceiptItem(0, "Milch", BigDecimal.ONE);
+        receipt.addItem(target);
+        when(receiptItemRepository.findAll()).thenReturn(history);
+        productAssignmentService().assignItems(receipt, List.of(target));
+        assertThat(target.getProductFamily()).isNull();
+        assertThat(target.getProductAssignmentStatus()).isEqualTo(ProductAssignmentStatus.NEEDS_REVIEW);
+    }
+
     @Mock
     private ProductRuleRepository productRuleRepository;
 

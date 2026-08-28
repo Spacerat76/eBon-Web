@@ -37,6 +37,23 @@ class AiParsingFallbackServiceTests {
         when(logRepository.saveAndFlush(any(AiParsingLog.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
+    @Test
+    void failedFallbackRetainsSelectedProfileEvidenceAndOriginalQualityFailure() {
+        when(settingsService.current()).thenReturn(settings("secret"));
+        var profile = new de.ebon.parser.profile.AppliedProfile(42L, 3,
+                de.ebon.persistence.model.FormatProfileScope.STORE, "fingerprint");
+        var trace = new de.ebon.parser.profile.ParsedLineTrace(1, 0, 3,
+                de.ebon.persistence.model.ParseLineType.UNRESOLVED, null, java.util.Map.of(), "UNKNOWN");
+        ReceiptParseResult input = new ReceiptParseResult(ParseStatus.PARSE_REVIEW, null, "UNRESOLVED_LINES",
+                ParseSource.RULE, profile, java.util.List.of(trace));
+        ReceiptParseResult result = service.tryFallback(receipt(), input, options(AiParsingBudget.limited(0)));
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSE_ERROR);
+        assertThat(result.appliedProfile()).isEqualTo(profile);
+        assertThat(result.traces()).containsExactly(trace);
+        assertThat(result.errorMessage()).contains("UNRESOLVED_LINES", "Limit");
+        assertThat(result.parseSource()).isEqualTo(ParseSource.RULE);
+    }
+
     // Verifies a missing API key is logged as a clean skip and never calls OpenRouter.
     @Test
     void missingApiKeySkipsFallbackWithoutCallingClient() {
