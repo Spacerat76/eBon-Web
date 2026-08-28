@@ -1,0 +1,12 @@
+package de.ebon.parser.profile;
+
+/** Paths contain schema indexes only, never regexes, anchor IDs or receipt text. */
+public record ProfileValidationError(String path, Code code) {
+    public enum Code {
+        JSON_SCHEMA, SCHEMA_VERSION, PROFILE_LIMIT, INPUT_LIMIT, MISSING_VALUE,
+        REQUIRED_ANCHOR, DUPLICATE_ANCHOR, ANCHOR_ID, ANCHOR_NOT_FOUND, AMBIGUOUS_ANCHOR,
+        REQUIRED_FIELD, DUPLICATE_FIELD, REQUIRED_CAPTURE, CAPTURE_GROUP, EMPTY_CAPTURE,
+        REGEX_LENGTH, REGEX_SYNTAX, REGEX_COMPLEXITY, EMPTY_MATCH, EVALUATION_LIMIT,
+        REGION_ANCHOR, REGION_ORDER, MULTILINE_LIMIT, ITEM_COLLISION, NO_EXAMPLE_MATCH
+    }
+}
