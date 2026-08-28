@@ -89,6 +89,43 @@ class ReceiptFormatProfileInterpreterTests {
     }
 
     @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "Total Repair Shampoo 0,00|1,99", "Total Repair Shampoo 0,50|2,49",
+            "Girocard Huelle 0,00|1,99", "Girocard Huelle 0,50|2,49",
+            "MwSt Ratgeber 0,00|1,99", "MwSt Ratgeber 0,50|2,49",
+            "TSE Handbuch 0,00|1,99", "TSE Handbuch 0,50|2,49"
+    })
+    void lexicalKeywordsCannotResolveUnknownPriceLinesWithoutExplicitEvidence(String unknown, String total) throws IOException {
+        ReceiptFormatDefinition profile = definition();
+        assertThat(new ReceiptFormatDefinitionValidator().validate(profile, normalizer.normalize(baseText())).valid()).isTrue();
+        String receipt = baseText().replace("SUMME 1,99", unknown + "\nSUMME " + total);
+        ProfileParseOutcome outcome = interpret(profile, receipt);
+        assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSE_REVIEW);
+        assertThat(outcome.parseResult().receipt().items()).hasSize(1);
+        assertThat(outcome.parseResult().receipt().items().getFirst().description()).isEqualTo("Bio Apfel");
+        assertThat(outcome.traces().get(4).lineType()).isEqualTo(ParseLineType.UNRESOLVED);
+        assertThat(outcome.traces().get(4).positionIndex()).isNull();
+        assertThat(outcome.traces().get(4).extractedFields()).isEmpty();
+    }
+
+    @Test
+    void explicitValidatedFooterRulesAndTotalFieldStillResolveGenuineFooterLines() throws IOException {
+        ReceiptFormatDefinition d = definition();
+        ReceiptFormatDefinition profile = new ReceiptFormatDefinition(1, d.anchors(), d.fields(), d.itemRules(), List.of(
+                new ProfileLineRule("^GIROCARD [0-9,]+$", ProfileLineRule.Type.PAYMENT),
+                new ProfileLineRule("^MWST [0-9,]+$", ProfileLineRule.Type.TAX),
+                new ProfileLineRule("^TSE [0-9]+$", ProfileLineRule.Type.TSE)));
+        String receipt = baseText() + "GIROCARD 1,99\nMWST 0,14\nTSE 12345\n";
+        assertThat(new ReceiptFormatDefinitionValidator().validate(profile, normalizer.normalize(receipt)).valid()).isTrue();
+        ProfileParseOutcome outcome = interpret(profile, receipt);
+        assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(outcome.traces().subList(4, 8)).extracting(ParsedLineTrace::lineType)
+                .containsExactly(ParseLineType.TOTAL, ParseLineType.PAYMENT, ParseLineType.TAX, ParseLineType.METADATA);
+        assertThat(outcome.traces().get(4).extractedFields()).containsEntry("TOTAL_AMOUNT", "1,99");
+        assertThat(outcome.parseResult().receipt().items()).hasSize(1);
+    }
+
+    @ParameterizedTest
     @ValueSource(strings = {"31.02.2026", "00.07.2026", "99.99.9999"})
     void malformedRequiredDateOverridesIncompleteCoverage(String date) throws IOException {
         ProfileParseOutcome outcome = parse(baseText().replace("13.07.2026", date).replace("SUMME", "Extra 0,50\nSUMME"));

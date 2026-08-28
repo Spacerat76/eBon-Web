@@ -205,9 +205,10 @@ public final class ReceiptFormatProfileInterpreter {
                 }
             }
             for (Line line : lines) {
-                for (Map.Entry<ParseLineType, ProfileRegex> protectedRule : PROTECTED.entrySet()) {
-                    if (!protectedRule.getValue().findAll(line.source.originalText(), budget).isEmpty()) {
-                        line.types.add(protectedRule.getKey());
+                for (ProfileRegex protectedRule : PROTECTED.values()) {
+                    if (!protectedRule.findAll(line.source.originalText(), budget).isEmpty() && line.types.isEmpty()) {
+                        // Keywords reject item candidates; only explicit field/line rules resolve coverage.
+                        line.unresolved("LEXICAL_GUARD_ONLY");
                     }
                 }
                 if (line.types.size() > 1) line.unresolved("CLASSIFICATION_COLLISION");
