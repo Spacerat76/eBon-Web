@@ -8,6 +8,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class ReceiptFormatIdentifierTests {
 
@@ -183,6 +184,25 @@ class ReceiptFormatIdentifierTests {
     void multilineArticleWordsDoNotBecomeMetadata() {
         assertThat(fingerprint("REWE\nARTIKEL PREIS\nKasse Spielzeug\n1,99\nSUMME 1,99"))
                 .isEqualTo(fingerprint("REWE\nARTIKEL PREIS\nApfel\n1,99\nSUMME 1,99"));
+    }
+
+    @Test
+    void paymentWordInsideTheItemTableRemainsAnArticle() {
+        assertThat(fingerprint("REWE\nARTIKEL PREIS\nKarte 1,99\nSUMME 1,99"))
+                .isEqualTo(fingerprint("REWE\nARTIKEL PREIS\nApfel 1,99\nSUMME 1,99"));
+    }
+
+    @Test
+    void actualCardPaymentAfterTotalRemainsStructural() {
+        assertThat(fingerprint("REWE\nARTIKEL PREIS\nKarte 1,99\nSUMME 1,99\nKarte 1,99"))
+                .isNotEqualTo(fingerprint("REWE\nARTIKEL PREIS\nKarte 1,99\nSUMME 1,99"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ABCD", "A123", "KASSE"})
+    void receiptIdsAreOpaqueRegardlessOfTheirCharacters(String receiptId) {
+        assertThat(fingerprint("REWE\nBon Nr " + receiptId + "\nApfel 1,99\nSUMME 1,99"))
+                .isEqualTo(fingerprint("REWE\nBon Nr 987654\nApfel 1,99\nSUMME 1,99"));
     }
 
     @Test

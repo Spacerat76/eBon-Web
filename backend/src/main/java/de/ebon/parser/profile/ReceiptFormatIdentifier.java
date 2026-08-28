@@ -34,6 +34,9 @@ public final class ReceiptFormatIdentifier {
     private static final Pattern POSTCODE = Pattern.compile("^\\d{5}\\s+\\p{L}.*");
     private static final Pattern METADATA = Pattern.compile(
             "\\b(bon|beleg|kasse|transaktion|terminal|tse|bediener|tel|telefon|fax|uid|stnr)\\b");
+    private static final Pattern QUALIFIED_METADATA_ID = Pattern.compile(
+            METADATA.pattern() + "[\\s\\p{Punct}]*(?:nr|nummer|id|code|serial)[\\s\\p{Punct}]+\\S+",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Set<String> COLUMNS = Set.of(
             "artikel", "bezeichnung", "preis", "einzelpreis", "gesamtpreis", "menge", "anzahl", "eur");
 
@@ -65,7 +68,7 @@ public final class ReceiptFormatIdentifier {
         for (NormalizedReceiptLine line : lines) {
             String original = ReceiptTextNormalizer.displayText(line.originalText());
             if (line.matchText().isEmpty() || isTemporalLine(original)
-                    || metadata(line.matchText()) != null) {
+                    || metadata(original) != null) {
                 continue;
             }
             if (AMOUNT.matcher(original).find() || tableColumns(line.matchText()) != null
@@ -108,7 +111,7 @@ public final class ReceiptFormatIdentifier {
             String original = ReceiptTextNormalizer.displayText(line.originalText());
             if (line == merchant || isTemporalLine(original)) continue;
             if (AMOUNT.matcher(original).find() || tableColumns(line.matchText()) != null) break;
-            if (metadata(line.matchText()) == null && ADDRESS.matcher(line.matchText()).matches()) {
+            if (metadata(original) == null && ADDRESS.matcher(line.matchText()).matches()) {
                 return ReceiptTextNormalizer.displayText(line.originalText().replace('*', ' '));
             }
         }
@@ -131,7 +134,7 @@ public final class ReceiptFormatIdentifier {
                 parts.add(region + ":" + (date ? "DATE" : "") + (time ? "TIME" : ""));
                 continue;
             }
-            String metadata = hasAmount ? null : metadata(text);
+            String metadata = hasAmount ? null : metadata(original);
             if (metadata != null) {
                 flushItems(parts, itemShapes);
                 parts.add(region + ":META:" + metadata);
@@ -149,7 +152,7 @@ public final class ReceiptFormatIdentifier {
                 continue;
             }
             String footer = footerAnchor(text);
-            if (footer != null) {
+            if (footer != null && (region.equals("FOOTER") || footer.equals("TOTAL") || footer.equals("TAX"))) {
                 flushItems(parts, itemShapes);
                 region = "FOOTER";
                 parts.add("FOOTER:" + footer + ":" + lineShape(line.originalText()));
@@ -176,6 +179,8 @@ public final class ReceiptFormatIdentifier {
     }
 
     private String metadata(String text) {
+        // Qualified IDs are opaque values, including IDs that spell another metadata anchor.
+        text = ReceiptTextNormalizer.matchText(QUALIFIED_METADATA_ID.matcher(text).replaceAll("$1"));
         Matcher matcher = METADATA.matcher(text);
         List<String> anchors = new ArrayList<>();
         while (matcher.find()) anchors.add(matcher.group());
