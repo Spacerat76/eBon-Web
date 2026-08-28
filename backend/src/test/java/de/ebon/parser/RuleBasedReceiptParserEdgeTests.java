@@ -79,6 +79,43 @@ class RuleBasedReceiptParserEdgeTests {
         return new RuleBasedReceiptParser(new ReceiptParserProperties(), repository);
     }
 
+    @Test
+    void dynamicItemConsumesMatchingLeadingQuantityDetails() {
+        ReceiptParseResult result = parserWithItemRules().parse("""
+                REWE
+                18.06.2026
+                2 x 1,00
+                # Dynamic item :: 2,00 ::
+                Generic item 2,00
+                SUMME EUR 4,00
+                """);
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().items()).hasSize(2);
+        ParsedReceiptItem dynamicItem = result.receipt().items().getFirst();
+        assertThat(dynamicItem.description()).isEqualTo("Dynamic item");
+        assertThat(dynamicItem.quantity()).isEqualByComparingTo("2");
+        assertThat(dynamicItem.unit()).isEqualTo("Stk");
+        assertThat(dynamicItem.unitPrice()).isEqualByComparingTo("1.00");
+        assertThat(result.receipt().items().get(1).quantity()).isNull();
+    }
+
+    @Test
+    void mismatchedLeadingQuantityIsNotAppliedToDynamicOrFollowingGenericItem() {
+        ReceiptParseResult result = parserWithItemRules().parse("""
+                REWE
+                18.06.2026
+                3 x 1,00
+                # Dynamic item :: 2,00 ::
+                Generic item 3,00
+                SUMME EUR 5,00
+                """);
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().items()).hasSize(2).allSatisfy(item -> {
+            assertThat(item.quantity()).isNull();
+            assertThat(item.unitPrice()).isNull();
+        });
+    }
+
     // Verifies REWE markdown-table OCR output is parsed into real items, including quantity rows.
     @Test
     void parsesMarkdownTableItemsFromReweReceipts() {

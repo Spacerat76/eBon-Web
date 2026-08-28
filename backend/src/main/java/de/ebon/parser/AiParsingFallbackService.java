@@ -157,7 +157,8 @@ public class AiParsingFallbackService {
         String fallbackError = message == null || message.isBlank()
                 ? "KI-Parsing-Fallback konnte den Bon nicht valide uebernehmen." : message;
         return new ReceiptParseResult(
-                ParseStatus.PARSE_ERROR,
+                ruleResult.parseStatus() == ParseStatus.PARSE_REVIEW && ruleResult.receipt() != null
+                        ? ParseStatus.PARSE_REVIEW : ParseStatus.PARSE_ERROR,
                 ruleResult.receipt(),
                 ruleResult.errorMessage() == null || ruleResult.errorMessage().isBlank() ? fallbackError
                         : ruleResult.errorMessage() + " | " + fallbackError,

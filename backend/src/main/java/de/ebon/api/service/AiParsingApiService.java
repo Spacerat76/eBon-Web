@@ -257,7 +257,7 @@ public class AiParsingApiService {
             List<ReceiptItem> previousItems = receipt.getItems();
             // Rule acceptance has no explicit overwrite option. Manual work remains untouched.
             if (receipt.getParseStatus() == ParseStatus.MANUALLY_EDITED
-                    || previousItems.stream().anyMatch(ReceiptItem::isManuallyEdited)) {
+                    || previousItems.stream().anyMatch(ReceiptItem::requiresExplicitReparseOverwrite)) {
                 continue;
             }
             ReceiptParseResult parseResult = receiptParserService.parse(

@@ -9,7 +9,10 @@ import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.repository.AiParsingLogRepository;
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.springframework.web.client.RestClientException;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -37,21 +40,43 @@ class AiParsingFallbackServiceTests {
         when(logRepository.saveAndFlush(any(AiParsingLog.class))).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
-    @Test
-    void failedFallbackRetainsSelectedProfileEvidenceAndOriginalQualityFailure() {
+    @ParameterizedTest
+    @ValueSource(strings = {"INVALID_RESPONSE", "TRANSPORT_FAILURE", "BUDGET_LIMIT"})
+    void rejectedFallbackRetainsUsableReviewAndSelectedProfileEvidence(String failure) {
         when(settingsService.current()).thenReturn(settings("secret"));
         var profile = new de.ebon.parser.profile.AppliedProfile(42L, 3,
                 de.ebon.persistence.model.FormatProfileScope.STORE, "fingerprint");
         var trace = new de.ebon.parser.profile.ParsedLineTrace(1, 0, 3,
                 de.ebon.persistence.model.ParseLineType.UNRESOLVED, null, java.util.Map.of(), "UNKNOWN");
-        ReceiptParseResult input = new ReceiptParseResult(ParseStatus.PARSE_REVIEW, null, "UNRESOLVED_LINES",
+        ParsedReceipt partialReceipt = new ParsedReceipt(java.time.LocalDate.of(2026, 6, 10), null,
+                "REWE", null, new BigDecimal("2.50"), "EUR", null, null, null,
+                java.util.List.of(new ParsedReceiptItem(0, "Bekannter Artikel", BigDecimal.ONE, "Stk",
+                        new BigDecimal("2.50"), new BigDecimal("2.50"), null)));
+        ReceiptParseResult input = new ReceiptParseResult(ParseStatus.PARSE_REVIEW, partialReceipt, "UNRESOLVED_LINES",
                 ParseSource.RULE, profile, java.util.List.of(trace));
-        ReceiptParseResult result = service.tryFallback(receipt(), input, options(AiParsingBudget.limited(0)));
-        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSE_ERROR);
+        if (failure.equals("INVALID_RESPONSE")) {
+            when(aiClient.parseReceipt(any(), any())).thenReturn(
+                    new AiReceiptParsingClientResponse("{invalid", "test/model", 10, 20, 30));
+        } else if (failure.equals("TRANSPORT_FAILURE")) {
+            when(aiClient.parseReceipt(any(), any())).thenThrow(new RestClientException("Synthetic failure"));
+        }
+        ReceiptParseResult result = service.tryFallback(receipt(), input,
+                options(failure.equals("BUDGET_LIMIT") ? AiParsingBudget.limited(0) : AiParsingBudget.unlimited()));
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSE_REVIEW);
+        assertThat(result.receipt()).isSameAs(partialReceipt);
         assertThat(result.appliedProfile()).isEqualTo(profile);
         assertThat(result.traces()).containsExactly(trace);
-        assertThat(result.errorMessage()).contains("UNRESOLVED_LINES", "Limit");
+        assertThat(result.errorMessage()).startsWith("UNRESOLVED_LINES | ");
         assertThat(result.parseSource()).isEqualTo(ParseSource.RULE);
+        assertLoggedStatus(switch (failure) {
+            case "INVALID_RESPONSE" -> AiParsingStatus.INVALID_RESPONSE;
+            case "TRANSPORT_FAILURE" -> AiParsingStatus.FAILED;
+            default -> AiParsingStatus.SKIPPED_LIMIT;
+        });
+        if (failure.equals("BUDGET_LIMIT")) {
+            assertThat(result.errorMessage()).contains("Limit");
+            verify(aiClient, never()).parseReceipt(any(), any());
+        }
     }
 
     // Verifies a missing API key is logged as a clean skip and never calls OpenRouter.

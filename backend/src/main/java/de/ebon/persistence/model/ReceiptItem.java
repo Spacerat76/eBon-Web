@@ -333,4 +333,10 @@ public class ReceiptItem {
     public boolean isManuallyEdited() {
         return manuallyEdited;
     }
+
+    public boolean requiresExplicitReparseOverwrite() {
+        return manuallyEdited
+                || productAssignmentStatus == ProductAssignmentStatus.REJECTED
+                || productAssignmentStatus == ProductAssignmentStatus.NO_PRODUCT;
+    }
 }

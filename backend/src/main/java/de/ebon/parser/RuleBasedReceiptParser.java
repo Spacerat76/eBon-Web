@@ -965,6 +965,12 @@ public class RuleBasedReceiptParser {
                 // Compose at the original source line, once. This also makes quantity/details/storno
                 // operate on the same sequence and keeps this line out of a later generic description.
                 pendingDescriptionLines.clear();
+                if (dynamicItem.quantity() == null && leadingQuantityDetails != null
+                        && leadingQuantityDetailsMatches(dynamicItem.totalPrice(), leadingQuantityDetails)) {
+                    dynamicItem = new ParsedReceiptItem(dynamicItem.positionIndex(), dynamicItem.description(),
+                            leadingQuantityDetails.quantity(), leadingQuantityDetails.unit(),
+                            leadingQuantityDetails.unitPrice(), dynamicItem.totalPrice(), dynamicItem.discountAmount());
+                }
                 leadingQuantityDetails = null;
                 items.add(dynamicItem);
             } else if (!isMetadataLine(line)) {

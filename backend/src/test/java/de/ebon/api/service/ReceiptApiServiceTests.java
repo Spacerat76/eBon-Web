@@ -46,6 +46,8 @@ import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -450,6 +452,78 @@ class ReceiptApiServiceTests {
         verify(receiptParserService).parse(eq(receipt), any(ParseExecutionOptions.class));
         verify(categorizationService).categorizeReceipt(receipt.getId());
         verify(productAssignmentService).assignReceipt(receipt.getId());
+    }
+
+    // Product decisions are manual work even though the item-edit flag remains false.
+    @ParameterizedTest
+    @EnumSource(value = ProductAssignmentStatus.class, names = {"REJECTED", "NO_PRODUCT"})
+    void singleReparseRequiresConsentToReplaceExplicitProductDecision(ProductAssignmentStatus decision) {
+        Receipt receipt = receipt(41L, 5002, "REWE", false, "Bio Milch");
+        ReceiptItem original = firstItem(receipt);
+        markDecision(original, decision);
+        when(receiptRepository.findById(receipt.getId())).thenReturn(Optional.of(receipt));
+        stubReparse(receipt);
+
+        assertThatThrownBy(() -> service.reparseReceipt(receipt.getId(), false))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode().value()).isEqualTo(409));
+        assertThat(firstItem(receipt)).isSameAs(original);
+        assertThat(original.getProductAssignmentStatus()).isEqualTo(decision);
+        verify(receiptParserService, never()).parse(any(Receipt.class), any(ParseExecutionOptions.class));
+
+        service.reparseReceipt(receipt.getId(), true);
+
+        assertThat(firstItem(receipt)).isNotSameAs(original);
+        assertThat(firstItem(receipt).getProductAssignmentStatus()).isNull();
+        verify(receiptParserService).parse(eq(receipt), any(ParseExecutionOptions.class));
+        verify(categorizationService).categorizeReceipt(receipt.getId());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = ProductAssignmentStatus.class, names = {"REJECTED", "NO_PRODUCT"})
+    void bulkReparseRequiresConsentToReplaceExplicitProductDecision(ProductAssignmentStatus decision) {
+        Receipt receipt = receipt(42L, 5003, "REWE", false, "Bio Milch");
+        ReceiptItem original = firstItem(receipt);
+        markDecision(original, decision);
+        when(receiptRepository.findByDeletedAtIsNullOrderByImportedAtDesc()).thenReturn(List.of(receipt));
+        stubReparse(receipt);
+
+        DataMaintenanceResultDto protectedResult = service.reparseAllReceipts(false);
+        assertThat(protectedResult.skippedManualReceipts()).isEqualTo(1);
+        assertThat(protectedResult.processedReceipts()).isZero();
+        assertThat(firstItem(receipt)).isSameAs(original);
+        assertThat(original.getProductAssignmentStatus()).isEqualTo(decision);
+        verify(receiptParserService, never()).parse(any(Receipt.class), any(ParseExecutionOptions.class));
+
+        DataMaintenanceResultDto overwritten = service.reparseAllReceipts(true);
+
+        assertThat(overwritten.skippedManualReceipts()).isZero();
+        assertThat(overwritten.processedReceipts()).isEqualTo(1);
+        assertThat(firstItem(receipt)).isNotSameAs(original);
+        assertThat(firstItem(receipt).getProductAssignmentStatus()).isNull();
+        verify(receiptParserService).parse(eq(receipt), any(ParseExecutionOptions.class));
+        verify(categorizationService).categorizeReceipt(receipt.getId());
+    }
+
+    private void markDecision(ReceiptItem item, ProductAssignmentStatus decision) {
+        if (decision == ProductAssignmentStatus.REJECTED) {
+            item.markProductRejected();
+        } else {
+            item.markNoProduct();
+        }
+        assertThat(item.isManuallyEdited()).isFalse();
+    }
+
+    private void stubReparse(Receipt receipt) {
+        when(receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()))
+                .thenAnswer(invocation -> receipt.getItems());
+        when(receiptRepository.saveAndFlush(any(Receipt.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        ReceiptParseResult parsed = new ReceiptParseResult(ParseStatus.PARSED,
+                new ParsedReceipt(LocalDate.of(2026, 6, 18), null, "REWE", null,
+                        new BigDecimal("1.99"), "EUR", null, null, null,
+                        List.of(new de.ebon.parser.ParsedReceiptItem(0, "Bio Milch", BigDecimal.ONE,
+                                "Stk", new BigDecimal("1.99"), new BigDecimal("1.99"), null))), null);
+        when(receiptParserService.parse(eq(receipt), any(ParseExecutionOptions.class))).thenReturn(parsed);
     }
 
     // Verifies the status check ignores transport-only line-ending differences and exposes no raw text.

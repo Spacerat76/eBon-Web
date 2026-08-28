@@ -460,7 +460,7 @@ public class ReceiptApiService {
     private boolean hasManualEdits(Receipt receipt) {
         return receipt.getParseStatus() == ParseStatus.MANUALLY_EDITED
                 || receiptItemRepository.findByReceipt_IdOrderByPositionIndexAsc(receipt.getId()).stream()
-                .anyMatch(ReceiptItem::isManuallyEdited);
+                .anyMatch(ReceiptItem::requiresExplicitReparseOverwrite);
     }
 
     private void updateItemOnReceipt(Receipt receipt, Long itemId, ReceiptItemUpdateRequest request) {

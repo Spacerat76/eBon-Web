@@ -8,6 +8,7 @@ import de.ebon.persistence.model.ParseRuleType;
 import de.ebon.persistence.model.ParseRuleValidationStatus;
 import de.ebon.persistence.model.ParseSource;
 import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.ProductAssignmentStatus;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.AiParsingLogRepository;
@@ -23,6 +24,8 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
@@ -43,6 +46,45 @@ class AiParsingApiContractTests extends PostgresIntegrationTestSupport {
 
     @Autowired
     private de.ebon.api.service.AiParsingApiService aiParsingApiService;
+
+    @Autowired
+    private de.ebon.product.ProductReviewService productReviewService;
+
+    @ParameterizedTest
+    @EnumSource(value = ProductAssignmentStatus.class, names = {"REJECTED", "NO_PRODUCT"})
+    void acceptingParserRulePreservesExplicitProductDecisions(ProductAssignmentStatus decision) {
+        ParseRuleSuggestion suggestion = parserSuggestion();
+        Long receiptId = suggestion.getReceipt().getId();
+        Long itemId = jdbcTemplate.queryForObject("select id from receipt_item where receipt_id = ?", Long.class, receiptId);
+        if (decision == ProductAssignmentStatus.REJECTED) {
+            productReviewService.reject(itemId);
+        } else {
+            productReviewService.markNoProduct(itemId);
+        }
+        assertThat(jdbcTemplate.queryForObject("select is_manually_edited from receipt_item where id = ?",
+                Boolean.class, itemId)).isFalse();
+        assertThat(jdbcTemplate.queryForObject("select parse_status from receipt where id = ?",
+                String.class, receiptId)).isEqualTo("PARSED");
+        try {
+            aiParsingApiService.acceptSuggestion(suggestion.getId(),
+                    new de.ebon.api.dto.ParseRuleSuggestionAcceptRequest(null,
+                            de.ebon.api.dto.ParseRuleSuggestionAcceptRequest.ReparseScope.CURRENT_RECEIPT));
+            assertThat(jdbcTemplate.queryForObject("select id from receipt_item where receipt_id = ?",
+                    Long.class, receiptId)).isEqualTo(itemId);
+            assertThat(jdbcTemplate.queryForObject("select product_assignment_status from receipt_item where id = ?",
+                    String.class, itemId)).isEqualTo(decision.name());
+            assertThat(jdbcTemplate.queryForObject("select product_family_id from receipt_item where id = ?",
+                    Long.class, itemId)).isNull();
+            assertThat(jdbcTemplate.queryForObject("select parse_source from receipt where id = ?",
+                    String.class, receiptId)).isEqualTo("AI");
+            assertThat(suggestionRepository.findById(suggestion.getId()).orElseThrow().getStatus())
+                    .isEqualTo(de.ebon.persistence.model.ParseRuleSuggestionStatus.ACCEPTED);
+        } finally {
+            Long ruleId = suggestionRepository.findById(suggestion.getId()).orElseThrow().getAcceptedParseRule().getId();
+            jdbcTemplate.update("delete from parse_rule_suggestion where id = ?", suggestion.getId());
+            jdbcTemplate.update("delete from parse_rule where id = ?", ruleId);
+        }
+    }
 
     @Test
     void acceptingParserRuleCannotSilentlyOverwriteManualReceiptItems() {
