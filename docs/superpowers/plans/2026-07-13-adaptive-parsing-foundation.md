@@ -8,6 +8,10 @@
 
 **Tech Stack:** Java 21, Spring Boot, JPA, PostgreSQL/Flyway, Jackson, JUnit 5, Mockito, Testcontainers, Maven.
 
+**Implementation status (2026-08-29):** Tasks 1–7 completed on `codex`; verified source commit `a1ce32a22baa8d1c8f75e740be2bc98466dbcf6a`. Independent task, whole-foundation and scoped correction reviews are complete with no open Critical/Important findings. Final backend `clean verify`: 492 tests, zero failures/errors/skips; unchanged frontend: 15 focused tests and build passed; isolated Compose rebuild and 10 runtime smoke assertion groups passed. No live Paperless/OpenRouter calls. The historical checklists below describe the executed plan, not pending reimplementation.
+
+**Remaining boundaries:** Lifecycle/bootstrap/semantic-learning/UI-operations plans are not implemented by this milestone. The pre-existing Legacy `10 % Rabatt` tax-table misclassification remains deferred, as do non-blocking per-receipt trace-count query optimization and test-log noise. Profile coverage verifies captured/classified text, not arbitrary real-world semantics of a deliberately mapped description. Optional browser E2E was not run for this foundation milestone.
+
 ## Global Constraints
 
 - Follow the master constraints in `docs/superpowers/plans/2026-07-13-adaptive-receipt-processing.md`.

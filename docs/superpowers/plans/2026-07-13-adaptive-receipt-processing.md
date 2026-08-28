@@ -63,11 +63,13 @@ The plans are separate because parser execution, lifecycle orchestration, downst
 
 ### Milestone 1: Deterministic foundation
 
-- [ ] Complete every task in `2026-07-13-adaptive-parsing-foundation.md`.
-- [ ] Confirm the Legacy parser still passes the existing corpus.
-- [ ] Confirm accepted dynamic item rules supplement partial parses instead of only zero-item parses.
-- [ ] Confirm no real external calls occur.
-- [ ] Commit only after `mvn verify` and `npm run build` pass for changed surfaces.
+- [x] Complete every task in `2026-07-13-adaptive-parsing-foundation.md`.
+- [x] Confirm the Legacy parser still passes the existing corpus.
+- [x] Confirm accepted dynamic item rules supplement partial parses instead of only zero-item parses.
+- [x] Confirm no real external calls occur.
+- [x] Commit only after `mvn verify` and `npm run build` pass for changed surfaces.
+
+Completed 2026-08-29 on `codex`, verified source `a1ce32a`: 492 backend tests; 15 focused frontend tests plus build; isolated Compose rebuild and 10 runtime smoke groups; independent reviews closed. See the foundation plan's status/boundaries before continuing with Milestone 2. Initial merchant profiles and live Paperless bootstrap have not yet been generated.
 
 ### Milestone 2: Controlled learning and initial profiles
 
