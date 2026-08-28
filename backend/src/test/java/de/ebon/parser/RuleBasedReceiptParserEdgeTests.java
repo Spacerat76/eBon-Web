@@ -4,12 +4,15 @@ import de.ebon.config.ReceiptParserProperties;
 import de.ebon.persistence.model.ParseRule;
 import de.ebon.persistence.model.ParseRuleType;
 import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.ParseRuleValidationStatus;
 import de.ebon.persistence.model.RuleSource;
 import de.ebon.persistence.repository.ParseRuleRepository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -18,6 +21,69 @@ import static org.mockito.Mockito.when;
 class RuleBasedReceiptParserEdgeTests {
 
     private final RuleBasedReceiptParser parser = new RuleBasedReceiptParser();
+
+    @Test
+    void acceptedDynamicRuleRecoversAmountLineRejectedByGenericKeywordFilter() {
+        String regex = "^(?<description>Protein Bar) (?<total>[0-9]+,[0-9]{2})$";
+        String text = "REWE\n18.06.2026\nProtein Bar 1,99\nSUMME EUR 1,99\n";
+        assertThat(new ParseRuleSuggestionValidator().validate(text, ParseRuleType.ITEM_PATTERN, regex, null).status())
+                .isEqualTo(ParseRuleValidationStatus.VALID);
+        ReceiptParseResult result = parserWithItemRule(regex).parse(text);
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::description).containsExactly("Protein Bar");
+    }
+
+    @Test
+    void recoveredDynamicAmountLinesKeepOrderRepetitionsAndExcludeActualPaymentsAndTax() {
+        ReceiptParseResult result = parserWithItemRule("^(?<description>.+) (?<total>[0-9]+,[0-9]{2})$").parse("""
+                REWE
+                18.06.2026
+                Protein Bar 1,99
+                Generic item 1,00
+                Protein Bar 1,99
+                SUMME EUR 4,98
+                BAR 10,00
+                VISA 4,98
+                KARTE 4,98
+                GEGEBEN 10,00
+                RÜCKGELD 5,02
+                GIROCARD 4,98
+                MWST 0,33
+                TSE 0,00
+                """);
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::description)
+                .containsExactly("Protein Bar", "Generic item", "Protein Bar");
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::positionIndex).containsExactly(0, 1, 2);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"EUR 1,99", "BETRAG EUR 1,99", "WERT: 1,99", "GUTHABEN 1,99", "VORTEIL 1,99",
+            "PUNKTESTAND 1,99", "BAR 1,99", "BARZAHLUNG 1,99", "KARTE 1,99", "VISA 1,99", "MASTERCARD 1,99",
+            "DEBIT 1,99", "GEG. 1,99", "GEGEBEN 1,99", "MWST 1,99", "7 % 1,99"})
+    void dynamicRecoveryDoesNotTurnPaymentOrMetadataAmountsIntoItems(String nonItem) {
+        ReceiptParseResult result = parserWithItemRule("^(?<description>.+) (?<total>[0-9]+,[0-9]{2})$")
+                .parse("REWE\n18.06.2026\nProtein Bar 1,99\nSUMME EUR 1,99\n" + nonItem);
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::description).containsExactly("Protein Bar");
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+    }
+
+    @Test
+    void protectedTaxPrefixDoesNotDiscardDescribedPercentageDiscounts() {
+        ReceiptParseResult result = parserWithItemRule("^(?<description>Protein Bar) (?<total>[0-9]+,[0-9]{2})$")
+                .parse("REWE\n18.06.2026\nProtein Bar 1,99\n7 % Rabatt -1,00\nSUMME EUR 0,99\n");
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().items()).extracting(ParsedReceiptItem::description)
+                .containsExactly("Protein Bar", "7 % Rabatt");
+        assertThat(result.receipt().items().get(1).discountAmount()).isEqualByComparingTo("1.00");
+    }
+
+    private RuleBasedReceiptParser parserWithItemRule(String regex) {
+        ParseRuleRepository repository = mock(ParseRuleRepository.class);
+        when(repository.findByActiveTrueAndRuleTypeOrderByStoreNameAsc(ParseRuleType.ITEM_PATTERN))
+                .thenReturn(List.of(new ParseRule("REWE", ParseRuleType.ITEM_PATTERN, regex, null, RuleSource.AI_ADAPTED)));
+        return new RuleBasedReceiptParser(new ReceiptParserProperties(), repository);
+    }
 
     @Test
     void composesPartialDynamicItemsInSourceOrderWithoutContaminatingDescriptions() {

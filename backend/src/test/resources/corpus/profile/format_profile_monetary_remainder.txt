@@ -1,0 +1,6 @@
+TESTMARKT
+13.07.2026
+ARTIKEL PREIS
+Bio Apfel 0,00
+Bio Apfel 1,99 Pfand 0,25 Gutschein -0,25
+SUMME 1,99

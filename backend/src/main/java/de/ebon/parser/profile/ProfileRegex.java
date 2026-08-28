@@ -75,13 +75,15 @@ public final class ProfileRegex {
                 throw new ProfileDefinitionException(EVALUATION_LIMIT);
             }
             Map<Integer, String> groups = new HashMap<>();
+            Map<Integer, Span> groupSpans = new HashMap<>();
             for (int group = 0; group <= matcher.groupCount(); group++) {
                 String value = matcher.group(group);
                 if (value != null) {
                     groups.put(group, value);
+                    groupSpans.put(group, new Span(matcher.start(group), matcher.end(group)));
                 }
             }
-            matches.add(new Match(matcher.start(), matcher.end(), groups));
+            matches.add(new Match(matcher.start(), matcher.end(), groups, groupSpans));
             previousEnd = matcher.end();
         }
     }
@@ -99,13 +101,24 @@ public final class ProfileRegex {
         }
     }
 
-    public record Match(int start, int end, Map<Integer, String> groups) {
+    public record Span(int start, int end) {
+        public boolean contains(Span other) {
+            return start <= other.start && end >= other.end;
+        }
+    }
+
+    public record Match(int start, int end, Map<Integer, String> groups, Map<Integer, Span> groupSpans) {
         public Match {
             groups = Map.copyOf(groups);
+            groupSpans = Map.copyOf(groupSpans);
         }
 
         public String group(int group) {
             return groups.get(group);
+        }
+
+        public Span groupSpan(int group) {
+            return groupSpans.get(group);
         }
     }
 }

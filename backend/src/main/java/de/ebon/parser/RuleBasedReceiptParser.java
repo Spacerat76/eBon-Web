@@ -895,12 +895,8 @@ public class RuleBasedReceiptParser {
             }
 
             Matcher amountMatcher = AMOUNT_AT_END.matcher(line);
-            if (amountMatcher.find()) {
-                if (shouldSkipAmountLine(line)) {
-                    pendingDescriptionLines.clear();
-                    continue;
-                }
-
+            boolean amountLine = amountMatcher.find();
+            if (amountLine && !shouldSkipAmountLine(line)) {
                 BigDecimal totalPrice = GermanNumberParser.parse(amountMatcher.group("amount"));
                 String descriptionPart = line.substring(0, amountMatcher.start()).trim();
                 List<String> descriptionLines = new ArrayList<>(pendingDescriptionLines);
@@ -973,6 +969,8 @@ public class RuleBasedReceiptParser {
                 }
                 leadingQuantityDetails = null;
                 items.add(dynamicItem);
+            } else if (amountLine) {
+                pendingDescriptionLines.clear();
             } else if (!isMetadataLine(line)) {
                 pendingDescriptionLines.add(line);
             }
@@ -1151,7 +1149,8 @@ public class RuleBasedReceiptParser {
     }
 
     private ParsedReceiptItem parseDynamicItem(String line, List<ParseRule> rules, int positionIndex) {
-        if (isMetadataLine(line) || isTotalLine(line) || isPaymentDetailLine(line)) {
+        if (isMetadataLine(line) || isTotalLine(line) || isPaymentDetailLine(line)
+                || isProtectedAmountPrefix(line)) {
             return null;
         }
         for (ParseRule rule : rules) {
@@ -1498,6 +1497,7 @@ public class RuleBasedReceiptParser {
     private boolean shouldSkipAmountLine(String line) {
         String upper = line.toUpperCase(Locale.ROOT);
         return isTotalLine(line)
+                || isProtectedAmountPrefix(line)
                 || isDateOrTimeLine(line)
                 || isTaxMarkerLine(line)
                 || isTaxTableLine(line)
@@ -1525,6 +1525,15 @@ public class RuleBasedReceiptParser {
                 || upper.contains("PUNKTESTAND")
                 || upper.contains("PUNKTE")
                 || isReceiptFooterLine(line);
+    }
+
+    private boolean isProtectedAmountPrefix(String line) {
+        // A payment/value label at the start is evidence; a word inside a product name is not.
+        return line.matches("(?i)^\\s*(?:bar(?:zahlung)?|karte|visa|mastercard|debit|gegeben|geg\\."
+                + "|bezahlt|zahlung|eur|betrag\\s+eur|wert|guthaben|vorteil|punktestand|punkte|tse|fiskal)"
+                + "(?:\\b|\\s|:).*$")
+                // Bare tax rate/amount cells only; a described percentage discount is a position.
+                || line.matches("^\\s*[0-9]{1,2}(?:,[0-9]{1,2})?\\s*%\\s*-?[0-9]+[.,][0-9]{2}\\s*$");
     }
 
     private boolean isMetadataLine(String line) {

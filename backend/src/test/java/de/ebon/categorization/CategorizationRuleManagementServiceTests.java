@@ -6,6 +6,7 @@ import de.ebon.api.dto.CategorizationRuleRequest;
 import de.ebon.persistence.model.CategorizationRule;
 import de.ebon.persistence.model.Category;
 import de.ebon.persistence.model.CategorySource;
+import de.ebon.persistence.model.ExtractionStatus;
 import de.ebon.persistence.model.ParseStatus;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptItem;
@@ -59,6 +60,30 @@ class CategorizationRuleManagementServiceTests extends PostgresIntegrationTestSu
     private CategorizationService categorizationService;
 
     private int paperlessDocumentId = 700000;
+
+    @Test
+    void previewExcludesUnconfirmedItemsEvenWhenUncategorizedOrAiCategorized() {
+        Category category = category("Lebensmittel");
+        receiptWithItem("REWE", "Protein Tortilla").setExtractionStatus(ExtractionStatus.NEEDS_REVIEW);
+        receiptWithItem("REWE", "Protein Tortilla AI", CategorySource.AI, category)
+                .setExtractionStatus(ExtractionStatus.NEEDS_REVIEW);
+        receiptItemRepository.flush();
+        assertThat(ruleManagementService.preview(new CategorizationRulePreviewRequest(category.getId(),
+                RuleMatchField.DESCRIPTION, RuleMatchType.CONTAINS, "Tortilla"))).isZero();
+    }
+
+    @Test
+    void previewIncludesConfirmedUncategorizedAndAiItemsButProtectsManualAndRuleAssignments() {
+        Category category = category("Lebensmittel");
+        receiptWithItem("REWE", "Protein Tortilla");
+        receiptWithItem("REWE", "Protein Tortilla AI", CategorySource.AI, category);
+        receiptWithItem("REWE", "Protein Tortilla Manual", CategorySource.MANUAL, category);
+        receiptWithItem("REWE", "Protein Tortilla Rule", CategorySource.RULE, category);
+        receiptWithItem("REWE", "Protein Tortilla Review").setExtractionStatus(ExtractionStatus.NEEDS_REVIEW);
+        receiptItemRepository.flush();
+        assertThat(ruleManagementService.preview(new CategorizationRulePreviewRequest(category.getId(),
+                RuleMatchField.DESCRIPTION, RuleMatchType.CONTAINS, "Tortilla"))).isEqualTo(2);
+    }
 
     @BeforeEach
     void setUp() {

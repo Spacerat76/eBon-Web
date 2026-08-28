@@ -601,6 +601,8 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 - Negative Beträge, Rabatte, Coupons und Pfandpositionen werden als eigene Positionen gespeichert, sofern sie im Bon als Position erscheinen.
 - Mehrzeilige Artikelbezeichnungen werden zu einer `description` zusammengeführt.
 - Akzeptierte dynamische Legacy-Positionsregeln ergänzen auch Teilparses in ursprünglicher Quellzeilenreihenfolge. Ein bereits generisch oder spezialisiert konsumierter Quelltext erzeugt keine zweite Position; identische Käufe auf verschiedenen Zeilen bleiben getrennt. Dynamische Positionen nehmen am bestehenden Mengen-/Detail-/Storno-Verhalten teil.
+- Generisch verworfene Betragszeilen bleiben für akzeptierte dynamische Legacy-Positionsregeln erreichbar, sofern sie keine tatsächlichen Zahlungs-, Steuer- oder Metadatenzeilen sind; ein Produktwort wie `Protein Bar` ist allein kein Zahlungsnachweis.
+- Bei Profilen muss jeder preisähnliche Betrag einer Item-/Feldzeile vollständig innerhalb eines fachlich zugeordneten Capture-Bereichs liegen. Ein äußerer Regex-Treffer einschließlich ungenutzter Wildcards ist keine Extraktionsevidenz. Unabgedeckte monetäre Präfixe/Suffixe, auch `0,00` oder sich ausgleichende Beträge, machen die Zeile `UNRESOLVED`; unsichere Item-Kandidaten werden nicht als bestätigte Position übernommen. Andere valide Positionen bleiben erhalten, die Mindestpositions- und Summenbedingungen bleiben unverändert. Explizite Nicht-Positionsregeln nutzen ihren deklarierten Trefferbereich als Klassifikationsevidenz; Anker allein lösen monetären Inhalt nicht auf. Die Bereichsprüfung bewertet nicht die sachliche Bedeutung bewusst in `DESCRIPTION` zugeordneten Texts.
 - Die Summe aller `receipt_item.total_price` darf vom `receipt.total_amount` maximal um `0.02` abweichen. Die `PARSED`-Toleranz gilt unverändert auch für Profile; größere Abweichungen setzen bei vollständiger Zeilenabdeckung `parse_status = PARSE_ERROR`, speichern aber den Teilparse. Bei verwendbaren Pflichtfeldern und bekannten Positionen sowie ungeklärten relevanten Zeilen gilt stattdessen `PARSE_REVIEW` (F-02.6a), auch wenn die bekannte Positionssumme noch abweicht.
 - `receipt_item.position_index` ist pro Bon fortlaufend und eindeutig.
 
@@ -669,6 +671,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 - **F-03.7:** Wenn kein `OPENROUTER_API_KEY` konfiguriert ist, wird der KI-Fallback übersprungen. Positionen bleiben unkategorisiert (`category_id = NULL`, `category_source = NULL`) und werden in der UI als „Ohne Kategorie" angezeigt.
 - **F-03.8:** `category_source = AI` darf nie ohne gesetzte `category_id` persistiert werden. `category_source = NULL` bedeutet, dass die Position noch offen ist und vom Nutzer später manuell kategorisiert werden kann.
 - **F-03.9:** Eine Beschreibungsregel kann optional auf einen Händler eingeschränkt werden. In diesem Fall müssen Beschreibung und `store_name` gemeinsam passen; der Händlervergleich ist nach Trimmen case-insensitive und exakt.
+- Die Vorschau einer rückwirkenden Regelanwendung zählt wie Apply nur `CONFIRMED`-Positionen; manuell bearbeitete und bereits regelbasiert kategorisierte Positionen bleiben ausgeschlossen.
 
 ### F-04: Suche
 

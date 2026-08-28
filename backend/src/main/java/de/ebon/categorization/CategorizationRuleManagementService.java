@@ -5,6 +5,7 @@ import de.ebon.api.dto.CategorizationRulePreviewRequest;
 import de.ebon.api.dto.CategorizationRuleRequest;
 import de.ebon.persistence.model.CategorizationRule;
 import de.ebon.persistence.model.Category;
+import de.ebon.persistence.model.ExtractionStatus;
 import de.ebon.persistence.model.ReceiptItem;
 import de.ebon.persistence.repository.CategorizationRuleRepository;
 import de.ebon.persistence.repository.CategoryRepository;
@@ -103,6 +104,7 @@ public class CategorizationRuleManagementService {
                 request.storeName(),
                 100);
         return receiptItemRepository.findAll().stream()
+                .filter(item -> item.getExtractionStatus() == ExtractionStatus.CONFIRMED)
                 .filter(item -> !item.isManuallyEdited())
                 .filter(item -> item.getCategory() == null || item.getCategorySource() == de.ebon.persistence.model.CategorySource.AI)
                 .filter(item -> ruleMatcher.matches(transientRule, item))

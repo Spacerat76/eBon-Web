@@ -30,7 +30,7 @@ class ReceiptFormatProfileInterpreterTests {
     private final ReceiptFormatDefinitionCodec codec = new ReceiptFormatDefinitionCodec();
 
     static Stream<String> corpus() {
-        return Stream.of("format_profile_multiline", "format_profile_unresolved");
+        return Stream.of("format_profile_multiline", "format_profile_unresolved", "format_profile_monetary_remainder");
     }
 
     @ParameterizedTest
@@ -86,6 +86,144 @@ class ReceiptFormatProfileInterpreterTests {
         assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSE_REVIEW);
         assertThat(outcome.parseResult().receipt().items()).hasSize(1);
         assertThat(outcome.traces().get(4).lineType()).isEqualTo(ParseLineType.UNRESOLVED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Bio Apfel 1,99 Pfand 0,25 Gutschein -0,25", "Bio Apfel 1,99 Extra 0,00",
+            "Pfand 0,25 Gutschein -0,25 Bio Apfel 1,99", "Extra 0,00 Bio Apfel 1,99"})
+    void partialItemMatchCannotHideUnconsumedMonetaryPrefixOrSuffix(String line) throws IOException {
+        ReceiptFormatDefinition d = definition();
+        ProfileItemRule original = d.itemRules().getFirst();
+        ProfileItemRule partial = new ProfileItemRule("(Bio Apfel) ([0-9]+,[0-9]{2})", original.captures(),
+                original.region(), null, original.type());
+        ReceiptFormatDefinition profile = withItems(d, List.of(partial));
+        String text = baseText().replace("Bio Apfel 1,99", line);
+        assertThat(new ReceiptFormatDefinitionValidator().validate(profile, normalizer.normalize(text)).valid()).isTrue();
+        ProfileParseOutcome outcome = interpret(profile, text);
+        assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSE_ERROR);
+        assertThat(outcome.parseResult().receipt().items()).isEmpty();
+        assertThat(outcome.traces().get(3).lineType()).isEqualTo(ParseLineType.UNRESOLVED);
+        assertThat(outcome.traces().get(3).positionIndex()).isNull();
+        assertThat(outcome.traces()).extracting(ParsedLineTrace::lineNumber).containsExactly(1, 2, 3, 4, 5);
+
+        ProfileParseOutcome withKnownItem = interpret(profile, text.replace("ARTIKEL PREIS\n", "ARTIKEL PREIS\nBio Apfel 0,00\n"));
+        assertThat(withKnownItem.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSE_REVIEW);
+        assertThat(withKnownItem.parseResult().receipt().items()).hasSize(1);
+        assertThat(withKnownItem.parseResult().receipt().items().getFirst().totalPrice()).isEqualByComparingTo("0.00");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Bio Apfel 1,99", "** Bio Apfel 1,99 **"})
+    void partialMatchWithNoMonetaryRemainderStillResolvesPosition(String line) throws IOException {
+        ReceiptFormatDefinition d = definition();
+        ProfileItemRule original = d.itemRules().getFirst();
+        ProfileItemRule partial = new ProfileItemRule("(Bio Apfel) ([0-9]+,[0-9]{2})", original.captures(),
+                original.region(), null, original.type());
+        ProfileParseOutcome outcome = interpret(withItems(d, List.of(partial)), baseText().replace("Bio Apfel 1,99", line));
+        assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(outcome.parseResult().receipt().items()).hasSize(1);
+        assertThat(outcome.traces().get(3).lineType()).isEqualTo(ParseLineType.POSITION);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"^(Bio Apfel) ([0-9]+,[0-9]{2}).*$", "^.*(Bio Apfel) ([0-9]+,[0-9]{2}).*$"})
+    void fullWildcardMatchDoesNotReplaceSemanticCaptureCoverage(String regex) throws IOException {
+        ReceiptFormatDefinition d = definition();
+        ProfileItemRule original = d.itemRules().getFirst();
+        ProfileItemRule partial = new ProfileItemRule(regex, original.captures(), original.region(), null, original.type());
+        String text = baseText().replace("Bio Apfel 1,99", "Bio Apfel 1,99 Pfand 0,25 Gutschein -0,25");
+        ReceiptFormatDefinition profile = withItems(d, List.of(partial));
+        assertThat(new ReceiptFormatDefinitionValidator().validate(profile, normalizer.normalize(text)).valid()).isTrue();
+        ProfileParseOutcome outcome = interpret(profile, text);
+        assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSE_ERROR);
+        assertThat(outcome.parseResult().receipt().items()).isEmpty();
+        assertThat(outcome.traces().get(3).lineType()).isEqualTo(ParseLineType.UNRESOLVED);
+    }
+
+    @Test
+    void partialNumberCaptureCannotTreatTheLastDigitAsHarmlessRemainder() throws IOException {
+        ReceiptFormatDefinition d = definition();
+        ProfileItemRule original = d.itemRules().getFirst();
+        ProfileItemRule partial = new ProfileItemRule("^(Bio Apfel) ([0-9]+,[0-9]).*$", original.captures(),
+                original.region(), null, original.type());
+        ProfileParseOutcome outcome = interpret(withItems(d, List.of(partial)),
+                baseText().replace("Bio Apfel 1,99", "Bio Apfel 1,90").replace("SUMME 1,99", "SUMME 1,90"));
+        assertThat(outcome.parseResult().receipt().items()).isEmpty();
+        assertThat(outcome.traces().get(3).lineType()).isEqualTo(ParseLineType.UNRESOLVED);
+    }
+
+    @Test
+    void twoDecimalCaptureCannotCoverAThreeDecimalSourceAmount() throws IOException {
+        ReceiptFormatDefinition d = definition();
+        ProfileItemRule original = d.itemRules().getFirst();
+        ProfileItemRule partial = new ProfileItemRule("^(Bio Apfel) ([0-9]+,[0-9]{2}).*$", original.captures(),
+                original.region(), null, original.type());
+        ProfileParseOutcome outcome = interpret(withItems(d, List.of(partial)), baseText().replace("Bio Apfel 1,99", "Bio Apfel 1,999"));
+        assertThat(outcome.parseResult().receipt().items()).isEmpty();
+        assertThat(outcome.traces().get(3).lineType()).isEqualTo(ParseLineType.UNRESOLVED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"EUR", "€"})
+    void fullyCapturedIntegerPricesDoNotNeedToCaptureTheCurrencySuffix(String currency) throws IOException {
+        ReceiptFormatDefinition d = definition();
+        ProfileItemRule original = d.itemRules().getFirst();
+        ProfileItemRule integer = new ProfileItemRule("^(Bio Apfel) ([0-9]+) (?:EUR|€)$", original.captures(),
+                original.region(), null, original.type());
+        List<ProfileFieldRule> fields = new ArrayList<>(d.fields());
+        fields.set(2, new ProfileFieldRule(ProfileFieldRule.Field.TOTAL_AMOUNT, "^SUMME ([0-9]+) (?:EUR|€)$", 1, true));
+        ReceiptFormatDefinition profile = new ReceiptFormatDefinition(1, d.anchors(), fields, List.of(integer), d.lineRules());
+        String text = baseText().replace("1,99", "2 " + currency);
+        assertThat(new ReceiptFormatDefinitionValidator().validate(profile, normalizer.normalize(text)).valid()).isTrue();
+        ProfileParseOutcome outcome = interpret(profile, text);
+        assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(outcome.parseResult().receipt().items().getFirst().totalPrice()).isEqualByComparingTo("2");
+        assertThat(outcome.traces().get(3).lineType()).isEqualTo(ParseLineType.POSITION);
+        assertThat(outcome.traces().get(4).lineType()).isEqualTo(ParseLineType.TOTAL);
+    }
+
+    @Test
+    void fullWildcardFieldMatchCannotHideAmountsOutsideMappedCapture() throws IOException {
+        ReceiptFormatDefinition d = definition();
+        List<ProfileFieldRule> fields = new ArrayList<>(d.fields());
+        fields.set(2, new ProfileFieldRule(ProfileFieldRule.Field.TOTAL_AMOUNT, "^SUMME ([0-9]+,[0-9]{2}).*$", 1, true));
+        ReceiptFormatDefinition profile = new ReceiptFormatDefinition(1, d.anchors(), fields, d.itemRules(), d.lineRules());
+        ProfileParseOutcome outcome = interpret(profile, baseText().replace("SUMME 1,99", "SUMME 1,99 Extra 0,00"));
+        assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSE_REVIEW);
+        assertThat(outcome.traces().getLast().lineType()).isEqualTo(ParseLineType.UNRESOLVED);
+    }
+
+    @Test
+    void anchorAloneCannotDeclareAnUncapturedAmountAsMetadata() throws IOException {
+        ReceiptFormatDefinition d = definition();
+        List<ProfileAnchor> anchors = new ArrayList<>(d.anchors());
+        anchors.set(1, new ProfileAnchor("start", "^ARTIKEL PREIS.*$", true));
+        ReceiptFormatDefinition profile = new ReceiptFormatDefinition(1, anchors, d.fields(), d.itemRules(), d.lineRules());
+        ProfileParseOutcome outcome = interpret(profile, baseText().replace("ARTIKEL PREIS", "ARTIKEL PREIS Extra 0,00"));
+        assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSE_REVIEW);
+        assertThat(outcome.traces().get(2).lineType()).isEqualTo(ParseLineType.UNRESOLVED);
+    }
+
+    @Test
+    void partialTotalFieldCannotHideMonetaryRemainderBehindAFullAnchor() throws IOException {
+        ReceiptFormatDefinition d = definition();
+        List<ProfileFieldRule> fields = new ArrayList<>(d.fields());
+        fields.set(2, new ProfileFieldRule(ProfileFieldRule.Field.TOTAL_AMOUNT, "^SUMME ([0-9]+,[0-9]{2})", 1, true));
+        ReceiptFormatDefinition profile = new ReceiptFormatDefinition(1, d.anchors(), fields, d.itemRules(), d.lineRules());
+        ProfileParseOutcome outcome = interpret(profile, baseText().replace("SUMME 1,99", "SUMME 1,99 Extra 0,00"));
+        assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSE_REVIEW);
+        assertThat(outcome.traces().getLast().lineType()).isEqualTo(ParseLineType.UNRESOLVED);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"GIROCARD 1,99 Extra 0,00", "Extra 0,00 GIROCARD 1,99"})
+    void partialExplicitLineRuleCannotHideMonetaryRemainder(String line) throws IOException {
+        ReceiptFormatDefinition d = definition();
+        ReceiptFormatDefinition profile = new ReceiptFormatDefinition(1, d.anchors(), d.fields(), d.itemRules(),
+                List.of(new ProfileLineRule("GIROCARD [0-9]+,[0-9]{2}", ProfileLineRule.Type.PAYMENT)));
+        ProfileParseOutcome outcome = interpret(profile, baseText() + line + "\n");
+        assertThat(outcome.parseResult().parseStatus()).isEqualTo(ParseStatus.PARSE_REVIEW);
+        assertThat(outcome.traces().getLast().lineType()).isEqualTo(ParseLineType.UNRESOLVED);
     }
 
     @ParameterizedTest

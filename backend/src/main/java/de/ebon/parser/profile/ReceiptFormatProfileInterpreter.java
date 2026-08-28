@@ -30,6 +30,9 @@ public final class ReceiptFormatProfileInterpreter {
             "^-?(?:[0-9]+(?:[.,][0-9]+)?|[0-9]{1,3}(?:\\.[0-9]{3})+(?:,[0-9]+)?)$");
     private static final ProfileRegex PRICE_LIKE = ProfileRegex.compile(
             "(?i)(?:^|[^0-9])-?[0-9]+(?:\\.[0-9]{3})*(?:[.,][0-9]{2}(?:[^0-9]|$)|\\s*(?:EUR|€))");
+    // Capture the entire numeric value, excluding a currency suffix; do not consume delimiters.
+    private static final ProfileRegex MONETARY_TOKEN = ProfileRegex.compile(
+            "(?i)(-?[0-9]+(?:\\.[0-9]{3})*[.,][0-9]{2,})|(-?[0-9]+(?:\\.[0-9]{3})*)\\s*(?:EUR|€)");
     private static final Map<ParseLineType, ProfileRegex> PROTECTED = Map.of(
             ParseLineType.TOTAL, ProfileRegex.compile("(?i)^\\s*(?:summe|sumne|gesamt(?:betrag|summe)?|zu\\s+zahlen|total|endbetrag)(?:\\b|\\s|:)"),
             ParseLineType.TAX, ProfileRegex.compile("(?i)^\\s*(?:mwst|ust|mehrwertsteuer|steuer|netto|brutto)(?:\\b|\\s|:)"),
@@ -135,6 +138,7 @@ public final class ReceiptFormatProfileInterpreter {
                             lines.get(i).extracted.put(rule.field().name(), value);
                             lines.get(i).fieldMatched = true;
                             lines.get(i).totalField |= rule.field() == ProfileFieldRule.Field.TOTAL_AMOUNT;
+                            lines.get(i).coverage.add(match.groupSpan(rule.captureGroup()));
                         }
                     }
                 }
@@ -166,6 +170,9 @@ public final class ReceiptFormatProfileInterpreter {
                         Map<ProfileItemRule.Field, String> captures = new EnumMap<>(ProfileItemRule.Field.class);
                         rule.captures().forEach((field, group) -> captures.put(field, match.group(group)));
                         Candidate candidate = new Candidate(i, captures);
+                        rule.captures().values().forEach(group -> {
+                            if (match.groupSpan(group) != null) candidate.coverage.add(match.groupSpan(group));
+                        });
                         candidate.descriptions.put(i, captures.get(ProfileItemRule.Field.DESCRIPTION));
                         extend(candidate, rule.multiline(), from, to);
                         candidates.add(candidate);
@@ -198,9 +205,12 @@ public final class ReceiptFormatProfileInterpreter {
         private void classifyLines() {
             for (ProfileLineRule rule : definition.lineRules()) {
                 for (int i = 0; i < lines.size(); i++) {
-                    if (!matches(rule.regex(), i).isEmpty()) {
-                        lines.get(i).types.add(rule.type() == ProfileLineRule.Type.TSE ? ParseLineType.METADATA
+                    List<ProfileRegex.Match> matches = matches(rule.regex(), i);
+                    if (!matches.isEmpty()) {
+                        Line line = lines.get(i);
+                        line.types.add(rule.type() == ProfileLineRule.Type.TSE ? ParseLineType.METADATA
                                 : ParseLineType.valueOf(rule.type().name()));
+                        matches.forEach(match -> line.coverage.add(new ProfileRegex.Span(match.start(), match.end())));
                     }
                 }
             }
@@ -212,6 +222,9 @@ public final class ReceiptFormatProfileInterpreter {
                     }
                 }
                 if (line.types.size() > 1) line.unresolved("CLASSIFICATION_COLLISION");
+                if ((!line.types.isEmpty() || line.anchor) && hasUncoveredMoney(line, line.coverage)) {
+                    line.unresolved("UNCONSUMED_MONETARY_CONTENT");
+                }
             }
         }
 
@@ -220,6 +233,10 @@ public final class ReceiptFormatProfileInterpreter {
             candidates.forEach(candidate -> candidate.descriptions.keySet().forEach(index -> owners.merge(index, 1, Integer::sum)));
             candidates.sort(Comparator.comparingInt(candidate -> candidate.descriptions.firstKey()));
             for (Candidate candidate : candidates) {
+                if (hasUncoveredMoney(lines.get(candidate.priceLine), candidate.coverage)) {
+                    candidate.descriptions.keySet().forEach(index -> lines.get(index).unresolved("UNCONSUMED_MONETARY_CONTENT"));
+                    continue;
+                }
                 boolean collision = candidate.descriptions.keySet().stream().anyMatch(index -> {
                     Line line = lines.get(index);
                     return owners.get(index) > 1 || line.anchor || !line.types.isEmpty() || line.unresolved;
@@ -256,6 +273,14 @@ public final class ReceiptFormatProfileInterpreter {
         private String description(Candidate candidate) {
             if (candidate.descriptions.values().stream().anyMatch(value -> value == null || value.isBlank())) return null;
             return String.join(" ", candidate.descriptions.values().stream().map(String::trim).toList());
+        }
+
+        private boolean hasUncoveredMoney(Line line, List<ProfileRegex.Span> coverage) {
+            if (line.monetaryTokens == null) {
+                line.monetaryTokens = MONETARY_TOKEN.findAll(line.source.originalText(), budget).stream()
+                        .map(match -> match.groupSpan(1) != null ? match.groupSpan(1) : match.groupSpan(2)).toList();
+            }
+            return line.monetaryTokens.stream().anyMatch(token -> coverage.stream().noneMatch(span -> span.contains(token)));
         }
 
         private ParsedReceipt receipt() {
@@ -320,6 +345,7 @@ public final class ReceiptFormatProfileInterpreter {
         final int priceLine;
         final Map<ProfileItemRule.Field, String> captures;
         final TreeMap<Integer, String> descriptions = new TreeMap<>();
+        final List<ProfileRegex.Span> coverage = new ArrayList<>();
         boolean invalid;
 
         Candidate(int priceLine, Map<ProfileItemRule.Field, String> captures) {
@@ -332,6 +358,8 @@ public final class ReceiptFormatProfileInterpreter {
         final NormalizedReceiptLine source;
         final Set<ParseLineType> types = EnumSet.noneOf(ParseLineType.class);
         final Map<String, String> extracted = new LinkedHashMap<>();
+        final List<ProfileRegex.Span> coverage = new ArrayList<>();
+        List<ProfileRegex.Span> monetaryTokens;
         boolean anchor;
         boolean fieldMatched;
         boolean totalField;
