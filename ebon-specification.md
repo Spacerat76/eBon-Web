@@ -591,6 +591,7 @@ Für KI-Parsing muss die Anwendung, soweit vom Modell unterstützt, strukturiert
 
 **Parser-Normalisierung und Validierung:**
 
+- Die Formatidentifikation v1 nutzt SHA-256 über den locale-unabhängigen Händlerschlüssel und abstrakte Strukturmerkmale (Anker-/Spaltenreihenfolge, Kopf-/Positions-/Fußbereich). Artikeltexte, Preise, Datum/Uhrzeit, Beleg-IDs, Filialadressen und Wiederholungszahlen gleicher Positionszeilentypen gehen nicht als Werte ein. Whitespace/Satzzeichen sowie explizit unterstützte OCR-Ankervarianten werden vereinheitlicht. Die Filiale bleibt separat identifizierbar; bei fehlender Filiale ist ihr Schlüssel leer. Originalzeilen und einbasierte Zeilennummern bleiben über nullbasierte UTF-16-Offsets mit exklusivem Ende nachvollziehbar; die Identität enthält keinen Bon-Rohtext. Eine Änderung des Fingerprintalgorithmus erfordert eine neue Version.
 - Deutsche Zahlenformate werden normalisiert: `1,99` → `1.99`, `1.234,56` → `1234.56`.
 - Negative Beträge, Rabatte, Coupons und Pfandpositionen werden als eigene Positionen gespeichert, sofern sie im Bon als Position erscheinen.
 - Mehrzeilige Artikelbezeichnungen werden zu einer `description` zusammengeführt.
