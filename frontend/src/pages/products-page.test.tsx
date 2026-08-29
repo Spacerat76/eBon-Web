@@ -246,7 +246,7 @@ describe("ProductsPage", () => {
     }));
   });
 
-  it("keeps existing-family correction available as an explicit alternative", async () => {
+  it("shows active families when correcting a review without a family suggestion", async () => {
     const user = userEvent.setup();
     const api = apiClient({
       reviewItems: [{ ...reviewItem, suggestedProductFamilyId: null, suggestedProductFamilyName: null, suggestedProductVariantId: null, suggestedProductVariantName: null }],
@@ -261,7 +261,8 @@ describe("ProductsPage", () => {
     await user.click(screen.getByRole("button", { name: "Korrigieren" }));
     await user.click(await screen.findByRole("button", { name: "Vorhandene Familie" }));
     const familySelect = screen.getByLabelText("Produktfamilie");
-    expect(within(familySelect).queryByRole("option", { name: "Fluconazol Accord 50 mg" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Produktfamilie suchen")).toHaveValue("");
+    expect(within(familySelect).getByRole("option", { name: "Fluconazol Accord 50 mg" })).toBeInTheDocument();
     expect(within(familySelect).getByRole("option", { name: "Haferdrink" })).toBeInTheDocument();
 
     await user.selectOptions(familySelect, "10");

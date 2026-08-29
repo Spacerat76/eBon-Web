@@ -594,7 +594,7 @@ function CorrectionDialog({ families, item, loading, onCancel, onConfirm, onNoPr
   );
   const [familyId, setFamilyId] = useState<number | "">(initialFamilyId);
   const [newFamilyName, setNewFamilyName] = useState(initialFamilyName || readableProductName(item.description));
-  const [familySearch, setFamilySearch] = useState(initialFamilyName || item.description);
+  const [familySearch, setFamilySearch] = useState(initialFamilyName);
   const [variantId, setVariantId] = useState(item.suggestedProductVariantId ?? item.currentProductVariantId ?? 0);
   const [applyToSimilar, setApplyToSimilar] = useState(item.possibleRetroactiveItems > 1);
   const selectedFamilyId = familyId === "" ? null : familyId;
@@ -766,6 +766,9 @@ function matchingFamilies(families: ProductFamilyDTO[], search: string, selected
     .filter((family) => family.isActive || family.id === selectedFamilyId)
     .filter((family) => {
       if (family.id === selectedFamilyId) {
+        return true;
+      }
+      if (query.length === 0) {
         return true;
       }
       if (query.length < 2) {
