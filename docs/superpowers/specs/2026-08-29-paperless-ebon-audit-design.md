@@ -4,7 +4,7 @@
 
 Der Audit ist ein bewusst gestarteter, interaktiver Codex-Arbeitsablauf. Er prüft zunächst das Parsing aller eBons aus Paperless und anschließend die Zuordnung ihrer Positionen zu Produktfamilien und Varianten.
 
-Die Lösung besteht aus zwei projektlokalen Skills mit kleinen Node-Skripten. Sie verwendet vorhandene Paperless- und eBon-Schnittstellen. Es entstehen kein neuer Hintergrunddienst, keine Audit-Datenbanktabellen, keine eigene KI-Anbindung und kein OpenRouter-Aufruf.
+Die Lösung besteht aus zwei projektlokalen Skills mit kleinen Node-Skripten. Sie verwendet vorhandene Paperless- und eBon-Schnittstellen sowie genau einen neuen, abgesicherten Produkt-Audit-Endpunkt. Es entstehen kein neuer Hintergrunddienst, keine Audit-Datenbanktabellen, keine eigene KI-Anbindung und kein OpenRouter-Aufruf.
 
 ## Gemeinsame Grenzen
 
@@ -54,6 +54,12 @@ Der Skill prüft Produktfamilie, Variante und Produktzuordnung für Positionen a
 6. Manuell zugeordnete Produkte, Familien und Varianten werden niemals automatisch verändert. Bei offensichtlich falscher manueller Zuordnung zeigt Codex Ist-Zuordnung, empfohlenes Ziel und Begründung; die Änderung benötigt eine ausdrückliche Nutzerbestätigung.
 7. Unsichere Fälle werden mit einem Vorschlag gesammelt. Wenn kein sinnvoller Vorschlag möglich ist, wird der offene Fall ohne Vorschlag ausgewiesen.
 
+### Minimaler Produkt-Audit-Endpunkt
+
+Der vorhandene manuelle Korrektur-Endpunkt bleibt unverändert: Er speichert ausschließlich ausdrücklich vom Nutzer bestätigte Änderungen als `MANUAL + CONFIRMED`.
+
+Ein neuer, enger Audit-Endpunkt übernimmt offensichtliche Codex-Korrekturen als `AI + AUTO_ASSIGNED` samt Konfidenz. Er prüft Position, erwartete bisherige Zuordnung, aktive Familie/Variante und manuellen Schutz innerhalb einer Transaktion erneut. Er lehnt jede bereits manuelle oder bestätigte Zuordnung ab und unterstützt eine neue eindeutige Produktfamilie. Er erzeugt keinen KI-Aufruf und keine vertrauenswürdige Variantenhistorie.
+
 ### Produkt-Erfolg
 
 Jede geprüfte Position endet als bestätigte Zuordnung, sicherer Nicht-Produktfall oder eindeutig offener Prüfpunkt. Manuelle Entscheidungen haben Vorrang vor Codex- und Regelzuordnungen.
@@ -76,9 +82,9 @@ Jeder Skill besitzt ein dependency-freies Node-Skript und einen Test mit dem ein
         └── product-audit.test.mjs
 ```
 
-Die Skripte übernehmen nur wiederholbare Mechanik: REST-Zugriffe, vollständige Paginierung, Gruppierung, Sortierung, temporäre Blockdateien, aktuelle Schutzprüfung, Anwendung freigegebener Entscheidungen und Fortschritt. Codex übernimmt die inhaltliche Prüfung.
+Die Skripte übernehmen nur wiederholbare Mechanik: REST-Zugriffe, vollständige Paginierung, Gruppierung, Sortierung, temporäre Blockdateien, aktuelle Schutzprüfung, Anwendung freigegebener Entscheidungen und Fortschritt. Codex übernimmt die inhaltliche Prüfung. Nicht manuelle Sofortkorrekturen verwenden den Produkt-Audit-Endpunkt; vom Nutzer bestätigte manuelle Korrekturen verwenden weiterhin den vorhandenen manuellen Review-Endpunkt.
 
-Benötigt ein Skript eine heute fehlende Anwendungsschnittstelle, beschreibt Codex die kleinste notwendige Änderung und fragt vor Änderungen an Anwendungscode oder Tests.
+Weitere Anwendungsschnittstellen sind nicht vorgesehen. Benötigt ein Skript dennoch eine heute fehlende Schnittstelle, beschreibt Codex die kleinste notwendige Änderung und fragt vor Änderungen an Anwendungscode oder Tests.
 
 ## Verifikation
 
@@ -87,6 +93,7 @@ Benötigt ein Skript eine heute fehlende Anwendungsschnittstelle, beschreibt Cod
 - Ein lesender Live-Test prüft Paperless-Inventur und Gruppierung ohne eBon-Mutation.
 - Parserkorrekturen werden gegen den vollständigen Händlerblock und die vorhandenen Parsertests geprüft.
 - Produktänderungen werden nach Anwendung erneut gelesen; manuelle Zuordnungen müssen unverändert bleiben.
+- Backendtests beweisen, dass der neue Audit-Endpunkt nur `AI + AUTO_ASSIGNED` schreibt, manuelle Zuordnungen ablehnt und keine OpenRouter-Komponente aufruft.
 - Ein unveränderter Wiederholungslauf erzeugt keine zusätzlichen Korrekturen.
 
 ## Nicht Bestandteil
