@@ -18,6 +18,7 @@ Use the smallest relevant set from `.codex/skills/`; read each selected `SKILL.m
 | React, TypeScript, UX, API client | `ebon-frontend` |
 | Merchant profiles, quarantine, shadow checks, learning, rollback | `ebon-adaptive-processing` |
 | Interactive Paperless receipt inventory and merchant/branch parser audit | `ebon-receipt-audit` |
+| Interactive product-family and variant audit of verified receipt blocks | `ebon-product-audit` |
 | Tests, acceptance criteria, review, completion | `ebon-qa` |
 
 Select multiple skills only when the change crosses those surfaces. `ebon-qa` is required before any completion claim and whenever tests or acceptance criteria are designed.
