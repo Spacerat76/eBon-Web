@@ -16,3 +16,4 @@ backups/
 .superpowers/
 .worktrees/
 *.zip
+/var/ebon-codex-audit/
