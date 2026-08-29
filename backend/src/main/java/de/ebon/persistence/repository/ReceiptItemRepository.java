@@ -1,13 +1,21 @@
 package de.ebon.persistence.repository;
 
 import de.ebon.persistence.model.ReceiptItem;
+import jakarta.persistence.LockModeType;
 import java.util.List;
+import java.util.Optional;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface ReceiptItemRepository extends JpaRepository<ReceiptItem, Long>, JpaSpecificationExecutor<ReceiptItem> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select i from ReceiptItem i join fetch i.receipt where i.id = :id and i.receipt.deletedAt is null")
+    Optional<ReceiptItem> findByIdForProductAudit(@Param("id") Long id);
 
     List<ReceiptItem> findByReceipt_IdOrderByPositionIndexAsc(Long receiptId);
 

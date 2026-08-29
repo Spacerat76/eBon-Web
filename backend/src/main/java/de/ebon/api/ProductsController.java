@@ -1,5 +1,7 @@
 package de.ebon.api;
 
+import de.ebon.api.dto.AuditProductCorrectionRequest;
+import de.ebon.api.dto.AuditProductCorrectionResponse;
 import de.ebon.api.dto.ProductAssignmentRunRequest;
 import de.ebon.api.dto.ProductAssignmentRunResponse;
 import de.ebon.api.dto.ProductAssignmentCorrectionRequest;
@@ -27,6 +29,7 @@ import de.ebon.api.dto.ProductVariantSplitRequest;
 import de.ebon.product.ProductManagementService;
 import de.ebon.product.ProductMaintenanceService;
 import de.ebon.product.ProductReviewService;
+import de.ebon.product.AuditProductCorrectionService;
 import de.ebon.api.dto.PageResponse;
 import de.ebon.api.dto.ProductReviewItemDto;
 import de.ebon.persistence.model.ProductAssignmentSource;
@@ -61,14 +64,17 @@ public class ProductsController {
     private final ProductManagementService productManagementService;
     private final ProductReviewService productReviewService;
     private final ProductMaintenanceService productMaintenanceService;
+    private final AuditProductCorrectionService auditProductCorrectionService;
 
     public ProductsController(
             ProductManagementService productManagementService,
             ProductReviewService productReviewService,
-            ProductMaintenanceService productMaintenanceService) {
+            ProductMaintenanceService productMaintenanceService,
+            AuditProductCorrectionService auditProductCorrectionService) {
         this.productManagementService = productManagementService;
         this.productReviewService = productReviewService;
         this.productMaintenanceService = productMaintenanceService;
+        this.auditProductCorrectionService = auditProductCorrectionService;
     }
 
     @GetMapping("/api/products/families")
@@ -173,6 +179,14 @@ public class ProductsController {
             @PathVariable Long receiptItemId,
             @Valid @RequestBody ProductAssignmentCorrectionRequest request) {
         return productReviewService.correct(receiptItemId, request);
+    }
+
+    @PostMapping("/api/products/review/{receiptItemId}/audit-correct")
+    @Operation(summary = "Eindeutige Codex-Audit-Korrektur mit KI-Provenienz anwenden")
+    public AuditProductCorrectionResponse auditCorrectReview(
+            @PathVariable Long receiptItemId,
+            @Valid @RequestBody AuditProductCorrectionRequest request) {
+        return auditProductCorrectionService.correct(receiptItemId, request);
     }
 
     @PostMapping("/api/products/review/{receiptItemId}/reject")

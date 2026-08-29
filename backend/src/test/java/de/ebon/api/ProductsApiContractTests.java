@@ -211,6 +211,54 @@ class ProductsApiContractTests extends PostgresIntegrationTestSupport {
                 .isNull();
     }
 
+    // Verifies Codex audit corrections keep AI provenance, reject low confidence, and never overwrite manual work.
+    @Test
+    void auditCorrectionIsProvenanceSafeAndProtectsManualAssignments() throws Exception {
+        String marker = "AUDITCORRECTION" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
+        Long familyId = jdbcTemplate.queryForObject(
+                "insert into product_family (name) values (?) returning id", Long.class, marker + " Familie");
+        Long receiptId = insertReceipt(marker, "REWE", 3.00);
+        Long openItemId = jdbcTemplate.queryForObject("""
+                insert into receipt_item (receipt_id, position_index, description, total_price, product_assignment_status)
+                values (?, 0, ?, 1.00, 'NEEDS_REVIEW') returning id
+                """, Long.class, receiptId, marker + " OFFEN");
+        Long manualItemId = jdbcTemplate.queryForObject("""
+                insert into receipt_item (receipt_id, position_index, description, total_price,
+                                          product_family_id, product_assignment_source, product_assignment_status)
+                values (?, 1, ?, 2.00, ?, 'MANUAL', 'CONFIRMED') returning id
+                """, Long.class, receiptId, marker + " MANUELL", familyId);
+
+        JsonNode corrected = body(post("/api/products/review/" + openItemId + "/audit-correct", """
+                {"expected":{"productFamilyId":null,"productVariantId":null,"source":null,"status":"NEEDS_REVIEW"},
+                 "productFamilyId":%d,"newProductFamilyName":null,"productVariantId":null,
+                 "newProductVariant":null,"confidence":0.990,"reasonCode":"UNIQUE_EXISTING_FAMILY"}
+                """.formatted(familyId)));
+
+        assertThat(corrected.get("source").asString()).isEqualTo("AI");
+        assertThat(corrected.get("status").asString()).isEqualTo("AUTO_ASSIGNED");
+        assertThat(jdbcTemplate.queryForObject(
+                "select product_assignment_source from receipt_item where id = ?", String.class, openItemId))
+                .isEqualTo("AI");
+        assertThat(jdbcTemplate.queryForObject(
+                "select model_used from product_assignment_log where receipt_item_id = ? order by id desc limit 1",
+                String.class, openItemId)).isEqualTo("codex-interactive-audit");
+
+        HttpResponse<String> lowConfidence = post("/api/products/review/" + openItemId + "/audit-correct", """
+                {"expected":{"productFamilyId":%d,"productVariantId":null,"source":"AI","status":"AUTO_ASSIGNED"},
+                 "productFamilyId":%d,"confidence":0.979,"reasonCode":"UNIQUE_EXISTING_FAMILY"}
+                """.formatted(familyId, familyId));
+        assertThat(lowConfidence.statusCode()).isEqualTo(400);
+
+        HttpResponse<String> manualOverwrite = post("/api/products/review/" + manualItemId + "/audit-correct", """
+                {"expected":{"productFamilyId":%d,"productVariantId":null,"source":"MANUAL","status":"CONFIRMED"},
+                 "newProductFamilyName":"%s Ersatz","confidence":0.999,"reasonCode":"OBVIOUS_MANUAL_CONFLICT"}
+                """.formatted(familyId, marker));
+        assertThat(manualOverwrite.statusCode()).isEqualTo(409);
+        assertThat(jdbcTemplate.queryForObject(
+                "select product_family_id from receipt_item where id = ?", Long.class, manualItemId))
+                .isEqualTo(familyId);
+    }
+
     // Verifies a historical family correction is previewed first and changes assignments only after explicit confirmation.
     @Test
     void familyMergePreviewDoesNotPersistAndConfirmedApplyMovesFamilyOnlyAssignments() throws Exception {
