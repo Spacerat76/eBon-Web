@@ -1,0 +1,31 @@
+{
+  "receiptDate": "2026-08-01",
+  "receiptTime": "12:00:00",
+  "storeName": "ALDI",
+  "storeBranch": "Musterstrasse 1",
+  "totalAmount": 3.00,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Apfel",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 1.00,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Brot",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.00,
+      "discountAmount": null
+    }
+  ]
+}

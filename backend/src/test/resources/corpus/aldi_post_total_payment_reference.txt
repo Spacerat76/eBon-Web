@@ -1,0 +1,10 @@
+ALDI
+Musterstrasse 1
+01.08.2026 12:00
+
+Apfel 1,00 A
+Brot 2,00 B
+
+SUMME € 3,00
+Transaktionsreferenz
+3,00

@@ -1027,7 +1027,8 @@ public class RuleBasedReceiptParser {
         boolean insideCashReceiptSection = !multipleCashReceiptSections;
         int cashReceiptItemStartIndex = 0;
 
-        for (String line : lines) {
+        for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
+            String line = lines.get(lineIndex);
             if (multipleCashReceiptSections && isCardTerminalReceiptStartLine(line)) {
                 break;
             }
@@ -1047,6 +1048,13 @@ public class RuleBasedReceiptParser {
                 leadingQuantityDetails = null;
                 insideCashReceiptSection = false;
                 continue;
+            }
+            if (!multipleCashReceiptSections
+                    && !items.isEmpty()
+                    && isFinalItemTotalLine(lines, lineIndex, receiptTotal)) {
+                pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
+                break;
             }
             if (isReceiptItemSectionHeaderLine(line)) {
                 pendingDescriptionLines.clear();
@@ -1304,6 +1312,17 @@ public class RuleBasedReceiptParser {
         }
 
         return items;
+    }
+
+    private boolean isFinalItemTotalLine(List<String> lines, int lineIndex, BigDecimal receiptTotal) {
+        String line = lines.get(lineIndex);
+        if (receiptTotal == null
+                || !isTotalLine(line)
+                || line.toUpperCase(Locale.ROOT).contains("ZWISCHEN")) {
+            return false;
+        }
+        BigDecimal candidate = amountOnLineOrFollowing(lines, lineIndex);
+        return candidate != null && candidate.subtract(receiptTotal).abs().compareTo(new BigDecimal("0.02")) <= 0;
     }
 
     private Matcher amountAtEndMatcher(String line, String storeName) {
