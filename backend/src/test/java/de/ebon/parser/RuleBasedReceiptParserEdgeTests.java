@@ -291,6 +291,27 @@ class RuleBasedReceiptParserEdgeTests {
         assertThat(result.receipt().items().getFirst().unitPrice()).isEqualByComparingTo("19.89");
     }
 
+    // Verifies a one-letter product suffix remains part of the description while the tax code after the amount is ignored.
+    @ParameterizedTest
+    @ValueSource(strings = {"E", "H", "L", "P", "W"})
+    void preservesSingleLetterReweProductSuffixBeforeAmount(String suffix) {
+        ReceiptParseResult result = parser.parse("""
+                REWE Beispielmarkt
+                Musterstraße 1
+                41460 Neuss
+                EUR
+                TEST PRODUKT %s 1,00 B
+                SUMME EUR 1,00
+                Datum: 28.08.2026
+                Uhrzeit: 11:53:40 Uhr
+                """.formatted(suffix));
+
+        assertThat(result.parseStatus()).isEqualTo(ParseStatus.PARSED);
+        assertThat(result.receipt().items()).singleElement()
+                .extracting(ParsedReceiptItem::description)
+                .isEqualTo("TEST PRODUKT " + suffix);
+    }
+
     // Verifies dm receipts expose the branch code even when the address exists only as an image.
     @Test
     void parsesDmHeaderStoreCodeAsBranchIdentifier() {

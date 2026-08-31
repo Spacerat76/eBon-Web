@@ -23,9 +23,14 @@ public class RuleBasedReceiptParser {
     private static final String AMOUNT_PATTERN = "-?\\d{1,3}(?:\\.\\d{3})*,\\d{2}|-?\\d+,\\d{2}|-?\\d+\\.\\d{2}";
     private static final Pattern AMOUNT_AT_END = Pattern.compile(
             "(?<amount>" + AMOUNT_PATTERN + ")\\s*(?:[A-Z]{1,2}|§?\\d)?\\s*\\*?$");
+    private static final Pattern EDEKA_AMOUNT_AT_END = Pattern.compile(
+            "(?<amount>" + AMOUNT_PATTERN + ")\\s*\\*?\\s*(?:[A-Z]{1,2}|§?\\d)?\\s*\\*?$");
     private static final Pattern AMOUNT_BEFORE_EUR = Pattern.compile(
             "(?<amount>" + AMOUNT_PATTERN + ")\\s*EUR\\b",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern AMOUNT_BEFORE_TABLE_CELL_END = Pattern.compile(
+            "(?<amount>" + AMOUNT_PATTERN + ")\\s*(?:[A-Z]{1,2}|§?\\d)?\\s*\\*?\\s*\\|\\s*$");
+    private static final Pattern ANY_AMOUNT = Pattern.compile("(?<amount>" + AMOUNT_PATTERN + ")");
     private static final Pattern DATE_DOTTED = Pattern.compile("\\b(?<day>\\d{1,2})\\.(?<month>\\d{1,2})\\.(?<year>\\d{2,4})\\b");
     private static final Pattern DATE_SLASH = Pattern.compile("\\b(?<day>\\d{1,2})/(?<month>\\d{1,2})/(?<year>\\d{2,4})\\b");
     private static final Pattern DATE_ISO = Pattern.compile("\\b(?<date>\\d{4}-\\d{2}-\\d{2})\\b");
@@ -54,6 +59,27 @@ public class RuleBasedReceiptParser {
     private static final Pattern DM_ITEM_LINE = Pattern.compile(
             "^(?:(?<quantity>\\d+)x\\s+(?<unitPrice>\\d+(?:,\\d+|\\.\\d+)?)\\s+)?(?<description>.+?)\\s+(?<total>" + AMOUNT_PATTERN + ")\\s+(?<taxCode>§?\\d)\\s*$",
             Pattern.CASE_INSENSITIVE);
+    private static final Pattern DM_ONLINE_INVOICE_DATE = Pattern.compile(
+            "^Rechnungsdatum:\\s*(?<date>\\d{1,2}\\.\\d{1,2}\\.\\d{2,4})\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern DM_ONLINE_INVOICE_TOTAL = Pattern.compile(
+            "^Rechnungsbetrag\\s+(?<amount>" + AMOUNT_PATTERN + ")\\s*€\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern DM_ONLINE_INVOICE_ITEM = Pattern.compile(
+            "^(?<description>.+?)\\s+(?<unitPrice>" + AMOUNT_PATTERN
+                    + ")\\s*€\\s*\\(\\d+\\)\\s+(?<quantity>\\d+)\\s+(?<total>"
+                    + AMOUNT_PATTERN
+                    + ")\\s*€\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern DM_ONLINE_INVOICE_ITEM_DETAIL = Pattern.compile(
+            "^(?<description>.+?)\\s+(?:" + AMOUNT_PATTERN + ")\\s*€\\s+je\\s+.+$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern DM_ONLINE_INVOICE_COUPON = Pattern.compile(
+            "^(?<description>Coupon\\s+.+?)\\s+(?<total>" + AMOUNT_PATTERN + ")\\s*€\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
+    private static final Pattern DM_ONLINE_INVOICE_SHIPPING = Pattern.compile(
+            "^(?<description>Versandkosten(?:\\s+.+)?)\\s+(?<total>" + AMOUNT_PATTERN + ")\\s*€\\s*$",
+            Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
     private static final Pattern PHARMACY_ITEM_LINE = Pattern.compile(
             "^(?<description>.+?)\\s+1x\\s+(?<unitPrice>" + AMOUNT_PATTERN + ")\\s+(?<total>" + AMOUNT_PATTERN + ")\\s+[A-Z]\\s*$",
             Pattern.CASE_INSENSITIVE);
@@ -112,6 +138,10 @@ public class RuleBasedReceiptParser {
                         .map(String::trim)
                         .filter(line -> !line.isBlank())
                         .toList();
+        if (isDmOnlineInvoice(rawLines)) {
+            return validator.validate(parseDmOnlineInvoice(rawLines));
+        }
+
         List<String> lines = relevantReceiptLines(rawLines);
 
         String storeName = parseStoreName(lines);
@@ -131,7 +161,8 @@ public class RuleBasedReceiptParser {
         }
 
         BigDecimal totalAmount = parseTotal(lines, storeName);
-        List<ParsedReceiptItem> items = reconcileCaOcrItemPrices(storeName, totalAmount, parseItems(lines, storeName));
+        List<ParsedReceiptItem> items =
+                reconcileCaOcrItemPrices(storeName, totalAmount, parseItems(lines, storeName, totalAmount));
         ParsedReceipt receipt = new ParsedReceipt(
                 parseDate(lines),
                 parseTime(lines),
@@ -145,6 +176,116 @@ public class RuleBasedReceiptParser {
                 items);
 
         return validator.validate(receipt);
+    }
+
+    private boolean isDmOnlineInvoice(List<String> lines) {
+        return lines.stream().anyMatch(line -> line.equalsIgnoreCase("Rechnung"))
+                && lines.stream().anyMatch(line -> line.toLowerCase(Locale.ROOT).contains("dm.de"))
+                && lines.stream().anyMatch(line -> line.toLowerCase(Locale.ROOT).contains("dm-drogerie markt"))
+                && lines.stream().anyMatch(line -> line.equalsIgnoreCase(
+                        "Artikelbezeichnung Einzelpreis Menge Gesamtpreis"))
+                && lines.stream().anyMatch(line -> DM_ONLINE_INVOICE_DATE.matcher(line).matches())
+                && lines.stream().anyMatch(line -> DM_ONLINE_INVOICE_TOTAL.matcher(line).matches());
+    }
+
+    private ParsedReceipt parseDmOnlineInvoice(List<String> lines) {
+        return new ParsedReceipt(
+                parseDmOnlineInvoiceDate(lines),
+                null,
+                "dm",
+                "dm.de",
+                parseDmOnlineInvoiceTotal(lines),
+                "EUR",
+                null,
+                null,
+                null,
+                parseDmOnlineInvoiceItems(lines));
+    }
+
+    private LocalDate parseDmOnlineInvoiceDate(List<String> lines) {
+        for (String line : lines) {
+            Matcher matcher = DM_ONLINE_INVOICE_DATE.matcher(line);
+            if (matcher.matches()) {
+                return parseDateValue(matcher.group("date"));
+            }
+        }
+        return null;
+    }
+
+    private BigDecimal parseDmOnlineInvoiceTotal(List<String> lines) {
+        for (String line : lines) {
+            Matcher matcher = DM_ONLINE_INVOICE_TOTAL.matcher(line);
+            if (matcher.matches()) {
+                return GermanNumberParser.parse(matcher.group("amount"));
+            }
+        }
+        return null;
+    }
+
+    private List<ParsedReceiptItem> parseDmOnlineInvoiceItems(List<String> lines) {
+        List<ParsedReceiptItem> items = new ArrayList<>();
+        boolean inItemTable = false;
+        for (int index = 0; index < lines.size(); index++) {
+            String line = lines.get(index);
+            if (line.equalsIgnoreCase("Artikelbezeichnung Einzelpreis Menge Gesamtpreis")) {
+                inItemTable = true;
+                continue;
+            }
+            if (!inItemTable) {
+                continue;
+            }
+            if (line.toUpperCase(Locale.ROOT).startsWith("MWST.-SATZ")) {
+                break;
+            }
+
+            Matcher itemMatcher = DM_ONLINE_INVOICE_ITEM.matcher(line);
+            if (itemMatcher.matches()) {
+                String description = itemMatcher.group("description").trim();
+                if (index + 1 < lines.size()) {
+                    Matcher detailMatcher = DM_ONLINE_INVOICE_ITEM_DETAIL.matcher(lines.get(index + 1));
+                    if (detailMatcher.matches()) {
+                        description = description + " " + detailMatcher.group("description").trim();
+                        index++;
+                    }
+                }
+                items.add(new ParsedReceiptItem(
+                        items.size(),
+                        description,
+                        GermanNumberParser.parse(itemMatcher.group("quantity")),
+                        "Stk",
+                        GermanNumberParser.parse(itemMatcher.group("unitPrice")),
+                        GermanNumberParser.parse(itemMatcher.group("total")),
+                        null));
+                continue;
+            }
+
+            Matcher couponMatcher = DM_ONLINE_INVOICE_COUPON.matcher(line);
+            if (couponMatcher.matches()) {
+                BigDecimal total = GermanNumberParser.parse(couponMatcher.group("total"));
+                items.add(new ParsedReceiptItem(
+                        items.size(),
+                        couponMatcher.group("description").trim(),
+                        null,
+                        null,
+                        null,
+                        total,
+                        total.signum() < 0 ? total.abs() : null));
+                continue;
+            }
+
+            Matcher shippingMatcher = DM_ONLINE_INVOICE_SHIPPING.matcher(line);
+            if (shippingMatcher.matches()) {
+                items.add(new ParsedReceiptItem(
+                        items.size(),
+                        shippingMatcher.group("description").trim(),
+                        null,
+                        null,
+                        null,
+                        GermanNumberParser.parse(shippingMatcher.group("total")),
+                        null));
+            }
+        }
+        return items;
     }
 
     private LocalDate parseMcdonaldsMobileOrderDate(String rawText) {
@@ -519,6 +660,11 @@ public class RuleBasedReceiptParser {
     }
 
     private BigDecimal parseTotal(List<String> lines, String storeName) {
+        BigDecimal combinedCardPaymentTotal = parseCombinedCardPaymentTotal(lines);
+        if (combinedCardPaymentTotal != null) {
+            return combinedCardPaymentTotal;
+        }
+
         for (int i = 0; i < lines.size(); i++) {
             String line = lines.get(i);
             if (!isFinalPayableLine(line)) {
@@ -752,10 +898,15 @@ public class RuleBasedReceiptParser {
         if (endMatcher.find()) {
             return GermanNumberParser.parse(endMatcher.group("amount"));
         }
+
+        Matcher tableCellMatcher = AMOUNT_BEFORE_TABLE_CELL_END.matcher(line);
+        if (tableCellMatcher.find()) {
+            return GermanNumberParser.parse(tableCellMatcher.group("amount"));
+        }
         return null;
     }
 
-    private List<ParsedReceiptItem> parseItems(List<String> lines, String storeName) {
+    private List<ParsedReceiptItem> parseItems(List<String> lines, String storeName, BigDecimal receiptTotal) {
         List<ParsedReceiptItem> items = new ArrayList<>();
         List<String> pendingDescriptionLines = new ArrayList<>();
         boolean quantityArticleTable = hasQuantityArticleTable(lines);
@@ -765,8 +916,32 @@ public class RuleBasedReceiptParser {
         String pendingStornoDescription = null;
         StarFuelDetails pendingStarFuelDetails = null;
         Integer pendingStarFuelItemIndex = null;
+        boolean multipleCashReceiptSections = hasMultipleCashReceiptSections(lines);
+        boolean insideCashReceiptSection = !multipleCashReceiptSections;
+        int cashReceiptItemStartIndex = 0;
 
         for (String line : lines) {
+            if (multipleCashReceiptSections && isCardTerminalReceiptStartLine(line)) {
+                break;
+            }
+            if (multipleCashReceiptSections && isCashReceiptHeaderLine(line)) {
+                pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
+                insideCashReceiptSection = true;
+                cashReceiptItemStartIndex = items.size();
+                continue;
+            }
+            if (multipleCashReceiptSections && !insideCashReceiptSection) {
+                continue;
+            }
+            if (multipleCashReceiptSections && isTotalLine(line)) {
+                reconcileSingleItemCashReceiptSection(items, cashReceiptItemStartIndex, line);
+                pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
+                insideCashReceiptSection = false;
+                continue;
+            }
+
             if (isZeilenstornoLine(line)) {
                 pendingDescriptionLines.clear();
                 leadingQuantityDetails = null;
@@ -817,6 +992,13 @@ public class RuleBasedReceiptParser {
             if (isCaStoreName(storeName) && LONG_NUMERIC_CODE_LINE.matcher(line).matches()) {
                 // C&A product barcodes delimit the receipt header from the following item description.
                 pendingDescriptionLines.clear();
+                leadingQuantityDetails = null;
+                continue;
+            }
+
+            if (isEdekaCounterMarkerLine(line, storeName)) {
+                pendingDescriptionLines.clear();
+                pendingDescriptionLines.add(line);
                 leadingQuantityDetails = null;
                 continue;
             }
@@ -894,11 +1076,18 @@ public class RuleBasedReceiptParser {
                 continue;
             }
 
-            Matcher amountMatcher = AMOUNT_AT_END.matcher(line);
+            Matcher amountMatcher = amountAtEndMatcher(line, storeName);
             boolean amountLine = amountMatcher.find();
             if (amountLine && !shouldSkipAmountLine(line)) {
                 BigDecimal totalPrice = GermanNumberParser.parse(amountMatcher.group("amount"));
-                String descriptionPart = line.substring(0, amountMatcher.start()).trim();
+                AmountLineCandidate correctedAmount = correctMultiReceiptAmountLine(
+                        line,
+                        amountMatcher.start(),
+                        totalPrice,
+                        receiptTotal,
+                        multipleCashReceiptSections);
+                totalPrice = correctedAmount.amount();
+                String descriptionPart = line.substring(0, correctedAmount.descriptionEnd()).trim();
                 List<String> descriptionLines = new ArrayList<>(pendingDescriptionLines);
                 if (!descriptionPart.isBlank()) {
                     descriptionLines.add(normalizeItemDetailLine(descriptionPart));
@@ -977,6 +1166,103 @@ public class RuleBasedReceiptParser {
         }
 
         return items;
+    }
+
+    private Matcher amountAtEndMatcher(String line, String storeName) {
+        Pattern pattern = isEdekaStoreName(storeName) ? EDEKA_AMOUNT_AT_END : AMOUNT_AT_END;
+        return pattern.matcher(line);
+    }
+
+    private BigDecimal parseCombinedCardPaymentTotal(List<String> lines) {
+        if (!hasMultipleCashReceiptSections(lines)) {
+            return null;
+        }
+        boolean insideCardTerminalReceipt = false;
+        for (String line : lines) {
+            if (isCardTerminalReceiptStartLine(line)) {
+                insideCardTerminalReceipt = true;
+                continue;
+            }
+            if (!insideCardTerminalReceipt || !line.stripLeading().toUpperCase(Locale.ROOT).startsWith("EUR ")) {
+                continue;
+            }
+            BigDecimal amount = extractAmount(line);
+            if (amount != null) {
+                return amount;
+            }
+        }
+        return null;
+    }
+
+    private boolean hasMultipleCashReceiptSections(List<String> lines) {
+        return lines.stream().filter(this::isCashReceiptHeaderLine).limit(2).count() == 2;
+    }
+
+    private boolean isCashReceiptHeaderLine(String line) {
+        return line.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "").contains("KASSENBON");
+    }
+
+    private boolean isCardTerminalReceiptStartLine(String line) {
+        return line.toUpperCase(Locale.ROOT).replaceAll("[^A-Z]", "").contains("KUNDENBELEG");
+    }
+
+    private AmountLineCandidate correctMultiReceiptAmountLine(
+            String line,
+            int originalDescriptionEnd,
+            BigDecimal parsedAmount,
+            BigDecimal receiptTotal,
+            boolean multipleCashReceiptSections) {
+        AmountLineCandidate original = new AmountLineCandidate(parsedAmount, originalDescriptionEnd);
+        if (!multipleCashReceiptSections
+                || receiptTotal == null
+                || parsedAmount.signum() <= 0
+                || parsedAmount.compareTo(receiptTotal) <= 0) {
+            return original;
+        }
+
+        AmountLineCandidate corrected = null;
+        Matcher matcher = ANY_AMOUNT.matcher(line);
+        while (matcher.find() && matcher.start() < originalDescriptionEnd) {
+            BigDecimal candidate = GermanNumberParser.parse(matcher.group("amount"));
+            if (candidate.signum() > 0 && candidate.compareTo(receiptTotal) <= 0) {
+                corrected = new AmountLineCandidate(candidate, matcher.start());
+            }
+        }
+        return corrected == null ? original : corrected;
+    }
+
+    private void reconcileSingleItemCashReceiptSection(
+            List<ParsedReceiptItem> items, int itemStartIndex, String totalLine) {
+        if (items.size() - itemStartIndex != 1
+                || !totalLine.toUpperCase(Locale.ROOT).matches(".*POSITIONEN\\s*:\\s*1\\b.*")) {
+            return;
+        }
+        BigDecimal sectionTotal = extractAmount(totalLine);
+        if (sectionTotal == null) {
+            return;
+        }
+        ParsedReceiptItem item = items.get(itemStartIndex);
+        BigDecimal unitPrice = item.unitPrice();
+        if (unitPrice != null && item.quantity() != null && BigDecimal.ONE.compareTo(item.quantity()) == 0) {
+            unitPrice = sectionTotal;
+        }
+        items.set(itemStartIndex, new ParsedReceiptItem(
+                item.positionIndex(),
+                item.description(),
+                item.quantity(),
+                item.unit(),
+                unitPrice,
+                sectionTotal,
+                item.discountAmount()));
+    }
+
+    private boolean isEdekaCounterMarkerLine(String line, String storeName) {
+        if (!isEdekaStoreName(storeName)) {
+            return false;
+        }
+        String upper = line.toUpperCase(Locale.ROOT);
+        return upper.startsWith("BELEG ")
+                && (upper.contains("PREPACK") || upper.matches(".*\\bBED\\b.*"));
     }
 
     private StarFuelDetails parseStarFuelQuantityLine(String line) {
@@ -1096,7 +1382,8 @@ public class RuleBasedReceiptParser {
                 .replace("BABY-COMST", "BABY-COMBI")
                 .replace("B-GUIDOOR", "B-OUTDOOR")
                 .replace("B-HAESCHE", "B-WAESCHE")
-                .replaceAll("\\bB-ACCESS\\b(?!\\.)", "B-ACCESS."));
+                .replaceAll("\\bB-ACCESS\\b(?!\\.)", "B-ACCESS.")
+                .replaceAll("\\s+A$", ""));
     }
 
     private List<ParsedReceiptItem> reconcileCaOcrItemPrices(
@@ -1482,7 +1769,6 @@ public class RuleBasedReceiptParser {
                 .replaceAll("\\bEUR/\\w+\\b", " ")
                 .replaceAll("\\*+", " ")
                 .replaceAll("\\s+", " ")
-                .replaceAll("\\s+[*A-Z]$", "")
                 .trim();
     }
 
@@ -1554,6 +1840,8 @@ public class RuleBasedReceiptParser {
                 || upper.contains("STEUER-NR")
                 || upper.contains("WWW.")
                 || upper.equals("EUR")
+                || upper.startsWith("PREISANGABEN IN EUR")
+                || (upper.contains("ANZ") && upper.contains("ARTIKEL") && upper.contains("PREIS"))
                 || upper.contains("ARTIKELPREIS")
                 || ARTICLE_BARCODE_LINE.matcher(line).matches()
                 || upper.startsWith("COUPON:")
@@ -1646,6 +1934,10 @@ public class RuleBasedReceiptParser {
 
     private boolean isCaStoreName(String storeName) {
         return storeName != null && storeName.equalsIgnoreCase("C&A");
+    }
+
+    private boolean isEdekaStoreName(String storeName) {
+        return storeName != null && storeName.equalsIgnoreCase("EDEKA");
     }
 
     private boolean isStarStoreName(String storeName) {
@@ -1928,5 +2220,8 @@ public class RuleBasedReceiptParser {
     }
 
     private record StarFuelDetails(BigDecimal quantity, String unit) {
+    }
+
+    private record AmountLineCandidate(BigDecimal amount, int descriptionEnd) {
     }
 }

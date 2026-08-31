@@ -135,6 +135,25 @@ function nextBranch(state) {
   return null;
 }
 
+function isExplicitlyReparseProtected(receipt) {
+  return receipt?.parseStatus === "MANUALLY_EDITED"
+    || receipt?.items?.some(item => item.isManuallyEdited
+      || item.productAssignmentStatus === "REJECTED"
+      || item.productAssignmentStatus === "NO_PRODUCT");
+}
+
+async function reparseForAudit(ebon, receiptId, options) {
+  try {
+    return await ebon.reparseReceipt(receiptId, options);
+  } catch (error) {
+    if (error instanceof Error && error.message === "EBON_HTTP_409") {
+      const current = await ebon.getReceipt(receiptId);
+      if (isExplicitlyReparseProtected(current)) return current;
+    }
+    throw error;
+  }
+}
+
 export async function prepareReceiptBlock({ stateDir, state, clients }) {
   const selection = nextBranch(state);
   if (!selection) return { batchPath: null, completed: true };
@@ -146,7 +165,7 @@ export async function prepareReceiptBlock({ stateDir, state, clients }) {
       receipts.push({ paperless, receipt: null, parseTrace: [], reasonCode: "UNMATCHED_PAPERLESS" });
       continue;
     }
-    const receipt = await clients.ebon.reparseReceipt(documentState.receiptId, {
+    const receipt = await reparseForAudit(clients.ebon, documentState.receiptId, {
       overwriteManualEdits: false,
       useAiFallback: false,
       rawTextSource: "PAPERLESS",
@@ -280,6 +299,7 @@ function createEbonClient(env, fetchImpl) {
       }
       throw new Error("EBON_PAGE_LIMIT");
     },
+    getReceipt: id => request(`/api/receipts/${id}`),
     reparseReceipt(id, options) {
       const query = new URLSearchParams({
         overwriteManualEdits: String(options.overwriteManualEdits),

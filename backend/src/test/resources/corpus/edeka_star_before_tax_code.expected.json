@@ -1,0 +1,31 @@
+{
+  "receiptDate": "2026-07-01",
+  "receiptTime": "10:00:00",
+  "storeName": "EDEKA",
+  "storeBranch": "Musterstrasse 1",
+  "totalAmount": 5.00,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Tee",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.00,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Saft",
+      "quantity": 2,
+      "unit": "Stk",
+      "unitPrice": 1.50,
+      "totalPrice": 3.00,
+      "discountAmount": null
+    }
+  ]
+}

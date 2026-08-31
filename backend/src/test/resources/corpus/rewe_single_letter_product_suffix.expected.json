@@ -1,0 +1,58 @@
+{
+  "receiptDate": "2026-08-28",
+  "receiptTime": "11:53:40",
+  "storeName": "REWE",
+  "storeBranch": "Musterstraße 1",
+  "totalAmount": 15.00,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "TEST ARTIKEL H",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 1.00,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "TEST ARTIKEL E",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.00,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "TEST ARTIKEL P",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 3.00,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 3,
+      "description": "TEST ARTIKEL L",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 4.00,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 4,
+      "description": "TEST ARTIKEL W",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 5.00,
+      "discountAmount": null
+    }
+  ]
+}

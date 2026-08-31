@@ -1,0 +1,31 @@
+{
+  "receiptDate": "2026-07-02",
+  "receiptTime": "11:30:00",
+  "storeName": "EDEKA",
+  "storeBranch": "Musterstrasse 2",
+  "totalAmount": 4.00,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Beleg Frischetheke BED",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 2.99,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Brot",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 1.01,
+      "discountAmount": null
+    }
+  ]
+}

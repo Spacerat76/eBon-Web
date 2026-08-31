@@ -1,0 +1,31 @@
+{
+  "receiptDate": "2026-07-27",
+  "receiptTime": "18:13:18",
+  "storeName": "Büsch GmbH",
+  "storeBranch": "Musterstrasse 1",
+  "totalAmount": 4.30,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Roggenbroetchen",
+      "quantity": 2,
+      "unit": "Stk",
+      "unitPrice": 0.95,
+      "totalPrice": 1.90,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Broetchen",
+      "quantity": 6,
+      "unit": "Stk",
+      "unitPrice": 0.40,
+      "totalPrice": 2.40,
+      "discountAmount": null
+    }
+  ]
+}

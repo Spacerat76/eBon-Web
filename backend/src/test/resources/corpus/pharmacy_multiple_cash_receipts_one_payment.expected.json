@@ -1,0 +1,31 @@
+{
+  "receiptDate": "2026-08-04",
+  "receiptTime": "18:20:48",
+  "storeName": "alex Apotheke",
+  "storeBranch": "Musterstrasse 1",
+  "totalAmount": 109.82,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Produkt Eins",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 49.74,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "Produkt Zwei",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 60.08,
+      "discountAmount": null
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+EDEKA Beispielmarkt
+Musterstrasse 1
+01.07.2026 10:00
+
+EUR
+Tee 2,00 A
+Saft 1,50 € x 2 3,00*A
+Posten: 3
+
+SUMME € 5,00

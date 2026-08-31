@@ -126,6 +126,46 @@ test("prepareReceiptBlock reparses with exact manual-safe no-AI options", async 
   assert.match(await readFile(result.batchPath, "utf8"), /MILCH 1,99/);
 });
 
+test("prepareReceiptBlock reads a product-decision-protected receipt unchanged after conflict", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ebon-receipt-protected-"));
+  const protectedReceipt = {
+    id: 70,
+    paperlessDocumentId: 7,
+    parseStatus: "PARSED",
+    rawText: "MILCH 1,99",
+    items: [{ productAssignmentStatus: "NO_PRODUCT", isManuallyEdited: false }],
+  };
+  const state = {
+    version: 1,
+    runId: "receipt-run",
+    merchants: [{
+      merchantKey: "rewe",
+      receiptCount: 1,
+      branches: [{
+        branchKey: "nord",
+        status: "PENDING",
+        documents: [{ paperlessDocumentId: 7, receiptId: 70 }],
+      }],
+    }],
+  };
+
+  const result = await prepareReceiptBlock({
+    stateDir: root,
+    state,
+    clients: {
+      paperless: { getDocument: async id => ({ id, content: "MILCH 1,99" }) },
+      ebon: {
+        reparseReceipt: async () => { throw new Error("EBON_HTTP_409"); },
+        getReceipt: async id => ({ ...protectedReceipt, id }),
+        getParseTrace: async () => [],
+      },
+    },
+  });
+
+  const batch = JSON.parse(await readFile(result.batchPath, "utf8"));
+  assert.deepEqual(batch.receipts[0].receipt, protectedReceipt);
+});
+
 test("persistent state guard rejects private receipt-shaped fields", () => {
   assert.throws(() => assertPersistentStateSafe({ rawText: "MILCH 1,99" }), /PRIVATE_FIELD_FORBIDDEN/);
   assert.throws(() => assertPersistentStateSafe({ nested: { description: "MILCH" } }), /PRIVATE_FIELD_FORBIDDEN/);

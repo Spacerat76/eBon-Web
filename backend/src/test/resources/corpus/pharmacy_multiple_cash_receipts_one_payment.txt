@@ -1,0 +1,26 @@
+alex Apotheke
+Musterstrasse 1
+41466 Neuss
+
+Kassenbon
+Preisangaben in EUR
+Produkt Eins 49,74 A
+Positionen: 1 Total EUR: 49,74
+Datum: 04.08.26 Uhrzeit: 18:20:48
+Signaturzeit: 2026-08-04T16:20:49.999Z
+
+alex Apotheke
+Musterstrasse 1
+41466 Neuss
+
+Kassenbon
+Preisangaben in EUR
+Produkt Zwei 60,08 650,08 A
+Positionen: 1 Total EUR: 60,08
+Datum: 04.08.26 Uhrzeit: 18:20:24
+Signaturzeit: 2026-08-04T16:20:25.888Z
+
+-K-U-N-D-E-N-B-E-L-E-G-
+alex Apotheke
+Kartenzahlung
+EUR 109,82

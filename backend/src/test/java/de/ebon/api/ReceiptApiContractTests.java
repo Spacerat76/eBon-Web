@@ -10,6 +10,9 @@ import de.ebon.persistence.model.FormatProfileScope;
 import de.ebon.persistence.model.FormatProfileSource;
 import de.ebon.persistence.model.ParseLineType;
 import de.ebon.persistence.model.ParseStatus;
+import de.ebon.persistence.model.ProductAssignmentSource;
+import de.ebon.persistence.model.ProductAssignmentStatus;
+import de.ebon.persistence.model.ProductFamily;
 import de.ebon.persistence.model.Receipt;
 import de.ebon.persistence.model.ReceiptFormatProfile;
 import de.ebon.persistence.model.ReceiptItem;
@@ -18,6 +21,8 @@ import de.ebon.paperless.PaperlessClient;
 import de.ebon.paperless.PaperlessDocument;
 import de.ebon.persistence.repository.AiCategorizationLogRepository;
 import de.ebon.persistence.repository.CategoryRepository;
+import de.ebon.persistence.repository.ProductAssignmentLogRepository;
+import de.ebon.persistence.repository.ProductFamilyRepository;
 import de.ebon.persistence.repository.ReceiptItemRepository;
 import de.ebon.persistence.repository.ReceiptFormatProfileRepository;
 import de.ebon.persistence.repository.ReceiptParseTraceRepository;
@@ -81,6 +86,12 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
 
     @Autowired
     private AiCategorizationLogRepository aiLogRepository;
+
+    @Autowired
+    private ProductFamilyRepository productFamilyRepository;
+
+    @Autowired
+    private ProductAssignmentLogRepository productAssignmentLogRepository;
 
     @BeforeEach
     void resetDatabase() {
@@ -383,6 +394,43 @@ class ReceiptApiContractTests extends PostgresIntegrationTestSupport {
         assertThat(reparsedItems)
                 .extracting(ReceiptItem::getDescription)
                 .containsExactly("ALTE POSITION", "ZWEITE POSITION");
+    }
+
+    // A transferred manual assignment must reference the newly persisted item, never a transient parse result.
+    @Test
+    void reparseReceiptPersistsNewItemBeforeLoggingTransferredProductAssignment() throws Exception {
+        ProductFamily family = productFamilyRepository.findByNameIgnoreCase("Reparse Transfer Test")
+                .orElseGet(() -> productFamilyRepository.saveAndFlush(new ProductFamily("Reparse Transfer Test", null)));
+        Receipt receipt = new Receipt(
+                300004,
+                """
+                        REWE Markt
+                        Am Reuschenberger Markt 1
+                        27.05.2026 12:37
+                        TEST ARTIKEL 1,00
+                        SUMME EUR 1,00
+                        """);
+        receipt.setStoreName("REWE");
+        ReceiptItem previous = new ReceiptItem(0, "TEST ARTIKEL", new BigDecimal("1.00"));
+        previous.assignProduct(
+                family,
+                null,
+                ProductAssignmentSource.MANUAL,
+                ProductAssignmentStatus.CONFIRMED,
+                null);
+        receipt.addItem(previous);
+        receipt = receiptRepository.saveAndFlush(receipt);
+
+        HttpResponse<String> response = sendPost(
+                "/api/receipts/" + receipt.getId() + "/reparse?overwriteManualEdits=false&useAiFallback=false");
+        java.util.List<ReceiptItem> reparsedItems = items(receipt);
+
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(reparsedItems).hasSize(1);
+        assertThat(reparsedItems.getFirst().getProductFamily().getId()).isEqualTo(family.getId());
+        assertThat(reparsedItems.getFirst().getProductAssignmentSource()).isEqualTo(ProductAssignmentSource.MANUAL);
+        assertThat(reparsedItems.getFirst().getProductAssignmentStatus()).isEqualTo(ProductAssignmentStatus.CONFIRMED);
+        assertThat(productAssignmentLogRepository.count()).isEqualTo(1);
     }
 
     // Verifies the reparse preflight is protected and returns only a safe change status, never raw text.

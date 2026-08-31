@@ -1,0 +1,8 @@
+EDEKA Beispielmarkt
+Musterstrasse 1
+01.07.2026 10:00
+
+EUR
+Tee 2,00 A
+
+| Summe € | 2,00 |

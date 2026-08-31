@@ -1,0 +1,49 @@
+{
+  "receiptDate": "2026-06-25",
+  "receiptTime": null,
+  "storeName": "dm",
+  "storeBranch": "dm.de",
+  "totalAmount": 16.65,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Frosch baby Vollwaschmittel flüssig Baby, 22 Wl",
+      "quantity": 1,
+      "unit": "Stk",
+      "unitPrice": 5.95,
+      "totalPrice": 5.95,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "babylove Wickelunterlagen, 10 St",
+      "quantity": 5,
+      "unit": "Stk",
+      "unitPrice": 1.65,
+      "totalPrice": 8.25,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "Coupon 30% babylove",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": -2.50,
+      "discountAmount": 2.50
+    },
+    {
+      "positionIndex": 3,
+      "description": "Versandkosten (1 Paket(e))",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 4.95,
+      "discountAmount": null
+    }
+  ]
+}

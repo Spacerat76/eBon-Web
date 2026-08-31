@@ -1,0 +1,11 @@
+EDEKA Beispielmarkt
+Musterstrasse 2
+02.07.2026 11:30
+
+EUR
+Beleg Frischetheke BED
+2,99 A
+Brot 1,01 A
+Posten: 2
+
+SUMME € 4,00

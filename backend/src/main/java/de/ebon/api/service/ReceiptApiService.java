@@ -398,10 +398,11 @@ public class ReceiptApiService {
         receipt.clearItems();
         receiptRepository.saveAndFlush(receipt);
         receiptParseApplier.apply(receipt, parseResult);
-        if (productAssignmentTransferService != null) {
-            productAssignmentTransferService.transferConfirmedAssignments(previousItems, receipt.getItems());
-        }
         Receipt savedReceipt = receiptRepository.saveAndFlush(receipt);
+        if (productAssignmentTransferService != null) {
+            productAssignmentTransferService.transferConfirmedAssignments(previousItems, savedReceipt.getItems());
+        }
+        savedReceipt = receiptRepository.saveAndFlush(savedReceipt);
         categorizationService.categorizeReceipt(savedReceipt.getId());
         if (productAssignmentService != null) {
             productAssignmentService.assignReceipt(savedReceipt.getId());
