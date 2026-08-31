@@ -1,0 +1,29 @@
+BAUHAUS
+Bauhaus Gesellschaft fuer Bau- und Hausbedarf mbH & Co. KG
+Musterregion
+100 MUSTERSTADT
+Am Musterpark 7
+12345 Musterstadt
+
+EUR
+Art/EAN 4000000000001
+TESTARTIKEL GRAU
+12,34 C
+
+SUMME [1]
+EUR
+EC-Cash
+EUR
+----------------
+12,34
+12,34
+
+Datum: 01.07.2026
+Uhrzeit: 12:34:56
+
+NETTO
+10,37€
+MWST
+1,97€
+BRUTTO
+12,34€

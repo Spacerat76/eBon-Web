@@ -1,0 +1,22 @@
+{
+  "receiptDate": "2026-07-01",
+  "receiptTime": "12:34:56",
+  "storeName": "BAUHAUS",
+  "storeBranch": "Am Musterpark 7",
+  "totalAmount": 12.34,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "TESTARTIKEL GRAU",
+      "quantity": null,
+      "unit": null,
+      "unitPrice": null,
+      "totalPrice": 12.34,
+      "discountAmount": null
+    }
+  ]
+}

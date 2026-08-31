@@ -1,0 +1,14 @@
+SHELL STATION
+Beispiel Tankstellen GmbH
+Musterstrasse 1
+41466 Neuss
+
+Beleg-Nr.: 1000 01.07.2026 12:34
+Rechnung
+*000001 Testkraftstoff 40,00 EUR #A*
+*Zp 01 25,00 l 1,600 EUR/l # *
+
+Gesamtbetrag 40,00 EUR
+
+Typ Netto MwSt Brutto
+A:19,00% 33,61 6,39 40,00

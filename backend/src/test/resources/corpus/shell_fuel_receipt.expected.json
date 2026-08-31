@@ -1,0 +1,22 @@
+{
+  "receiptDate": "2026-07-01",
+  "receiptTime": "12:34:00",
+  "storeName": "SHELL STATION",
+  "storeBranch": "Musterstrasse 1",
+  "totalAmount": 40.00,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "Testkraftstoff",
+      "quantity": 25.00,
+      "unit": "Liter",
+      "unitPrice": 1.600,
+      "totalPrice": 40.00,
+      "discountAmount": null
+    }
+  ]
+}

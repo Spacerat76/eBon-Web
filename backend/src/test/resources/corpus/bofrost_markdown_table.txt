@@ -1,0 +1,24 @@
+bofrost*
+bofrost* Dienstleistungs GmbH & Co. KG
+Musterstr. 21
+12345 Musterstadt
+
+Lieferdatum: 01.07.2026 12:34:56
+
+| Artikelbeschreibung | Anzahl | MwSt. | Gesamt Preis |
+| --- | --- | --- | --- |
+| **TEST ARTIKEL A** | | | **10,00€** |
+| 10001 | 2 | 7% | 10,00€ |
+| **TEST ARTIKEL B** | | | **20,00€** |
+| 10002 | 1 | 7% | 20,00€ |
+| **TEST ARTIKEL C** | | | **5,00€** |
+| 10003 | 1 | 7% | 5,00€ |
+| **TEST ARTIKEL D** | | | **15,00€** |
+| 10004 | 3 | 7% | 15,00€ |
+
+| MwSt. | Netto | Umsatzsteuer |
+| --- | --- | --- |
+| 7% | 46,73€ | 3,27€ |
+
+Summe 50,00€
+Bezahlart EC

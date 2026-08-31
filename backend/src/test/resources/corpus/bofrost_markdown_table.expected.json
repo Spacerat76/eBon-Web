@@ -1,0 +1,49 @@
+{
+  "receiptDate": "2026-07-01",
+  "receiptTime": "12:34:56",
+  "storeName": "bofrost*",
+  "storeBranch": "Musterstr. 21",
+  "totalAmount": 50.00,
+  "currency": "EUR",
+  "bonusBalance": null,
+  "bonusPoints": null,
+  "bonusType": null,
+  "items": [
+    {
+      "positionIndex": 0,
+      "description": "TEST ARTIKEL A",
+      "quantity": 2,
+      "unit": "Stk",
+      "unitPrice": 5.00,
+      "totalPrice": 10.00,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 1,
+      "description": "TEST ARTIKEL B",
+      "quantity": 1,
+      "unit": "Stk",
+      "unitPrice": 20.00,
+      "totalPrice": 20.00,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 2,
+      "description": "TEST ARTIKEL C",
+      "quantity": 1,
+      "unit": "Stk",
+      "unitPrice": 5.00,
+      "totalPrice": 5.00,
+      "discountAmount": null
+    },
+    {
+      "positionIndex": 3,
+      "description": "TEST ARTIKEL D",
+      "quantity": 3,
+      "unit": "Stk",
+      "unitPrice": 5.00,
+      "totalPrice": 15.00,
+      "discountAmount": null
+    }
+  ]
+}
